@@ -3,13 +3,15 @@
 // a row per measure, plus each run's expectation tally, with a column per
 // label and arm.
 import { grade } from './grade.mjs'
-import { formatValue } from './measure.mjs'
+import { formatValue, measureLabel } from './measure.mjs'
 
 const esc = (s) => String(s).replace(/\|/g, '\\|').replace(/\n/g, ' ')
 
-export function compare(labelled) {
+// `spec` grades every run against that spec instead of the one stored with
+// it: a measure added later is then computed from the same stored runs.
+export function compare(labelled, spec = null) {
   if (labelled.length < 2) throw new Error('compare needs two or more labelled results')
-  const graded = labelled.map(({ label, record }) => ({ label, record, g: grade(record, record.specDoc) }))
+  const graded = labelled.map(({ label, record }) => ({ label, record, g: grade(record, spec ?? record.specDoc) }))
   const names = new Set(graded.map((x) => x.record.spec))
   if (names.size !== 1) throw new Error(`these results come from different specs: ${[...names].join(', ')}`)
 
@@ -29,7 +31,8 @@ export function compare(labelled) {
         const r = graded.find((x) => x.label === c.label).g.measures.find((m) => m.scenario === scenario && m.id === id && m.arm === c.arm)
         return r ? formatValue(r.result) : '—'
       })
-      out.push(`| ${esc(id)} | ${cells.join(' | ')} |`)
+      const row = graded.flatMap(({ g }) => g.measures).find((m) => m.scenario === scenario && m.id === id)
+      out.push(`| ${esc(measureLabel(row))} | ${cells.join(' | ')} |`)
     }
     const tally = cols.map((c) => {
       const rows = graded.find((x) => x.label === c.label).g.rows.filter((r) => r.scenario === scenario && r.arm === c.arm)

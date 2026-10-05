@@ -24,7 +24,7 @@ node testbed/bin/bed.mjs build --vault <vault-dir> --spec <spec.json> --bed <new
 - `run` builds a fresh bed for every scenario and arm, drives one session in it, and writes `results.json`. It prints a summary per run.
 - `show` prints that summary again from a `results.json`.
 - `dry` checks a spec's log layer before a live run spends anything. For each scenario it builds a bed and runs the vault's own hook scripts directly, in the order a session would: SessionStart at startup, then per turn UserPromptSubmit, PreCompact and SessionStart (compact) for a `/compact` turn, a Write plus PostToolUse when the turn asks to create a file, and Stop. It covers the settings arm only, and grades only what the hooks printed. Answers, what the user is shown, judged rows and mod events are left out, and answer and tool measures record nothing. The scripts are the om_mod contract's entry-point names (`session-start.ts`, `classify-message.ts`, `validate-write.ts`, `pre-compact.ts`, `stop-checklist.ts`).
-- A scenario can set its own `allowedTools` and `disallowedTools`, replacing the session's. `disallowedTools` removes tools from the session entirely, so a measure reads only what the hooks delivered.
+- A scenario can set its own `allowedTools`, `disallowedTools` and `tools`, replacing the session's. To measure only what the hooks delivered, use `tools: []`, which turns every built-in tool off (`--tools ""`). A `disallowedTools` list is a denylist, and a denylist misses tools nobody thought of. The first blind run of the North Star A/B disallowed Read, Grep, Glob and Bash, and on Windows the model read the file through PowerShell. Its `no tool was used` expectation failed, so the grade said so instead of passing quietly, and blind scenarios use the allowlist since.
 - `dry --deliver` also runs SessionStart the way the mod does (`om_mod: "deliver"`), with the same environment and residue check, and keeps the output as the run's `deliver`. That is what the mod would hand the model as its instruction file. Measures read it with `"in": "deliver"`; in a live run, or a dry run without `--deliver`, they record nothing. No hook expectation sees it.
 - `build` makes one bed and stops, for looking around. To run a hook by hand, use `dry` instead: it gives the hook the same environment and residue check as a session.
 
@@ -93,7 +93,7 @@ The builder refuses a folder that exists and never deletes anything.
 | `session.gapMs`, `settleMs`, `turnTimeoutMs` | The pause after a result before the next turn (2 s); the wait after the last result for late events (5 s); the longest a turn may take (180 s) |
 | `session.env` | Extra environment for the session, such as a hook's state-path override |
 | `scenarios[].arms` | Default both |
-| `scenarios[].allowedTools`, `scenarios[].disallowedTools` | Replace `session.allowedTools` and `session.disallowedTools` for this scenario. `disallowedTools` takes tools away from the model entirely (`--disallowedTools`) |
+| `scenarios[].allowedTools`, `scenarios[].disallowedTools`, `scenarios[].tools` | Replace the session's lists for this scenario. `tools` is an allowlist of built-in tools (`--tools`), and `[]` turns every tool off; prefer it to `disallowedTools` when no tool may be used |
 | `scenarios[].env` | Merged over `session.env` for this scenario, such as a kill switch |
 | `scenarios[].files` | Like `bed.files`, for this scenario's bed only, copied after them. Two scenarios can then differ in one file and share everything else |
 | `scenarios[].measures` | What to record rather than grade; see [Measures](#measures) |
@@ -151,7 +151,7 @@ An A/B needs numbers, not verdicts: how many of 30 goals a session named, whethe
 | `meterSlack: { in }` | the budget the meter says went unused: its budget minus the size it reports |
 | `bytes: { in }` | the source's size in bytes |
 
-Each takes `turn` (default `"any"`) and `arms`. `in` is `answer`, `shown`, `hook:<Event>`, or `deliver` (a dry run's mod delivery, from `dry --deliver`). A measure on an invalid run or a missing turn records nothing (`—`), never zero.
+Each takes `turn` (default `"any"`), `arms`, and `posthoc: true` for a measure chosen after seeing results. A post-hoc measure is labelled `(post-hoc)` wherever it is shown, so it is never read as one decided in advance. `in` is `answer`, `shown`, `hook:<Event>`, or `deliver` (a dry run's mod delivery, from `dry --deliver`). A measure on an invalid run or a missing turn records nothing (`—`), never zero.
 
 Tool calls are recorded with only what they touched (a file, path, pattern, command or URL, cut to 300 characters), so a transcript's file contents never land in `results.json`.
 
@@ -161,7 +161,7 @@ Tool calls are recorded with only what they touched (a file, path, pattern, comm
 node testbed/bin/bed.mjs compare main=<out-a>/results.json ladder=<out-b>/results.json
 ```
 
-This prints one table per scenario: a row per measure plus each run's expectation tally, with a column per label and arm. The results must come from the same spec.
+This prints one table per scenario: a row per measure plus each run's expectation tally, with a column per label and arm. The results must come from the same spec. `--spec <file>` grades the stored runs against that spec instead, so a measure added later is computed from runs already made, with no new sessions.
 
 ## Grading
 
