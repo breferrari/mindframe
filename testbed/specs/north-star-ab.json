@@ -300,6 +300,50 @@
           "modEvent": {
             "event": "prompt.context"
           }
+        },
+        {
+          "id": "the hook delivers every goal (the A/B finding, held without a model)",
+          "arms": [
+            "settings"
+          ],
+          "turn": "preamble",
+          "hook": {
+            "event": "SessionStart",
+            "output": {
+              "all": [
+                "Brindlewick",
+                "Corvantine",
+                "Dashmere",
+                "Elvorrow",
+                "Fennigast",
+                "Glimmerholt",
+                "Harrowind",
+                "Islemont",
+                "Jasperlane",
+                "Kettlevane",
+                "Lumbrisk",
+                "Marrowgate",
+                "Nettlecombe",
+                "Orrinsby",
+                "Pellucine",
+                "Quarrowe",
+                "Rimblestone",
+                "Saltreach",
+                "Thistlemark",
+                "Umberlith",
+                "Vexmoor",
+                "Wrenhallow",
+                "Yarrowdeep",
+                "Zelkovan",
+                "Ambrelin",
+                "Bossenrow",
+                "Cindervale",
+                "Drowsmere",
+                "Embergast",
+                "Foxmantle"
+              ]
+            }
+          }
         }
       ]
     },
@@ -506,6 +550,32 @@
           ],
           "modEvent": {
             "event": "prompt.context"
+          }
+        },
+        {
+          "id": "the hook delivers every goal (the A/B finding, held without a model)",
+          "arms": [
+            "settings"
+          ],
+          "turn": "preamble",
+          "hook": {
+            "event": "SessionStart",
+            "output": {
+              "all": [
+                "Brindlewick",
+                "Corvantine",
+                "Dashmere",
+                "Elvorrow",
+                "Fennigast",
+                "Glimmerholt",
+                "Harrowind",
+                "Islemont",
+                "Jasperlane",
+                "Kettlevane",
+                "Lumbrisk",
+                "Marrowgate"
+              ]
+            }
           }
         }
       ]
@@ -822,6 +892,50 @@
             ],
             "items": "goals"
           }
+        },
+        {
+          "id": "the hook delivers every goal (the A/B finding, held without a model)",
+          "arms": [
+            "settings"
+          ],
+          "turn": "preamble",
+          "hook": {
+            "event": "SessionStart",
+            "output": {
+              "all": [
+                "Brindlewick",
+                "Corvantine",
+                "Dashmere",
+                "Elvorrow",
+                "Fennigast",
+                "Glimmerholt",
+                "Harrowind",
+                "Islemont",
+                "Jasperlane",
+                "Kettlevane",
+                "Lumbrisk",
+                "Marrowgate",
+                "Nettlecombe",
+                "Orrinsby",
+                "Pellucine",
+                "Quarrowe",
+                "Rimblestone",
+                "Saltreach",
+                "Thistlemark",
+                "Umberlith",
+                "Vexmoor",
+                "Wrenhallow",
+                "Yarrowdeep",
+                "Zelkovan",
+                "Ambrelin",
+                "Bossenrow",
+                "Cindervale",
+                "Drowsmere",
+                "Embergast",
+                "Foxmantle"
+              ]
+            }
+          }
         }
       ],
       "tools": [
@@ -1023,6 +1137,50 @@
           "meter": {
             "in": "hook:SessionStart",
             "maxBytes": 10000
+          }
+        },
+        {
+          "id": "the hook delivers every goal (the A/B finding, held without a model)",
+          "arms": [
+            "settings"
+          ],
+          "turn": "preamble",
+          "hook": {
+            "event": "SessionStart",
+            "output": {
+              "all": [
+                "Brindlewick",
+                "Corvantine",
+                "Dashmere",
+                "Elvorrow",
+                "Fennigast",
+                "Glimmerholt",
+                "Harrowind",
+                "Islemont",
+                "Jasperlane",
+                "Kettlevane",
+                "Lumbrisk",
+                "Marrowgate",
+                "Nettlecombe",
+                "Orrinsby",
+                "Pellucine",
+                "Quarrowe",
+                "Rimblestone",
+                "Saltreach",
+                "Thistlemark",
+                "Umberlith",
+                "Vexmoor",
+                "Wrenhallow",
+                "Yarrowdeep",
+                "Zelkovan",
+                "Ambrelin",
+                "Bossenrow",
+                "Cindervale",
+                "Drowsmere",
+                "Embergast",
+                "Foxmantle"
+              ]
+            }
           }
         }
       ]
@@ -1231,6 +1389,32 @@
             ],
             "items": "goals"
           }
+        },
+        {
+          "id": "the hook delivers every goal (the A/B finding, held without a model)",
+          "arms": [
+            "settings"
+          ],
+          "turn": "preamble",
+          "hook": {
+            "event": "SessionStart",
+            "output": {
+              "all": [
+                "Brindlewick",
+                "Corvantine",
+                "Dashmere",
+                "Elvorrow",
+                "Fennigast",
+                "Glimmerholt",
+                "Harrowind",
+                "Islemont",
+                "Jasperlane",
+                "Kettlevane",
+                "Lumbrisk",
+                "Marrowgate"
+              ]
+            }
+          }
         }
       ],
       "tools": [
@@ -1378,6 +1562,32 @@
           "meter": {
             "in": "hook:SessionStart",
             "maxBytes": 10000
+          }
+        },
+        {
+          "id": "the hook delivers every goal (the A/B finding, held without a model)",
+          "arms": [
+            "settings"
+          ],
+          "turn": "preamble",
+          "hook": {
+            "event": "SessionStart",
+            "output": {
+              "all": [
+                "Brindlewick",
+                "Corvantine",
+                "Dashmere",
+                "Elvorrow",
+                "Fennigast",
+                "Glimmerholt",
+                "Harrowind",
+                "Islemont",
+                "Jasperlane",
+                "Kettlevane",
+                "Lumbrisk",
+                "Marrowgate"
+              ]
+            }
           }
         }
       ]

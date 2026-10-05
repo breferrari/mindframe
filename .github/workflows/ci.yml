@@ -85,6 +85,16 @@ jobs:
         shell: bash
         run: npm test
 
+      - name: Dry-run the shipped specs against pinned vaults
+        # Deterministic: each vault's own hook scripts, at the commits in
+        # testbed/ci/pins.json, replayed with no model and no Claude Code,
+        # with the qmd redirect and the residue check on. CI never runs a
+        # model session and holds no API key: live runs are research, run
+        # by hand, never a gate (CONTRIBUTING.md).
+        if: hashFiles('testbed/ci/pins.json') != ''
+        shell: bash
+        run: node testbed/bin/ci-dry.mjs --work "$RUNNER_TEMP/mindframe-ci-dry"
+
       - name: Tests (skipped, no package.json yet)
         if: hashFiles('package.json') == ''
         shell: bash

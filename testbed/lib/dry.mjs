@@ -16,7 +16,7 @@
 // spec's and the scenario's env), and the user's qmd folders are compared
 // before and after each scenario, exactly as in a live run.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { buildBed, vaultCommit } from './bed.mjs'
 import { diff, qmdEnv, snapshot, userQmdDirs } from './residue.mjs'
@@ -43,6 +43,9 @@ export function bedEnv({ base = process.env, stateDir, spec, scenario }) {
 
 // The file a turn asks to create, as "... create 'path' ...", if any.
 const CREATE = /create '([^']+)'/
+// The line a turn asks to change, as "Use the Edit tool on '<path>': change
+// the line '<a>' to '<b>'".
+const EDIT = /Edit tool on '([^']+)': change the line '([^']+)' to '([^']+)'/
 
 // `deliver` also runs SessionStart the way the mod does, with
 // `om_mod: "deliver"`, and keeps its output as the run's `deliver`: what the
@@ -105,6 +108,16 @@ export function dryRun({ spec, vault, out, only, deliver = false, runner = execF
         tools.push('Write')
         toolCalls.push({ name: 'Write', input: { file_path: file } })
         hooks.push(hook('PostToolUse', { tool_name: 'Write', tool_input: { file_path: file } }, 'PostToolUse:Write'))
+      }
+      const edit = EDIT.exec(t.text)
+      if (edit) {
+        const file = path.join(bed, ...edit[1].split('/'))
+        const before = readFileSync(file, 'utf8')
+        if (!before.includes(edit[2])) throw new Error(`dry: turn ${i + 1} edits ${edit[1]}, which has no line "${edit[2]}"`)
+        writeFileSync(file, before.replace(edit[2], edit[3]))
+        tools.push('Edit')
+        toolCalls.push({ name: 'Edit', input: { file_path: file } })
+        hooks.push(hook('PostToolUse', { tool_name: 'Edit', tool_input: { file_path: file, old_string: edit[2], new_string: edit[3] } }, 'PostToolUse:Edit'))
       }
       hooks.push(hook('Stop', { stop_hook_active: false }))
       return { index: i + 1, prompt: t.text, answer: '', tools, toolCalls, hooks, informational: [], result: null }

@@ -5,12 +5,16 @@ import { DRY_SKIPPED } from './dry.mjs'
 import { evaluate } from './expect.mjs'
 import { formatValue, measureAll, measureLabel } from './measure.mjs'
 
+// An expectation of any kind that reads the model's answer or what the user
+// was shown (order over the answer, linesCite, …) needs a live session.
+const readsModel = (e) => ['answer', 'shown'].includes(e[e.kind]?.in)
+
 export function grade(record, spec, verdicts = {}) {
   const rows = []
   for (const s of spec.scenarios) {
     for (const e of s.expect ?? []) {
       // A dry run has no model and no Claude Code: those rows aren't graded.
-      if (record.dry && DRY_SKIPPED.has(e.kind)) continue
+      if (record.dry && (DRY_SKIPPED.has(e.kind) || readsModel(e))) continue
       for (const arm of e.arms) {
         const run = record.runs.find((r) => r.scenario === s.id && r.arm === arm)
         if (!run) continue // not run this time (--arm, --scenario)

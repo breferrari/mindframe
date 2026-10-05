@@ -145,3 +145,37 @@ test('a dry run records hook rows the way a live run does, byte counts included'
   assert.doesNotMatch(text, /undefined/)
   assert.match(text, /UserPromptSubmit: success exit=0 \d+B/)
 })
+
+test('a dry run replays an Edit turn: the line changes, then PostToolUse runs on it', (t) => {
+  const vault = vaultWithScripts(t)
+  const bed = { fixtures: [{ path: 'notes/a.md', content: 'status: completed\n' }] }
+  const s = validateSpec(minimalSpec({ bed, scenarios: [{ id: 'e', arms: ['settings'], turns: ["Use the Edit tool on 'notes/a.md': change the line 'status: completed' to 'status: active'. Then say only: done."] }] }))
+  const out = path.join(tmp(t), 'out')
+  const run = dryRun({ spec: s, vault, out }).runs[0]
+  assert.deepEqual(run.turns[0].tools, ['Edit'])
+  assert.deepEqual(run.turns[0].hooks.map((h) => h.name), ['UserPromptSubmit', 'PostToolUse:Edit', 'Stop'])
+  assert.equal(readFileSync(path.join(out, 'beds', 'e-dry', 'notes', 'a.md'), 'utf8'), 'status: active\n')
+  const bad = validateSpec(minimalSpec({ bed, scenarios: [{ id: 'e', arms: ['settings'], turns: ["Use the Edit tool on 'notes/a.md': change the line 'nope' to 'x'."] }] }))
+  assert.throws(() => dryRun({ spec: bad, vault, out: path.join(tmp(t), 'out2') }), /has no line "nope"/)
+})
+
+test('a dry run skips any expectation that reads the answer or what the user saw, whatever its kind', (t) => {
+  const s = validateSpec(
+    minimalSpec({
+      scenarios: [
+        {
+          id: 'k',
+          arms: ['settings'],
+          turns: ['x'],
+          expect: [
+            { id: 'order in answer', turn: 1, order: { in: 'answer', items: ['a', 'b'] } },
+            { id: 'cite in answer', turn: 1, linesCite: { in: 'answer', cite: ['a'] } },
+            { id: 'order in hook', turn: 'preamble', order: { in: 'hook:SessionStart', items: ['source', 'INDEX_PATH'] } },
+          ],
+        },
+      ],
+    }),
+  )
+  const record = dryRun({ spec: s, vault: vaultWithScripts(t), out: path.join(tmp(t), 'out') })
+  assert.deepEqual(grade(record, record.specDoc).rows.map((r) => [r.id, r.pass]), [['order in hook', true]])
+})
