@@ -1,0 +1,4 @@
+node_modules/
+# Test-bed output, when --out points inside the repo. The default is a temp
+# directory outside it.
+testbed/runs/

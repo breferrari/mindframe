@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Vaults vendor these files on Windows, macOS and Linux and compare them by
+# bytes, so every check runs on all three. Windows matters most: its runners
+# check out with core.autocrlf=true, the setting that would turn LF into CRLF
+# if .gitattributes stopped pinning it.
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Line endings are LF
+        shell: bash
+        run: |
+          # `git ls-files --eol` prints the index and working-tree endings of
+          # every tracked file. Any CRLF, in the repo or in this checkout, is
+          # a byte difference a vendored copy would carry.
+          bad=$(git ls-files --eol | grep -E '(^| )(i|w)/(crlf|mixed)( |$)' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::files with CRLF line endings (see .gitattributes)"
+            echo "$bad"
+            exit 1
+          fi
+
+      - name: No agent-session artifacts in tracked files
+        shell: bash
+        run: |
+          # CONTRIBUTING.md hard rule 1: session URLs, session trailers and
+          # local absolute paths never land in the repo.
+          #
+          # The path patterns describe a real path, not a mention of one:
+          # - A Windows path has a drive letter that stands alone (no letter,
+          #   digit or / before it, so file:///c:/ is not one), followed by
+          #   at least two segments, each closed by \, \\ or / (C:\Users\me\).
+          #   That leaves out regex source like \w+:\s, escaped strings like
+          #   tags:\n- x\n, and two-segment examples like C:\vault\note.md.
+          # - A home folder (/Users/<name>/, /home/<name>/) needs its name
+          #   segment closed.
+          # - The trailer has to start a line.
+          # So the rule's own wording (`C:\...`, `/Users/...`, a
+          # `Claude-Session:` mention mid-sentence) doesn't match.
+          #
+          # Excluded:
+          # - test files, test helpers and fixtures, which hold paths on
+          #   purpose to exercise Windows and POSIX handling;
+          # - this workflow, whose pattern line matches itself.
+          # The folder excludes need `glob`: without it, `**/` only matches
+          # below another folder, and a top-level tests/ would be scanned.
+          pattern='claude\.ai/(code/)?session|^Claude-Session:|(^|[^A-Za-z0-9/])[A-Za-z]:(\\{1,2}|/)[A-Za-z0-9_.-]+(\\{1,2}|/)[A-Za-z0-9_.-]+(\\{1,2}|/)|/Users/[^/[:space:]]+/|/home/[^/[:space:]]+/'
+          hits=$(git grep -nIE "$pattern" -- . \
+            ':(exclude)*.test.*' ':(exclude,glob)**/tests/**' ':(exclude,glob)**/fixtures/**' \
+            ':(exclude).github/workflows/ci.yml' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::agent-session artifacts or local paths in tracked files"
+            echo "$hits"
+            exit 1
+          fi
+
+      # Node 22 only. A node-version matrix axis would rename these jobs, and
+      # branch protection requires them as `check (<os>)`.
+      - uses: actions/setup-node@v4
+        if: hashFiles('package.json') != ''
+        with:
+          node-version: 22
+
+      - name: Test
+        if: hashFiles('package.json') != ''
+        shell: bash
+        run: npm test
+
+      - name: Tests (skipped, no package.json yet)
+        if: hashFiles('package.json') == ''
+        shell: bash
+        run: echo "::notice::package.json does not exist yet; tests are skipped."
+
+      - name: No test wrote outside its temp dir
+        shell: bash
+        run: |
+          # --ignored too: state files and test-bed output are gitignored, so
+          # a test that wrote one would pass a plain status. node_modules is
+          # the one tree a run may leave.
+          residue=$(git status --porcelain --untracked-files=all --ignored | grep -v 'node_modules/' || true)
+          if [ -n "$residue" ]; then
+            echo "::error::the test run left files behind in the working tree"
+            echo "$residue"
+            exit 1
+          fi
