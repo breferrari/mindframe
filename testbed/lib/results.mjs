@@ -40,6 +40,10 @@ export function buildRun({ scenario, arm, modName, streamText, debugText, exitCo
   const { session, turns } = parseStream(streamText)
   const debug = parseDebug(debugText)
   const armCheck = checkArm({ arm, modName, session, debug })
+  // total_cost_usd on each result is the session's running total, so the
+  // session cost is the last one reported.
+  const costs = turns.map((t) => t.result?.costUsd).filter((c) => typeof c === 'number')
+  const costUsd = costs.length ? costs[costs.length - 1] : null
   const modTimings = modName ? debug.settled.filter((s) => s.id.split('@')[0] === modName).map(({ event, ms }) => ({ event, ms })) : []
   return {
     scenario,
@@ -49,6 +53,7 @@ export function buildRun({ scenario, arm, modName, streamText, debugText, exitCo
     armCheck,
     claudeVersion: session.version,
     model: session.model,
+    costUsd,
     preamble: session.preamble.map(hookRow),
     turns: turns.map((t) => ({
       index: t.index,
@@ -70,7 +75,7 @@ export function buildRun({ scenario, arm, modName, streamText, debugText, exitCo
 
 // One line per hook per turn, for reading a run at a glance.
 export function summarize(run) {
-  const lines = [`== ${run.scenario} [${run.arm}] ${run.valid ? 'valid' : 'INVALID: ' + run.armCheck.reason} (claude ${run.claudeVersion ?? '?'}, exit ${run.exitCode})`]
+  const lines = [`== ${run.scenario} [${run.arm}] ${run.valid ? 'valid' : 'INVALID: ' + run.armCheck.reason} (claude ${run.claudeVersion ?? '?'}, exit ${run.exitCode}${typeof run.costUsd === 'number' ? `, $${run.costUsd.toFixed(2)}` : ''})`]
   const hook = (h) => `${h.event}${h.name !== h.event ? ` (${h.name})` : ''}: ${h.status === 'responded' ? `${h.outcome ?? '?'} exit=${h.exitCode} ${h.outputBytes}B` : 'NO RESPONSE'}`
   for (const h of run.preamble) lines.push(`  pre   ${hook(h)}`)
   for (const t of run.turns) {
