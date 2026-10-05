@@ -1,22 +1,44 @@
 #!/usr/bin/env node
 // The test bed's command line. See testbed/README.md.
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { buildBed } from '../lib/bed.mjs'
+import { grade, renderMarkdown } from '../lib/grade.mjs'
+import * as judge from '../lib/judge.mjs'
 import { summarize } from '../lib/results.mjs'
 import { defaultOut, runSpec } from '../lib/run.mjs'
 import { ARMS, loadSpec } from '../lib/spec.mjs'
 
 const USAGE = `usage:
-  bed.mjs run   --vault <dir> --spec <file> [--arm settings|mod] [--scenario <id>]... [--out <dir>] [--claude <bin>]
-  bed.mjs build --vault <dir> --spec <file> --bed <dir>
-  bed.mjs show  <results.json>`
+  bed.mjs run   --vault <dir> --spec <file> [--arm settings|mod] [--scenario <id>]... [--out <dir>] [--claude <bin> [--claude-arg <arg>]...]
+  bed.mjs grade <results.json>
+  bed.mjs judge prepare <results.json>
+  bed.mjs judge apply   <results.json> <verdicts.json>
+  bed.mjs show  <results.json>
+  bed.mjs build --vault <dir> --spec <file> --bed <dir>`
 
 function fail(msg) {
   console.error(msg)
   console.error(USAGE)
   process.exit(2)
+}
+
+const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
+const beside = (results, name) => path.join(path.dirname(results), name)
+
+// Grades a results.json in place: grades.json and results.md beside it,
+// with the blind grader's verdicts when judge.json is there.
+function gradeFile(results) {
+  const record = readJson(results)
+  const verdictsFile = beside(results, 'judge.json')
+  const verdicts = existsSync(verdictsFile) ? readJson(verdictsFile) : {}
+  const graded = grade(record, record.specDoc, verdicts)
+  writeFileSync(beside(results, 'grades.json'), JSON.stringify(graded, null, 1))
+  const md = renderMarkdown(record, graded)
+  writeFileSync(beside(results, 'results.md'), md)
+  console.log(md)
+  return graded
 }
 
 const [command, ...rest] = process.argv.slice(2)
@@ -31,13 +53,38 @@ const { values, positionals } = parseArgs({
     out: { type: 'string' },
     bed: { type: 'string' },
     claude: { type: 'string', default: 'claude' },
+    'claude-arg': { type: 'string', multiple: true },
   },
 })
 
 if (command === 'show') {
   if (!positionals[0]) fail('show needs a results.json')
-  const record = JSON.parse(readFileSync(positionals[0], 'utf8'))
-  for (const run of record.runs) console.log(summarize(run))
+  for (const run of readJson(positionals[0]).runs) console.log(summarize(run))
+} else if (command === 'grade') {
+  if (!positionals[0]) fail('grade needs a results.json')
+  process.exitCode = gradeFile(positionals[0]).ok ? 0 : 1
+} else if (command === 'judge') {
+  const [sub, results, verdictsFile] = positionals
+  if (!results) fail('judge needs prepare or apply, and a results.json')
+  if (sub === 'prepare') {
+    const record = readJson(results)
+    const { blind, key, prompt } = judge.prepare(record, record.specDoc)
+    if (blind.length === 0) {
+      console.log('no judged expectations in these runs')
+    } else {
+      writeFileSync(beside(results, 'judge-key.json'), JSON.stringify(key, null, 1))
+      writeFileSync(beside(results, 'judge-prompt.md'), prompt)
+      console.log(`${blind.length} item(s). Give ${beside(results, 'judge-prompt.md')} to one tool-less model call,`)
+      console.log(`save its JSON array, then: bed.mjs judge apply ${results} <verdicts.json>`)
+    }
+  } else if (sub === 'apply') {
+    if (!verdictsFile) fail('judge apply needs a verdicts.json')
+    const verdicts = judge.apply(readJson(beside(results, 'judge-key.json')), readJson(verdictsFile))
+    writeFileSync(beside(results, 'judge.json'), JSON.stringify(verdicts, null, 1))
+    process.exitCode = gradeFile(results).ok ? 0 : 1
+  } else {
+    fail(`unknown judge command: ${sub}`)
+  }
 } else if (command === 'build' || command === 'run') {
   if (!values.vault || !values.spec) fail(`${command} needs --vault and --spec`)
   const spec = loadSpec(values.spec)
@@ -50,18 +97,16 @@ if (command === 'show') {
     if (values.arm && !ARMS.includes(values.arm)) fail(`--arm must be one of ${ARMS.join(', ')}`)
     const out = values.out ? path.resolve(values.out) : defaultOut(spec.name)
     console.log(`output: ${out}`)
-    const record = await runSpec({
+    await runSpec({
       spec,
       vault,
       out,
       arms: values.arm ? [values.arm] : null,
       only: values.scenario ?? null,
-      cmd: [values.claude],
+      cmd: [values.claude, ...(values['claude-arg'] ?? [])],
       onRun: (run) => console.log(summarize(run)),
     })
-    const invalid = record.runs.filter((r) => !r.valid).length
-    console.log(`results: ${path.join(out, 'results.json')}${invalid ? ` (${invalid} invalid run(s))` : ''}`)
-    process.exitCode = invalid ? 1 : 0
+    process.exitCode = gradeFile(path.join(out, 'results.json')).ok ? 0 : 1
   }
 } else {
   fail(command ? `unknown command: ${command}` : 'no command')

@@ -1,0 +1,71 @@
+{
+  "name": "obsidian-mind",
+  "description": "Baseline for obsidian-mind v9.0.1: its five settings hooks on the settings arm, and SessionStart and Stop delivery through its mod on the mod arm. obsidian-mind is a public template, so the bed copies its whole tree. The fixtures add drift for the Stop report.",
+  "bed": {
+    "include": ["."],
+    "copy": [".claude/scripts/node_modules"],
+    "fixtures": [
+      { "path": "work/active/Bed Fixture Done.md", "content": "---\ndate: 2026-01-01\ndescription: bed fixture, finished work left in active\ntags: [bed]\nstatus: completed\n---\n\n# Bed Fixture Done\n\nFinished.\n" }
+    ]
+  },
+  "mod": { "dir": ".claude/skills/obsidian-mind", "name": "obsidian-mind" },
+  "session": { "model": "opus", "maxBudgetUsd": 4, "allowedTools": ["Edit", "Write"], "gapMs": 3000 },
+  "scenarios": [
+    {
+      "id": "context",
+      "turns": [
+        "Did a block of session context about this vault arrive in your context when this session started? If yes, reply with only its last line, verbatim. If not, reply only: NONE.",
+        "/compact",
+        "Is a block of session context about this vault in your context right now? If yes, reply with only its last line, verbatim. If not, reply only: NONE."
+      ],
+      "expect": [
+        { "id": "SessionStart ran at startup", "turn": "preamble", "hook": { "event": "SessionStart", "name": "startup" } },
+        { "id": "settings hook delivers the context, meter last, under the hook cap", "arms": ["settings"], "turn": "preamble", "budget": { "in": "hook:SessionStart", "maxBytes": 10000, "lastLine": { "re": "context injected: .* budget" }, "present": ["Session Context"] } },
+        { "id": "settings hook stands down for the mod", "arms": ["mod"], "turn": "preamble", "hook": { "event": "SessionStart", "silent": true } },
+        { "id": "mod ran SessionStart", "arms": ["mod"], "modEvent": { "event": "classic.SessionStart" } },
+        { "id": "mod delivered the context file", "arms": ["mod"], "modEvent": { "event": "prompt.context" } },
+        { "id": "model quotes the meter at startup", "turn": 1, "answer": { "re": "context injected" } },
+        { "id": "PreCompact ran", "turn": 2, "hook": { "event": "PreCompact" } },
+        { "id": "SessionStart ran after compaction", "turn": 2, "hook": { "event": "SessionStart", "name": "compact" } },
+        { "id": "model still has the whole context after compaction", "arms": ["mod"], "turn": 3, "answer": { "re": "context injected" } }
+      ]
+    },
+    {
+      "id": "stop",
+      "turns": [
+        "Say only: one.",
+        "Did a block starting 'Vault report', 'Stop hook report' or 'Wrap-up checklist' arrive in your context with THIS message, not earlier? If yes, reply with only its first line, verbatim. If not, reply only: NONE.",
+        "Did a block starting 'Vault report', 'Stop hook report' or 'Wrap-up checklist' arrive in your context with THIS message, not earlier? If yes, reply with only its first line, verbatim. If not, reply only: NONE.",
+        "Use the Edit tool on 'work/active/Bed Fixture Done.md': change the line 'status: completed' to 'status: active'. Then say only: four.",
+        "Did a block starting 'Vault report', 'Stop hook report' or 'Wrap-up checklist' arrive in your context with THIS message, not earlier? If yes, reply with only its first line, verbatim. If not, reply only: NONE."
+      ],
+      "expect": [
+        { "id": "Stop reports drift on the first turn", "arms": ["settings"], "turn": 1, "hook": { "event": "Stop", "output": "Wrap-up checklist" } },
+        { "id": "user sees the checklist", "arms": ["settings"], "turn": 1, "shown": "Wrap-up checklist" },
+        { "id": "user sees the mod's line", "arms": ["mod"], "turn": "any", "shown": { "re": "^obsidian-mind: ", "flags": "m" } },
+        { "id": "settings Stop stands down for the mod", "arms": ["mod"], "turn": "any", "hook": { "event": "Stop", "silent": true } },
+        { "id": "mod ran Stop", "arms": ["mod"], "modEvent": { "event": "classic.Stop", "min": 5 } },
+        { "id": "report reaches the agent with the next prompt", "turn": 2, "answer": { "not": { "none": true } } },
+        { "id": "report delivered once", "turn": 3, "answer": { "none": true } },
+        { "id": "Stop silent while nothing changed", "arms": ["settings"], "turn": 2, "hook": { "event": "Stop", "silent": true } },
+        { "id": "drift fix is an Edit", "turn": 4, "tools": { "includes": ["Edit"] } },
+        { "id": "PostToolUse ran on the edit", "turn": 4, "hook": { "event": "PostToolUse" } },
+        { "id": "changed findings report again", "arms": ["settings"], "turn": 4, "hook": { "event": "Stop", "silent": false } },
+        { "id": "changed report reaches the agent", "turn": 5, "answer": { "not": { "none": true } } }
+      ]
+    },
+    {
+      "id": "write-and-signals",
+      "turns": [
+        "We have decided to move the bed fixture notes into their own folder. Did any routing hint about this message arrive in your context with it? If yes, reply with only the first hint line, verbatim. If not, reply only: NONE.",
+        "Use the Write tool to create 'work/active/Bed Scratch.md' containing exactly the one line 'scratch', with no frontmatter. Then say only: written."
+      ],
+      "expect": [
+        { "id": "UserPromptSubmit flags the decision", "turn": 1, "hook": { "event": "UserPromptSubmit", "output": "DECISION detected" } },
+        { "id": "model receives the hint", "turn": 1, "answer": "DECISION" },
+        { "id": "the write is a Write call", "turn": 2, "tools": { "includes": ["Write"] } },
+        { "id": "PostToolUse warns about missing frontmatter", "turn": 2, "hook": { "event": "PostToolUse", "output": "Missing YAML frontmatter" } }
+      ]
+    }
+  ]
+}

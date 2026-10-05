@@ -21,6 +21,8 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
   mkdirSync(out, { recursive: true })
   const record = {
     spec: spec.name,
+    // The validated spec travels with the results, so grading needs nothing else.
+    specDoc: spec,
     vault: { commit: vaultCommit(vault) },
     started: new Date().toISOString(),
     runs: [],

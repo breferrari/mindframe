@@ -11,7 +11,7 @@ Status: ✅ done · 🔨 in progress · ⏳ blocked · ⬜ not started
 | [#1](https://github.com/breferrari/mindframe/pull/1) | Repo rules (`CONTRIBUTING.md`) and CI on three OSes | ✅ |
 | [#2](https://github.com/breferrari/mindframe/issues/2) | Roadmap and design rationale (`docs/DESIGN.md`) | ✅ |
 | [#3](https://github.com/breferrari/mindframe/issues/3) | Test bed runner: beds, paced sessions on both arms, per-hook results | ✅ |
-| [#4](https://github.com/breferrari/mindframe/issues/4) | Expectation spec format and grader | ⬜ |
+| [#4](https://github.com/breferrari/mindframe/issues/4) | Expectation spec format and grader | ✅ |
 | [#5](https://github.com/breferrari/mindframe/issues/5) | obsidian-mind baseline run, on Windows and one POSIX OS | ⬜ |
 
 ## Phase 2: the core
