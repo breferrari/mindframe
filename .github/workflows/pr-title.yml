@@ -1,0 +1,21 @@
+name: PR Title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  # Not `check`: that name belongs to ci.yml's three-OS matrix, which branch
+  # protection requires by name.
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title format
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [[ ! "$TITLE" =~ ^(feat|fix|docs|ci|refactor|test|chore):\ .+ ]]; then
+            echo "::error::PR title must be 'type: short description'"
+            echo "Valid types: feat, fix, docs, ci, refactor, test, chore"
+            exit 1
+          fi
