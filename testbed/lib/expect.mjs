@@ -9,7 +9,30 @@
 //   claim is only proved by the answer. `{ "none": true }` expects the
 //   model to report that nothing arrived.
 
-export const KINDS = ['hook', 'answer', 'shown', 'tools', 'modEvent', 'order', 'budget', 'isolates', 'judge']
+export const KINDS = ['hook', 'answer', 'shown', 'tools', 'modEvent', 'order', 'budget', 'meter', 'isolates', 'judge']
+
+// The session-start meter line, as the vendored hook-io writes it:
+//   _context injected: 2.5kB / 9.1kB budget — collapsed: A, B_
+// with optional "(N configured, held under the hook output cap)" after the
+// budget and "— truncated to fit …" at the end. Sizes are kB to one decimal.
+const METER = /^_context injected: ([\d.]+)kB(?: \/ ([\d.]+)kB budget)?(?: \(([\d.]+)kB configured[^)]*\))?(?: — collapsed: (.+?))?( — truncated to fit [^_]*)?_$/
+
+export function parseMeter(line) {
+  const m = METER.exec(String(line ?? '').trim())
+  if (!m) return null
+  const kB = (s) => (s === undefined ? null : Math.round(Number(s) * 1000))
+  return {
+    bytes: kB(m[1]),
+    budget: kB(m[2]),
+    configured: kB(m[3]),
+    collapsed: m[4] === undefined ? [] : m[4].split(', '),
+    truncated: m[5] !== undefined,
+  }
+}
+
+// The meter rounds to 0.1 kB, so a reported size can sit up to 50 bytes
+// either side of the real one.
+const METER_ROUNDING = 50
 
 export class ExpectError extends Error {}
 
@@ -107,12 +130,13 @@ export function validateExpectation(e, { arms, turns }, where) {
     if (typeof v.event !== 'string') throw new ExpectError(`${where}.hook.event is required`)
     if (v.name !== undefined) checkMatcher(v.name, `${where}.hook.name`)
     if (v.output !== undefined) checkMatcher(v.output, `${where}.hook.output`)
+    if (v.everyOutput !== undefined) checkMatcher(v.everyOutput, `${where}.hook.everyOutput`)
     // "any" means one passing turn is enough; silence on one turn says
     // nothing about the others, so the spec has to say "all".
     if (v.silent === true && e.turn === 'any') {
       throw new ExpectError(`${where} (${e.id}): hook.silent: true on turn "any" would pass on one silent turn; use turn "all"`)
     }
-    if (v.ran === false && (v.output !== undefined || v.silent !== undefined || v.exit !== undefined)) {
+    if (v.ran === false && (v.output !== undefined || v.everyOutput !== undefined || v.silent !== undefined || v.exit !== undefined)) {
       throw new ExpectError(`${where}.hook: ran: false takes no other checks`)
     }
   } else if (kind === 'answer' || kind === 'shown') {
@@ -135,6 +159,17 @@ export function validateExpectation(e, { arms, turns }, where) {
     if (v.lastLine !== undefined) checkMatcher(v.lastLine, `${where}.budget.lastLine`)
     ;(v.present ?? []).forEach((m, i) => checkMatcher(m, `${where}.budget.present[${i}]`))
     ;(v.absent ?? []).forEach((m, i) => checkMatcher(m, `${where}.budget.absent[${i}]`))
+  } else if (kind === 'meter') {
+    checkSource(v.in, `${where}.meter.in`)
+    if (v.maxBytes !== undefined && !(Number.isInteger(v.maxBytes) && v.maxBytes > 0)) throw new ExpectError(`${where}.meter.maxBytes must be positive`)
+    if (v.collapsed !== undefined && !(Array.isArray(v.collapsed) && v.collapsed.every((c) => typeof c === 'string'))) {
+      throw new ExpectError(`${where}.meter.collapsed must be a list of section names`)
+    }
+    if (!Array.isArray(v.sections) || v.sections.length === 0) throw new ExpectError(`${where}.meter.sections must list the budgeted sections`)
+    v.sections.forEach((s, i) => {
+      if (typeof s.name !== 'string') throw new ExpectError(`${where}.meter.sections[${i}].name is required`)
+      checkMatcher(s.body, `${where}.meter.sections[${i}].body`)
+    })
   } else if (kind === 'isolates') {
     if (typeof v.event !== 'string' || typeof v.extension !== 'string') throw new ExpectError(`${where}.isolates needs event and extension`)
     ;(v.present ?? []).forEach((m, i) => checkMatcher(m, `${where}.isolates.present[${i}]`))
@@ -184,7 +219,13 @@ function evalHook(v, ts) {
   if (v.exit !== undefined && v.exit !== 0 && !hooks.some((h) => h.exitCode === v.exit)) return [false, `no exit ${v.exit}`]
   if (v.silent === true && !hooks.every((h) => isSilent(h.output))) return [false, `not silent: ${hooks.find((h) => !isSilent(h.output)).output.slice(0, 80)}`]
   if (v.silent === false && hooks.every((h) => isSilent(h.output))) return [false, 'silent']
+  // output: at least one run's output matches. everyOutput: every run's
+  // does, which is what a negative ("no MF- marker anywhere") needs.
   if (v.output !== undefined && !hooks.some((h) => matches(v.output, h.output))) return [false, `output does not match ${describe(v.output)}`]
+  if (v.everyOutput !== undefined) {
+    const off = hooks.find((h) => !matches(v.everyOutput, h.output))
+    if (off) return [false, `a ${off.name} output does not match ${describe(v.everyOutput)}: ${JSON.stringify(off.output.slice(0, 80))}`]
+  }
   return [true, `${hooks.length}x ok`]
 }
 
@@ -222,6 +263,37 @@ function evalOnTurn(kind, v, t) {
     const kept = (v.absent ?? []).filter((m) => matches(m, text))
     if (kept.length) return [false, `should have been dropped: ${kept.map(describe).join(', ')}`]
     return [true, `${bytes} bytes`]
+  }
+  if (kind === 'meter') {
+    // The meter's own numbers, held to the truth: the size it reports fits
+    // the budget, the bytes really delivered fit maxBytes, and every section
+    // it says it collapsed lost its body while every other kept it.
+    const text = sourceText(t, v.in)
+    if (text === '') return [false, `${v.in} is empty`]
+    const last = text.trimEnd().split('\n').pop()
+    const m = parseMeter(last)
+    if (!m) return [false, `last line is not a meter: ${JSON.stringify(last.slice(0, 80))}`]
+    if (m.truncated) return [false, 'the meter says the output was truncated']
+    if (m.budget === null) return [false, 'the meter reports no budget']
+    if (m.bytes > m.budget) return [false, `meter reports ${m.bytes} bytes over its ${m.budget}-byte budget`]
+    const actual = Buffer.byteLength(text)
+    if (v.maxBytes !== undefined) {
+      if (m.bytes > v.maxBytes) return [false, `meter reports ${m.bytes} bytes > ${v.maxBytes}`]
+      if (actual > v.maxBytes) return [false, `${actual} bytes delivered > ${v.maxBytes}`]
+    }
+    if (m.bytes > actual + METER_ROUNDING) return [false, `meter reports ${m.bytes} bytes but only ${actual} arrived`]
+    if (v.collapsed !== undefined) {
+      const want = [...v.collapsed].sort()
+      const got = [...m.collapsed].sort()
+      if (want.join('\u0000') !== got.join('\u0000')) return [false, `meter collapsed [${m.collapsed.join(', ')}], expected [${v.collapsed.join(', ')}]`]
+    }
+    for (const s of v.sections) {
+      const named = m.collapsed.includes(s.name)
+      const present = matches(s.body, text)
+      if (named && present) return [false, `meter names ${s.name} as collapsed, but its body arrived`]
+      if (!named && !present) return [false, `${s.name} is missing, and the meter doesn't name it`]
+    }
+    return [true, `${m.bytes}/${m.budget} bytes, collapsed [${m.collapsed.join(', ')}]`]
   }
   if (kind === 'isolates') {
     // The hook still succeeded, its output names the failed extension, and
