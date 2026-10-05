@@ -1,0 +1,17 @@
+2026-01-01T00:00:00.000Z [DEBUG] MDM settings load completed in 1ms
+2026-01-01T00:00:00.100Z [DEBUG] plugin.register: demo-mod (user, demo-mod@inline), judged by core alone: admitted
+2026-01-01T00:00:00.110Z [DEBUG] plugin.register: builtin-a (builtin, builtin-a@builtin), judged by core alone: admitted
+2026-01-01T00:00:00.200Z [DEBUG] hooks module builtin-a@builtin loaded (native, environment 2, tier builtin); events: session.start,session.end
+2026-01-01T00:00:00.210Z [DEBUG] hooks worker spawned (one for every plugin)
+2026-01-01T00:00:00.300Z [DEBUG] hooks module demo-mod@inline loaded (worker, environment 1, tier user); events: classic.SessionStart,prompt.context,classic.Stop,turn.complete
+2026-01-01T00:00:01.000Z [DEBUG] hooks module demo-mod@inline classic.SessionStart settled in 1126.3ms (worker hop, next() included)
+2026-01-01T00:00:01.100Z [DEBUG] hooks module builtin-a@builtin session.start settled in 3.3ms (native link, next() included)
+2026-01-01T00:00:01.200Z [DEBUG] "Hook SessionStart:startup (SessionStart) success:
+## Session context"
+2026-01-01T00:00:02.000Z [DEBUG] hooks module demo-mod@inline prompt.context settled in 6.9ms (worker hop, next() included)
+2026-01-01T00:00:03.000Z [DEBUG] "Hook Stop (Stop) success:
+{}"
+2026-01-01T00:00:03.100Z [DEBUG] hooks module demo-mod@inline classic.Stop settled in 426.8ms (worker hop, next() included)
+2026-01-01T00:00:03.200Z [DEBUG] Failed to stat directory policy-dir: ENOENT: no such file or directory
+2026-01-01T00:00:04.000Z [DEBUG] hooks module demo-mod@inline turn.complete threw: boom
+  a continuation line without a prefix
