@@ -18,17 +18,22 @@ const run = (extra = {}) => ({ scenario: 's', arm: 'settings', valid: true, armC
 const turn = (index, extra = {}) => ({ index, answer: '', tools: [], toolCalls: [], hooks: [], informational: [], ...extra })
 
 test('parseMeter reads degraded and unknown segments; sectionLevel reads every form', () => {
-  const ladder = parseMeter('_context injected: 8.9kB / 9.1kB budget — degraded: North Star (current goals) (headlines) — collapsed: Recent Changes (pointer) — newfangled: x_')
-  assert.deepEqual(ladder.degraded, ['North Star (current goals) (headlines)'])
-  assert.deepEqual(ladder.collapsed, ['Recent Changes (pointer)'])
-  assert.deepEqual(ladder.other, ['newfangled: x'], 'an unknown segment never makes the line unreadable')
+  // The ladder's real meter (obsidian-mind #308 at 7db990a).
+  const ladder = parseMeter('_context injected: 7.5kB / 9.1kB budget — degraded: North Star (current goals) → headlines_')
+  assert.deepEqual(ladder.degraded, ['North Star (current goals) → headlines'])
   assert.equal(sectionLevel(ladder, 'North Star (current goals)'), 'headlines')
-  assert.equal(sectionLevel(ladder, 'Recent Changes'), 'pointer')
   assert.equal(sectionLevel(ladder, 'Vault File Listing'), 'full')
+  const mixed = parseMeter('_context injected: 8.9kB / 9.1kB budget — degraded: North Star (current goals) → top-N, Recent Changes → focus — collapsed: Vault File Listing — newfangled: x_')
+  assert.equal(sectionLevel(mixed, 'North Star (current goals)'), 'top-N')
+  assert.equal(sectionLevel(mixed, 'Recent Changes'), 'focus')
+  assert.equal(sectionLevel(mixed, 'Vault File Listing'), 'pointer')
+  assert.deepEqual(mixed.other, ['newfangled: x'], 'an unknown segment never makes the line unreadable')
+  // main's form: a bare name under collapsed: is a pointer.
   const main = parseMeter('_context injected: 0.4kB / 9.1kB budget — collapsed: Vault File Listing, Brain Topics (read on demand), North Star (current goals)_')
-  assert.equal(sectionLevel(main, 'North Star (current goals)'), 'pointer', "main's bare collapsed form reads as pointer")
+  assert.equal(sectionLevel(main, 'North Star (current goals)'), 'pointer')
   assert.equal(sectionLevel(main, 'Brain Topics (read on demand)'), 'pointer')
-  assert.equal(sectionLevel(parseMeter('_context injected: 1.0kB / 9.1kB budget — degraded: North Star (current goals) (top-N)_'), 'North Star (current goals)'), 'top-N')
+  assert.equal(sectionLevel(main, 'Brain Topics'), 'full', "a name's parenthetical is part of the name, never a level")
+  assert.equal(sectionLevel(parseMeter('_context injected: 1.0kB / 9.1kB budget — collapsed: North Star (current goals) → pointer_'), 'North Star (current goals)'), 'pointer')
   assert.equal(parseMeter('_context injected: soon_'), null)
 })
 

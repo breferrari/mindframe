@@ -37,15 +37,17 @@ export function parseMeter(line) {
   return out
 }
 
-// How far the meter says a section was cut: "full" when it names it
-// nowhere; the level in parentheses after its name under degraded: or
-// collapsed:; and "pointer" for a bare name under collapsed:, the form
-// before levels existed.
+// How far the meter says a section was cut. The meter names a section cut
+// below full but above its pointer as `degraded: <Section> → <level>`
+// (levels: focus, headlines, top-N), and a section cut to its pointer by
+// its bare name under `collapsed:`. A section it names nowhere is "full".
+// An arrow form under collapsed: is read too, so a meter that ever writes
+// `<Section> → pointer` there still parses.
 export function sectionLevel(meter, name) {
   const levelIn = (entries) => {
     for (const e of entries) {
       if (e === name) return 'pointer'
-      if (e.startsWith(`${name} (`) && e.endsWith(')')) return e.slice(name.length + 2, -1)
+      if (e.startsWith(`${name} → `)) return e.slice(name.length + 3)
     }
     return null
   }
