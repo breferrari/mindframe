@@ -54,6 +54,8 @@ const norm = (s) => s.replace(/\\/g, '/').toLowerCase()
 // invalid run, a missing turn, no meter).
 export function measure(m, run) {
   if (!run.valid) return null
+  // A dry run has no answers and no model-made tool calls to measure.
+  if (run.dry && (m.kind === 'toolRead' || m.in === 'answer')) return null
   const ts = turnsFor(run, m.turn)
   if (ts.length === 0) return null
   if (m.kind === 'count') {

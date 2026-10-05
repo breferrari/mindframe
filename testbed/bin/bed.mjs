@@ -7,6 +7,7 @@ import { buildBed } from '../lib/bed.mjs'
 import { EXIT, grade, renderMarkdown } from '../lib/grade.mjs'
 import * as judge from '../lib/judge.mjs'
 import { compare } from '../lib/compare.mjs'
+import { dryRun } from '../lib/dry.mjs'
 import { summarize } from '../lib/results.mjs'
 import { defaultOut, runSpec } from '../lib/run.mjs'
 import { ARMS, loadSpec } from '../lib/spec.mjs'
@@ -16,6 +17,7 @@ const USAGE = `usage:
   bed.mjs grade <results.json>
   bed.mjs judge prepare <results.json>
   bed.mjs judge apply   <results.json> <verdicts.json>
+  bed.mjs dry   --vault <dir> --spec <file> [--scenario <id>]... [--out <dir>]
   bed.mjs compare <label>=<results.json> <label>=<results.json>...
   bed.mjs show  <results.json>
   bed.mjs build --vault <dir> --spec <file> --bed <dir>`
@@ -62,6 +64,14 @@ const { values, positionals } = parseArgs({
 if (command === 'show') {
   if (!positionals[0]) fail('show needs a results.json')
   for (const run of readJson(positionals[0]).runs) console.log(summarize(run))
+} else if (command === 'dry') {
+  if (!values.vault || !values.spec) fail('dry needs --vault and --spec')
+  const spec = loadSpec(values.spec)
+  const out = values.out ? path.resolve(values.out) : defaultOut(`${spec.name}-dry`)
+  console.log(`output: ${out}`)
+  const record = dryRun({ spec, vault: path.resolve(values.vault), out, only: values.scenario ?? null })
+  for (const run of record.runs) console.log(summarize(run))
+  process.exitCode = EXIT[gradeFile(path.join(out, 'results.json')).outcome]
 } else if (command === 'compare') {
   const labelled = positionals.map((p) => {
     const at = p.indexOf('=')

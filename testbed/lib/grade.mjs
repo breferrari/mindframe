@@ -1,6 +1,7 @@
 // Grades a results.json against the expectations in its spec, and renders
 // the two tables a run is read by: expectations by arm, and every hook by
 // arm.
+import { DRY_SKIPPED } from './dry.mjs'
 import { evaluate } from './expect.mjs'
 import { formatValue, measureAll } from './measure.mjs'
 
@@ -8,6 +9,8 @@ export function grade(record, spec, verdicts = {}) {
   const rows = []
   for (const s of spec.scenarios) {
     for (const e of s.expect ?? []) {
+      // A dry run has no model and no Claude Code: those rows aren't graded.
+      if (record.dry && DRY_SKIPPED.has(e.kind)) continue
       for (const arm of e.arms) {
         const run = record.runs.find((r) => r.scenario === s.id && r.arm === arm)
         if (!run) continue // not run this time (--arm, --scenario)
@@ -60,6 +63,7 @@ export function renderMarkdown(record, graded) {
   const out = []
   const versions = [...new Set(record.runs.map((r) => r.claudeVersion).filter(Boolean))]
   out.push(`# Test bed: ${record.spec}`, '')
+  if (record.dry) out.push('**Dry run:** the hook scripts ran directly, with no model and no Claude Code, on the settings arm. Answers, what the user is shown, judged rows and mod events are not graded.', '')
   out.push(`Claude Code ${versions.join(', ') || 'unknown'} · vault ${record.vault.commit ? record.vault.commit.head.slice(0, 7) + (record.vault.commit.dirty ? ' (uncommitted changes)' : '') : 'not a git repo'} · ${record.runs.length} sessions`, '')
   out.push(`**${graded.outcome.toUpperCase()}**: ${graded.passed} passed, ${graded.failed} failed, ${graded.pending} awaiting the blind grader${graded.invalid.length ? `; invalid runs: ${graded.invalid.join(', ')}` : ''}`, '')
   if (graded.leaks?.length) {
