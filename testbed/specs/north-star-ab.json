@@ -754,7 +754,7 @@
           }
         },
         {
-          "id": "no invented goal: every listed goal cites a marker or its number",
+          "id": "no invented goal: every goal the answer names cites a marker or its number",
           "turn": 2,
           "linesCite": {
             "in": "answer",
@@ -819,7 +819,8 @@
               "Goal 28",
               "Goal 29",
               "Goal 30"
-            ]
+            ],
+            "items": "goals"
           }
         }
       ],
@@ -1198,7 +1199,7 @@
           }
         },
         {
-          "id": "no invented goal: every listed goal cites a marker or its number",
+          "id": "no invented goal: every goal the answer names cites a marker or its number",
           "turn": 2,
           "linesCite": {
             "in": "answer",
@@ -1227,7 +1228,8 @@
               "Goal 10",
               "Goal 11",
               "Goal 12"
-            ]
+            ],
+            "items": "goals"
           }
         }
       ],

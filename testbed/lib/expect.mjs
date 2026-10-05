@@ -24,6 +24,37 @@ export function itemLines(text) {
   return out
 }
 
+// The items of an answer that name a goal, not every item. A model that has
+// no goals explains why in items too ("- **Active work:** none.", "- **Your
+// goals file wasn't loaded.** …", "1. Paste the file here"), and those must
+// not count. An item names a goal when it is:
+// - a table body row under a header that mentions goals or plans;
+// - a list item holding a [[link]];
+// - a list item led by a bold title that is a name, not a sentence or a
+//   label (no closing . : ? ! inside the bold), then a dash or colon:
+//   "- **Ship the guide** — by Friday".
+const BOLD_TITLE = /^([-*+]|\d+\.)\s+\*\*([^*]+?)\*\*\s*(—|–|-|:)/
+export function goalItems(text) {
+  const lines = String(text ?? '').split('\n')
+  const isSep = (l) => /^\s*\|[\s:|-]+\|\s*$/.test(l)
+  const out = []
+  let header = null
+  lines.forEach((l, i) => {
+    const row = /^\|.*\|\s*$/.test(l)
+    if (row && isSep(lines[i + 1] ?? '')) header = l
+    else if (row && !isSep(l)) {
+      if (header && /goal|plan/i.test(header)) out.push(l)
+    } else {
+      if (!row) header = null
+      const list = /^([-*+]|\d+\.)\s+\S/.test(l)
+      if (!list) return
+      const title = BOLD_TITLE.exec(l)
+      if (l.includes('[[') || (title && !/[.:?!]$/.test(title[2].trim()))) out.push(l)
+    }
+  })
+  return out
+}
+
 // The session-start meter line, as the vendored hook-io writes it:
 //   _context injected: 2.5kB / 9.1kB budget — collapsed: A, B_
 // with optional "(N configured, held under the hook output cap)" after the
@@ -214,6 +245,7 @@ export function validateExpectation(e, { arms, turns }, where) {
     if (!Array.isArray(v.cite) || v.cite.length === 0 || !v.cite.every((c) => typeof c === 'string' && c !== '')) {
       throw new ExpectError(`${where}.linesCite.cite must be a non-empty list of strings`)
     }
+    if (v.items !== undefined && v.items !== 'all' && v.items !== 'goals') throw new ExpectError(`${where}.linesCite.items must be "all" or "goals"`)
   } else if (kind === 'isolates') {
     if (typeof v.event !== 'string' || typeof v.extension !== 'string') throw new ExpectError(`${where}.isolates needs event and extension`)
     ;(v.present ?? []).forEach((m, i) => checkMatcher(m, `${where}.isolates.present[${i}]`))
@@ -343,7 +375,8 @@ function evalOnTurn(kind, v, t) {
   if (kind === 'linesCite') {
     // Every item the source lists must cite one of the allowed names: an
     // item that cites none was invented, and fails rather than counting 0.
-    const items = itemLines(sourceText(t, v.in))
+    const text = sourceText(t, v.in)
+    const items = v.items === 'goals' ? goalItems(text) : itemLines(text)
     const cite = v.cite.map((c) => c.toLowerCase())
     const bad = items.find((l) => !cite.some((c) => l.toLowerCase().includes(c)))
     if (bad) return [false, `an item cites nothing known: ${JSON.stringify(bad.slice(0, 100))}`]
