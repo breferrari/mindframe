@@ -24,6 +24,7 @@ node testbed/bin/bed.mjs build --vault <vault-dir> --spec <spec.json> --bed <new
 - `run` builds a fresh bed for every scenario and arm, drives one session in it, and writes `results.json`. It prints a summary per run.
 - `show` prints that summary again from a `results.json`.
 - `dry` checks a spec's log layer before a live run spends anything. For each scenario it builds a bed and runs the vault's own hook scripts directly, in the order a session would: SessionStart at startup, then per turn UserPromptSubmit, PreCompact and SessionStart (compact) for a `/compact` turn, a Write plus PostToolUse when the turn asks to create a file, and Stop. It covers the settings arm only, and grades only what the hooks printed. Answers, what the user is shown, judged rows and mod events are left out, and answer and tool measures record nothing. The scripts are the om_mod contract's entry-point names (`session-start.ts`, `classify-message.ts`, `validate-write.ts`, `pre-compact.ts`, `stop-checklist.ts`).
+- A scenario can set its own `allowedTools` and `disallowedTools`, replacing the session's. `disallowedTools` removes tools from the session entirely, so a measure reads only what the hooks delivered.
 - `build` makes one bed and stops, for looking around. To run a hook by hand, use `dry` instead: it gives the hook the same environment and residue check as a session.
 
 **Output stays outside the repo.** By default `run` writes to `<os temp>/mindframe-testbed/<spec>-<timestamp>/`. Debug logs and transcripts carry local paths and session ids. `--out` overrides the location; the folder must not exist yet.
@@ -91,6 +92,7 @@ The builder refuses a folder that exists and never deletes anything.
 | `session.gapMs`, `settleMs`, `turnTimeoutMs` | The pause after a result before the next turn (2 s); the wait after the last result for late events (5 s); the longest a turn may take (180 s) |
 | `session.env` | Extra environment for the session, such as a hook's state-path override |
 | `scenarios[].arms` | Default both |
+| `scenarios[].allowedTools`, `scenarios[].disallowedTools` | Replace `session.allowedTools` and `session.disallowedTools` for this scenario. `disallowedTools` takes tools away from the model entirely (`--disallowedTools`) |
 | `scenarios[].env` | Merged over `session.env` for this scenario, such as a kill switch |
 | `scenarios[].files` | Like `bed.files`, for this scenario's bed only, copied after them. Two scenarios can then differ in one file and share everything else |
 | `scenarios[].measures` | What to record rather than grade; see [Measures](#measures) |

@@ -34,6 +34,9 @@ export function claudeArgs({ arm, bed, mod, session, debugFile }) {
     '--max-budget-usd', String(session.maxBudgetUsd),
   ]
   if (session.allowedTools.length) args.push('--allowedTools', session.allowedTools.join(','))
+  // Tools the model may not use at all this session, such as Read when what
+  // is measured is only what the hooks delivered.
+  if (session.disallowedTools?.length) args.push('--disallowedTools', session.disallowedTools.join(','))
   if (arm === 'mod') args.push('--plugin-dir', path.join(bed, ...mod.dir.split('/')))
   return args
 }

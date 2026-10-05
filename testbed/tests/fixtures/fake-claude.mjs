@@ -96,7 +96,7 @@ while (true) {
   emit({ type: 'system', subtype: 'init', cwd: '.', model: 'fake-model', claude_code_version: '2.1.289', plugins, plugin_warnings: [] })
   emit({ type: 'user', message: { role: 'user', content: text }, isReplay: true })
   if (mode === 'slow') await new Promise((r) => setTimeout(r, 300))
-  const echo = mode.startsWith('echo-file=') ? readFileSync(mode.slice('echo-file='.length), 'utf8') : folded ? 'FOLDED' : `echo: ${text}`
+  const echo = mode === 'echo-disallowed' ? `disallowed: ${flag('--disallowedTools') ?? 'none'}` : mode.startsWith('echo-file=') ? readFileSync(mode.slice('echo-file='.length), 'utf8') : folded ? 'FOLDED' : `echo: ${text}`
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: echo }] } })
   hook('Stop', 'Stop', '{}')
   if (modLoads) debug('hooks module fake-mod@inline classic.Stop settled in 3.0ms (worker hop, next() included)')

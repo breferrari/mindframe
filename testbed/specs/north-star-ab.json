@@ -1,6 +1,6 @@
 {
   "name": "north-star-ab",
-  "description": "obsidian-mind#304: does a session know the vault's goals when the North Star is too long for the session-start hook budget? Runs on obsidian-mind with a synthetic North Star of two shapes, on both arms; run it against main and against the degradation-ladder branch and put the two side by side with `bed.mjs compare`. The mod's larger instruction-file budget is the control: it should fit either way. Recall is measured, not graded.",
+  "description": "obsidian-mind#304: does a session know the vault's goals when the North Star is too long for the session-start hook budget? Runs on obsidian-mind with a synthetic North Star of two shapes, on both arms; run it against main and against the degradation-ladder branch and put the two side by side with `bed.mjs compare`. The mod's larger instruction-file budget is the control: it should fit either way. Recall is measured, not graded. The blind and steer scenarios (settings arm only) measure what the hook delivered: blind forbids reading the file, so recall is only what arrived; steer asks a question that does not mention goals, so naming one means the session knew it unprompted.",
   "bed": {
     "include": [
       "."
@@ -118,6 +118,47 @@
           "id": "read brain/North Star.md",
           "kind": "toolRead",
           "path": "brain/North Star.md"
+        },
+        {
+          "id": "goal markers the hook delivered",
+          "arms": [
+            "settings"
+          ],
+          "kind": "count",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate",
+            "Nettlecombe",
+            "Orrinsby",
+            "Pellucine",
+            "Quarrowe",
+            "Rimblestone",
+            "Saltreach",
+            "Thistlemark",
+            "Umberlith",
+            "Vexmoor",
+            "Wrenhallow",
+            "Yarrowdeep",
+            "Zelkovan",
+            "Ambrelin",
+            "Bossenrow",
+            "Cindervale",
+            "Drowsmere",
+            "Embergast",
+            "Foxmantle"
+          ]
         },
         {
           "id": "North Star level in the meter",
@@ -262,6 +303,29 @@
           "path": "brain/North Star.md"
         },
         {
+          "id": "goal markers the hook delivered",
+          "arms": [
+            "settings"
+          ],
+          "kind": "count",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate"
+          ]
+        },
+        {
           "id": "North Star level in the meter",
           "arms": [
             "settings"
@@ -340,6 +404,660 @@
           ],
           "modEvent": {
             "event": "prompt.context"
+          }
+        }
+      ]
+    },
+    {
+      "id": "blind-30x380",
+      "arms": [
+        "settings"
+      ],
+      "files": [
+        {
+          "from": "../fixtures/north-star/North Star 30x380.md",
+          "path": "brain/North Star.md"
+        }
+      ],
+      "disallowedTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash"
+      ],
+      "turns": [
+        "Say only: ready.",
+        "What should I work on next? Name the goals you're aware of.",
+        "List every goal marker word you know (the invented word that names each goal's plan), separated by commas. If you know none, reply only: NONE."
+      ],
+      "measures": [
+        {
+          "id": "goal markers named when asked what to work on",
+          "kind": "count",
+          "turn": 2,
+          "in": "answer",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate",
+            "Nettlecombe",
+            "Orrinsby",
+            "Pellucine",
+            "Quarrowe",
+            "Rimblestone",
+            "Saltreach",
+            "Thistlemark",
+            "Umberlith",
+            "Vexmoor",
+            "Wrenhallow",
+            "Yarrowdeep",
+            "Zelkovan",
+            "Ambrelin",
+            "Bossenrow",
+            "Cindervale",
+            "Drowsmere",
+            "Embergast",
+            "Foxmantle"
+          ]
+        },
+        {
+          "id": "goal markers listed",
+          "kind": "count",
+          "turn": 3,
+          "in": "answer",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate",
+            "Nettlecombe",
+            "Orrinsby",
+            "Pellucine",
+            "Quarrowe",
+            "Rimblestone",
+            "Saltreach",
+            "Thistlemark",
+            "Umberlith",
+            "Vexmoor",
+            "Wrenhallow",
+            "Yarrowdeep",
+            "Zelkovan",
+            "Ambrelin",
+            "Bossenrow",
+            "Cindervale",
+            "Drowsmere",
+            "Embergast",
+            "Foxmantle"
+          ]
+        },
+        {
+          "id": "read brain/North Star.md",
+          "kind": "toolRead",
+          "path": "brain/North Star.md"
+        },
+        {
+          "id": "goal markers the hook delivered",
+          "arms": [
+            "settings"
+          ],
+          "kind": "count",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate",
+            "Nettlecombe",
+            "Orrinsby",
+            "Pellucine",
+            "Quarrowe",
+            "Rimblestone",
+            "Saltreach",
+            "Thistlemark",
+            "Umberlith",
+            "Vexmoor",
+            "Wrenhallow",
+            "Yarrowdeep",
+            "Zelkovan",
+            "Ambrelin",
+            "Bossenrow",
+            "Cindervale",
+            "Drowsmere",
+            "Embergast",
+            "Foxmantle"
+          ]
+        },
+        {
+          "id": "North Star level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "North Star (current goals)"
+        },
+        {
+          "id": "Vault File Listing level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "Vault File Listing"
+        },
+        {
+          "id": "Brain Topics level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "Brain Topics (read on demand)"
+        },
+        {
+          "id": "budget left unused (meter)",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterSlack",
+          "turn": "preamble",
+          "in": "hook:SessionStart"
+        },
+        {
+          "id": "session-start bytes delivered",
+          "arms": [
+            "settings"
+          ],
+          "kind": "bytes",
+          "turn": "preamble",
+          "in": "hook:SessionStart"
+        }
+      ],
+      "expect": [
+        {
+          "id": "delivered within the budget, meter last and true",
+          "turn": "preamble",
+          "meter": {
+            "in": "hook:SessionStart",
+            "maxBytes": 10000
+          }
+        },
+        {
+          "id": "no tool was used",
+          "turn": "all",
+          "tools": {
+            "max": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "steer-30x380",
+      "arms": [
+        "settings"
+      ],
+      "files": [
+        {
+          "from": "../fixtures/north-star/North Star 30x380.md",
+          "path": "brain/North Star.md"
+        }
+      ],
+      "turns": [
+        "Say only: ready.",
+        "I've got a free afternoon. Should I polish the README?"
+      ],
+      "measures": [
+        {
+          "id": "goal markers named, unprompted",
+          "kind": "count",
+          "turn": 2,
+          "in": "answer",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate",
+            "Nettlecombe",
+            "Orrinsby",
+            "Pellucine",
+            "Quarrowe",
+            "Rimblestone",
+            "Saltreach",
+            "Thistlemark",
+            "Umberlith",
+            "Vexmoor",
+            "Wrenhallow",
+            "Yarrowdeep",
+            "Zelkovan",
+            "Ambrelin",
+            "Bossenrow",
+            "Cindervale",
+            "Drowsmere",
+            "Embergast",
+            "Foxmantle"
+          ]
+        },
+        {
+          "id": "read brain/North Star.md",
+          "kind": "toolRead",
+          "path": "brain/North Star.md"
+        },
+        {
+          "id": "goal markers the hook delivered",
+          "arms": [
+            "settings"
+          ],
+          "kind": "count",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate",
+            "Nettlecombe",
+            "Orrinsby",
+            "Pellucine",
+            "Quarrowe",
+            "Rimblestone",
+            "Saltreach",
+            "Thistlemark",
+            "Umberlith",
+            "Vexmoor",
+            "Wrenhallow",
+            "Yarrowdeep",
+            "Zelkovan",
+            "Ambrelin",
+            "Bossenrow",
+            "Cindervale",
+            "Drowsmere",
+            "Embergast",
+            "Foxmantle"
+          ]
+        },
+        {
+          "id": "North Star level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "North Star (current goals)"
+        },
+        {
+          "id": "Vault File Listing level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "Vault File Listing"
+        },
+        {
+          "id": "Brain Topics level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "Brain Topics (read on demand)"
+        },
+        {
+          "id": "budget left unused (meter)",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterSlack",
+          "turn": "preamble",
+          "in": "hook:SessionStart"
+        },
+        {
+          "id": "session-start bytes delivered",
+          "arms": [
+            "settings"
+          ],
+          "kind": "bytes",
+          "turn": "preamble",
+          "in": "hook:SessionStart"
+        }
+      ],
+      "expect": [
+        {
+          "id": "delivered within the budget, meter last and true",
+          "turn": "preamble",
+          "meter": {
+            "in": "hook:SessionStart",
+            "maxBytes": 10000
+          }
+        }
+      ]
+    },
+    {
+      "id": "blind-12-live",
+      "arms": [
+        "settings"
+      ],
+      "files": [
+        {
+          "from": "../fixtures/north-star/North Star 12-live.md",
+          "path": "brain/North Star.md"
+        }
+      ],
+      "disallowedTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash"
+      ],
+      "turns": [
+        "Say only: ready.",
+        "What should I work on next? Name the goals you're aware of.",
+        "List every goal marker word you know (the invented word that names each goal's plan), separated by commas. If you know none, reply only: NONE."
+      ],
+      "measures": [
+        {
+          "id": "goal markers named when asked what to work on",
+          "kind": "count",
+          "turn": 2,
+          "in": "answer",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate"
+          ]
+        },
+        {
+          "id": "goal markers listed",
+          "kind": "count",
+          "turn": 3,
+          "in": "answer",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate"
+          ]
+        },
+        {
+          "id": "read brain/North Star.md",
+          "kind": "toolRead",
+          "path": "brain/North Star.md"
+        },
+        {
+          "id": "goal markers the hook delivered",
+          "arms": [
+            "settings"
+          ],
+          "kind": "count",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate"
+          ]
+        },
+        {
+          "id": "North Star level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "North Star (current goals)"
+        },
+        {
+          "id": "Vault File Listing level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "Vault File Listing"
+        },
+        {
+          "id": "Brain Topics level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "Brain Topics (read on demand)"
+        },
+        {
+          "id": "budget left unused (meter)",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterSlack",
+          "turn": "preamble",
+          "in": "hook:SessionStart"
+        },
+        {
+          "id": "session-start bytes delivered",
+          "arms": [
+            "settings"
+          ],
+          "kind": "bytes",
+          "turn": "preamble",
+          "in": "hook:SessionStart"
+        }
+      ],
+      "expect": [
+        {
+          "id": "delivered within the budget, meter last and true",
+          "turn": "preamble",
+          "meter": {
+            "in": "hook:SessionStart",
+            "maxBytes": 10000
+          }
+        },
+        {
+          "id": "no tool was used",
+          "turn": "all",
+          "tools": {
+            "max": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "steer-12-live",
+      "arms": [
+        "settings"
+      ],
+      "files": [
+        {
+          "from": "../fixtures/north-star/North Star 12-live.md",
+          "path": "brain/North Star.md"
+        }
+      ],
+      "turns": [
+        "Say only: ready.",
+        "I've got a free afternoon. Should I polish the README?"
+      ],
+      "measures": [
+        {
+          "id": "goal markers named, unprompted",
+          "kind": "count",
+          "turn": 2,
+          "in": "answer",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate"
+          ]
+        },
+        {
+          "id": "read brain/North Star.md",
+          "kind": "toolRead",
+          "path": "brain/North Star.md"
+        },
+        {
+          "id": "goal markers the hook delivered",
+          "arms": [
+            "settings"
+          ],
+          "kind": "count",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate"
+          ]
+        },
+        {
+          "id": "North Star level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "North Star (current goals)"
+        },
+        {
+          "id": "Vault File Listing level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "Vault File Listing"
+        },
+        {
+          "id": "Brain Topics level in the meter",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "hook:SessionStart",
+          "section": "Brain Topics (read on demand)"
+        },
+        {
+          "id": "budget left unused (meter)",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterSlack",
+          "turn": "preamble",
+          "in": "hook:SessionStart"
+        },
+        {
+          "id": "session-start bytes delivered",
+          "arms": [
+            "settings"
+          ],
+          "kind": "bytes",
+          "turn": "preamble",
+          "in": "hook:SessionStart"
+        }
+      ],
+      "expect": [
+        {
+          "id": "delivered within the budget, meter last and true",
+          "turn": "preamble",
+          "meter": {
+            "in": "hook:SessionStart",
+            "maxBytes": 10000
           }
         }
       ]
