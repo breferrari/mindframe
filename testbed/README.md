@@ -16,6 +16,7 @@ A run is **valid** only if it tested the arm it claims. The session's `init` eve
 ```sh
 node testbed/bin/bed.mjs run --vault <vault-dir> --spec <spec.json> [--arm settings|mod] [--scenario <id>]... [--out <dir>] [--claude <bin>]
 node testbed/bin/bed.mjs show <out-dir>/results.json
+node testbed/bin/bed.mjs compare main=<out-a>/results.json branch=<out-b>/results.json
 node testbed/bin/bed.mjs build --vault <vault-dir> --spec <spec.json> --bed <new-dir>
 ```
 
@@ -89,6 +90,8 @@ The builder refuses a folder that exists and never deletes anything.
 | `session.env` | Extra environment for the session, such as a hook's state-path override |
 | `scenarios[].arms` | Default both |
 | `scenarios[].env` | Merged over `session.env` for this scenario, such as a kill switch |
+| `scenarios[].files` | Like `bed.files`, for this scenario's bed only, copied after them. Two scenarios can then differ in one file and share everything else |
+| `scenarios[].measures` | What to record rather than grade; see [Measures](#measures) |
 | `scenarios[].turns` | A string, or `{ text, before }`. `before` actions run in the bed just before the turn is sent: `{ "append": path, "bytes": n, "char": "y" }` or `{ "write": path, "content": "..." }` |
 
 All paths are relative POSIX paths inside the bed. The runner refuses `..`, absolute paths and backslashes.
@@ -118,7 +121,7 @@ There are two layers. A log shows that a hook ran, not what reached the model. S
 | `modEvent: { event, min?, maxMs? }` | log | The mod's handler for `event` settled at least `min` times (default 1) in the run, none slower than `maxMs`. Mod arm only |
 | `order: { in, items }` | either | Every item is present in the source, in this order. Presence is checked first, so a missing item fails rather than sorting first |
 | `budget: { in, maxBytes?, lastLine?, present?, absent? }` | either | The source is non-empty and at most `maxBytes` bytes (UTF-8, exact). Its last line matches `lastLine`, so a meter line that arrived proves nothing was cut. `present` sections survived and `absent` ones were dropped |
-| `meter: { in, maxBytes?, collapsed?, sections }` | either | The last line is a session-start meter (`_context injected: X.XkB / Y.YkB budget — collapsed: A, B_`), not truncated, and its claims are true. The size it reports fits its budget and `maxBytes`. The bytes that arrived fit `maxBytes`, and are no fewer than it reports (±50 bytes of rounding). Its collapsed list equals `collapsed`. Each of `sections` (`{ name, body }`) is named as collapsed exactly when its body is missing |
+| `meter: { in, maxBytes?, collapsed?, sections? }` | either | The last line is a session-start meter (`_context injected: X.XkB / Y.YkB budget — collapsed: A, B_`), not truncated, and its claims are true. The size it reports fits its budget and `maxBytes`. The bytes that arrived fit `maxBytes`, and are no fewer than it reports (±50 bytes of rounding). Its collapsed list equals `collapsed`. Each of `sections` (`{ name, body }`) is named as collapsed exactly when its body is missing. Leave `sections` out when which sections get cut isn't the point. The meter may also carry `degraded: X (level)`, for a section cut below full but above its pointer |
 | `isolates: { event, extension, present? }` | log | The hook still exited 0, its output names the extension that failed, and the other sections (`present`) are still there |
 | `judge: { question, rubric }` | model | A blind model grader decides (see below). Needs a numbered turn |
 
@@ -130,6 +133,30 @@ There are two layers. A log shows that a hook ran, not what reached the model. S
 - `{ "not": m }`, `{ "all": [...] }`, `{ "any": [...] }`.
 
 Ask the model a question it can answer NONE to ("Did X arrive with THIS message? If not, reply only: NONE"), and ask it on consecutive turns. The first must quote the report and the next must say NONE, which shows the report was delivered once.
+
+## Measures
+
+An A/B needs numbers, not verdicts: how many of 30 goals a session named, whether it read a file, how far a section was cut. A scenario's `measures` are recorded per run beside the grade, never change its outcome, and get a table of their own in `results.md`.
+
+| Kind | Records |
+|------|---------|
+| `count: { in, markers }` | how many distinct markers the source names (case-insensitive), as `n/total` |
+| `toolRead: { path }` | whether any tool call's file, path, pattern or command names the path, and which tool |
+| `meterLevel: { in, section }` | the section's level in the session-start meter: `full` when the meter names it nowhere, the level in parentheses under `degraded:` or `collapsed:`, and `pointer` for a bare name under `collapsed:` |
+| `meterSlack: { in }` | the budget the meter says went unused: its budget minus the size it reports |
+| `bytes: { in }` | the source's size in bytes |
+
+Each takes `turn` (default `"any"`) and `arms`. A measure on an invalid run or a missing turn records nothing (`—`), never zero.
+
+Tool calls are recorded with only what they touched (a file, path, pattern, command or URL, cut to 300 characters), so a transcript's file contents never land in `results.json`.
+
+**Comparing runs.** Run one spec against two vaults, say a branch and main, then put them side by side:
+
+```sh
+node testbed/bin/bed.mjs compare main=<out-a>/results.json ladder=<out-b>/results.json
+```
+
+This prints one table per scenario: a row per measure plus each run's expectation tally, with a column per label and arm. The results must come from the same spec.
 
 ## Grading
 
@@ -164,6 +191,7 @@ Until verdicts are applied, `judge` rows show as awaiting and the grade is incom
 | [`specs/obsidian-mind.json`](specs/obsidian-mind.json) | obsidian-mind v9.0.1 | **Settings arm:** all five settings hooks (SessionStart, UserPromptSubmit, PostToolUse, PreCompact, Stop). **Mod arm:** SessionStart and Stop delivery, with the settings hooks standing down. **Model layer:** the context's meter line at startup (both arms) and after `/compact` (mod arm), and a Stop report delivered once, then again after the findings change |
 
 | [`specs/wiki-mind.json`](specs/wiki-mind.json) | wiki-mind | Its own extension, on both arms and across a compaction (settings: the counts stay whole and the other sections become pointers; mod: the full context survives). **Sections:** in priority order, with the counts, the open question, the newest source and the head of `Index.md`; the meter last with nothing collapsed; the model receives the counts. **Detectors:** a summary of three drifts (unsourced concept, one-sided synthesis, unannotated note), the full report with the next prompt and only once, and the counts rising after a new note. **Signals:** a URL routes to `/wiki-ingest`. **Validators:** §2 frontmatter and the source-link rule. **Mod arm:** the settings hooks stand down every turn, the mod delivers, and its `wiki-mind: vault check:` line shows under the answer. Runs with `VAULT_QMD=off` |
+| [`specs/north-star-ab.json`](specs/north-star-ab.json) | obsidian-mind, run against two versions and compared | Whether a session knows the vault's goals when the North Star is too long for the hook budget (obsidian-mind#304). Two synthetic North Stars from [`fixtures/north-star/`](fixtures/north-star/): 30 live bullets of 380 bytes, and the size profile of a real vault that fails (12 live goals, median 626 bytes, plus 3 completed). On both arms it measures goal markers named (out of 30 or 12), whether the session read `brain/North Star.md`, the levels of North Star, the listing and the brain index in the meter, unused budget and bytes delivered. It expects the meter to be last and true |
 | [`specs/contract.json`](specs/contract.json) | any vault that implements the extension contract (today: wiki-mind) | `docs/DESIGN.md` rules 3–7, on both arms. **Rule 3:** an extension declared for session-start is never loaded at prompt, write or Stop. **Rule 4:** item, declaration and unset priorities, and ties by id, as the hook printed them (settings arm) and as the model received them (both arms, through the mod's instruction file on the mod arm). **Rule 7:** the meter's numbers and collapses checked against what arrived. **Rule 5:** a throw, a rejection, a never-settling call, a wrong shape and a throwing getter, each reported while the hook succeeds and the witness extension's items arrive. **Rule 6:** the kill switch, including through the mod |
 
 Their turns and fixtures are neutral and were written for this repo. `contract.json`'s extensions are in [`fixtures/contract/`](fixtures/contract/).

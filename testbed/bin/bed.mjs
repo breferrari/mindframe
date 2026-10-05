@@ -6,6 +6,7 @@ import { parseArgs } from 'node:util'
 import { buildBed } from '../lib/bed.mjs'
 import { EXIT, grade, renderMarkdown } from '../lib/grade.mjs'
 import * as judge from '../lib/judge.mjs'
+import { compare } from '../lib/compare.mjs'
 import { summarize } from '../lib/results.mjs'
 import { defaultOut, runSpec } from '../lib/run.mjs'
 import { ARMS, loadSpec } from '../lib/spec.mjs'
@@ -15,6 +16,7 @@ const USAGE = `usage:
   bed.mjs grade <results.json>
   bed.mjs judge prepare <results.json>
   bed.mjs judge apply   <results.json> <verdicts.json>
+  bed.mjs compare <label>=<results.json> <label>=<results.json>...
   bed.mjs show  <results.json>
   bed.mjs build --vault <dir> --spec <file> --bed <dir>`
 
@@ -60,6 +62,14 @@ const { values, positionals } = parseArgs({
 if (command === 'show') {
   if (!positionals[0]) fail('show needs a results.json')
   for (const run of readJson(positionals[0]).runs) console.log(summarize(run))
+} else if (command === 'compare') {
+  const labelled = positionals.map((p) => {
+    const at = p.indexOf('=')
+    if (at <= 0) fail(`compare takes <label>=<results.json>, got ${p}`)
+    return { label: p.slice(0, at), record: readJson(p.slice(at + 1)) }
+  })
+  if (labelled.length < 2) fail('compare needs two or more labelled results')
+  console.log(compare(labelled))
 } else if (command === 'grade') {
   if (!positionals[0]) fail('grade needs a results.json')
   process.exitCode = EXIT[gradeFile(positionals[0]).outcome]

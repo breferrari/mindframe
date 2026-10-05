@@ -14,20 +14,42 @@ export const KINDS = ['hook', 'answer', 'shown', 'tools', 'modEvent', 'order', '
 // The session-start meter line, as the vendored hook-io writes it:
 //   _context injected: 2.5kB / 9.1kB budget — collapsed: A, B_
 // with optional "(N configured, held under the hook output cap)" after the
-// budget and "— truncated to fit …" at the end. Sizes are kB to one decimal.
-const METER = /^_context injected: ([\d.]+)kB(?: \/ ([\d.]+)kB budget)?(?: \(([\d.]+)kB configured[^)]*\))?(?: — collapsed: (.+?))?( — truncated to fit [^_]*)?_$/
+// budget, then " — "-separated segments: "collapsed: A, B", "degraded:
+// C (headlines)" (a section below full but above its pointer), "truncated
+// to fit …". Sizes are kB to one decimal. A segment the parser doesn't know
+// is kept in `other`, so a new one never makes the whole line unreadable.
+const METER_HEAD = /^([\d.]+)kB(?: \/ ([\d.]+)kB budget)?(?: \(([\d.]+)kB configured[^)]*\))?$/
 
 export function parseMeter(line) {
-  const m = METER.exec(String(line ?? '').trim())
+  const text = String(line ?? '').trim()
+  if (!text.startsWith('_context injected: ') || !text.endsWith('_')) return null
+  const [head, ...segments] = text.slice('_context injected: '.length, -1).split(' — ')
+  const m = METER_HEAD.exec(head)
   if (!m) return null
   const kB = (s) => (s === undefined ? null : Math.round(Number(s) * 1000))
-  return {
-    bytes: kB(m[1]),
-    budget: kB(m[2]),
-    configured: kB(m[3]),
-    collapsed: m[4] === undefined ? [] : m[4].split(', '),
-    truncated: m[5] !== undefined,
+  const out = { bytes: kB(m[1]), budget: kB(m[2]), configured: kB(m[3]), collapsed: [], degraded: [], truncated: false, other: [] }
+  for (const seg of segments) {
+    if (seg.startsWith('collapsed: ')) out.collapsed.push(...seg.slice('collapsed: '.length).split(', '))
+    else if (seg.startsWith('degraded: ')) out.degraded.push(...seg.slice('degraded: '.length).split(', '))
+    else if (seg.startsWith('truncated to fit ')) out.truncated = true
+    else out.other.push(seg)
   }
+  return out
+}
+
+// How far the meter says a section was cut: "full" when it names it
+// nowhere; the level in parentheses after its name under degraded: or
+// collapsed:; and "pointer" for a bare name under collapsed:, the form
+// before levels existed.
+export function sectionLevel(meter, name) {
+  const levelIn = (entries) => {
+    for (const e of entries) {
+      if (e === name) return 'pointer'
+      if (e.startsWith(`${name} (`) && e.endsWith(')')) return e.slice(name.length + 2, -1)
+    }
+    return null
+  }
+  return levelIn(meter.degraded) ?? levelIn(meter.collapsed) ?? 'full'
 }
 
 // The meter rounds to 0.1 kB, so a reported size can sit up to 50 bytes
@@ -165,8 +187,10 @@ export function validateExpectation(e, { arms, turns }, where) {
     if (v.collapsed !== undefined && !(Array.isArray(v.collapsed) && v.collapsed.every((c) => typeof c === 'string'))) {
       throw new ExpectError(`${where}.meter.collapsed must be a list of section names`)
     }
-    if (!Array.isArray(v.sections) || v.sections.length === 0) throw new ExpectError(`${where}.meter.sections must list the budgeted sections`)
-    v.sections.forEach((s, i) => {
+    // sections may be left out when which sections get cut isn't the point:
+    // the meter's numbers are still held to what arrived.
+    if (v.sections !== undefined && !Array.isArray(v.sections)) throw new ExpectError(`${where}.meter.sections must be a list`)
+    ;(v.sections ?? []).forEach((s, i) => {
       if (typeof s.name !== 'string') throw new ExpectError(`${where}.meter.sections[${i}].name is required`)
       checkMatcher(s.body, `${where}.meter.sections[${i}].body`)
     })
@@ -200,7 +224,7 @@ export const isSilent = (output) => {
   return s === '' || s === '{}'
 }
 
-function sourceText(t, src) {
+export function sourceText(t, src) {
   if (src === 'answer') return t.answer
   if (src === 'shown') return t.informational.join('\n')
   const event = src.slice('hook:'.length)
@@ -287,7 +311,7 @@ function evalOnTurn(kind, v, t) {
       const got = [...m.collapsed].sort()
       if (want.join('\u0000') !== got.join('\u0000')) return [false, `meter collapsed [${m.collapsed.join(', ')}], expected [${v.collapsed.join(', ')}]`]
     }
-    for (const s of v.sections) {
+    for (const s of v.sections ?? []) {
       const named = m.collapsed.includes(s.name)
       const present = matches(s.body, text)
       if (named && present) return [false, `meter names ${s.name} as collapsed, but its body arrived`]

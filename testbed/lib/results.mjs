@@ -55,6 +55,7 @@ export function buildRun({ scenario, arm, modName, streamText, debugText, exitCo
       prompt: t.prompt,
       answer: t.answer,
       tools: t.tools,
+      toolCalls: t.toolCalls,
       hooks: t.hooks.map(hookRow),
       informational: t.informational,
       result: t.result,

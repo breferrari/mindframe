@@ -2,6 +2,7 @@
 // the two tables a run is read by: expectations by arm, and every hook by
 // arm.
 import { evaluate } from './expect.mjs'
+import { formatValue, measureAll } from './measure.mjs'
 
 export function grade(record, spec, verdicts = {}) {
   const rows = []
@@ -21,7 +22,8 @@ export function grade(record, spec, verdicts = {}) {
   // A grade that skipped what it couldn't check is not a pass: pending
   // judge rows make it incomplete, never passed.
   const outcome = failed > 0 || invalid.length > 0 || leaks.length > 0 ? 'fail' : pending > 0 ? 'incomplete' : 'pass'
-  return { rows, invalid, leaks, failed, pending, passed: rows.length - failed - pending, outcome }
+  // Measures are recorded beside the grade and never change its outcome.
+  return { rows, invalid, leaks, failed, pending, passed: rows.length - failed - pending, outcome, measures: measureAll(record, spec) }
 }
 
 // pass 0, fail 1, incomplete 3 (2 is the command line's usage error).
@@ -80,6 +82,20 @@ export function renderMarkdown(record, graded) {
       return r.pass === true ? mark(true) : `${mark(r.pass)} ${esc(r.detail)}`
     })
     out.push(`| ${scenario} | ${esc(id)} | ${rs[0].turn ?? ''} | ${cells.join(' | ')} |`)
+  }
+
+  if (graded.measures?.length) {
+    out.push('', '## Measures', '', 'Recorded, not graded. Compare runs with `bed.mjs compare`.', '')
+    out.push(`| Scenario | Measure | ${arms.join(' | ')} |`, `|---|---|${arms.map(() => '---').join('|')}|`)
+    const keys = [...new Set(graded.measures.map((r) => `${r.scenario}\u0000${r.id}`))]
+    for (const k of keys) {
+      const [scenario, id] = k.split('\u0000')
+      const cells = arms.map((a) => {
+        const r = graded.measures.find((x) => x.scenario === scenario && x.id === id && x.arm === a)
+        return r ? formatValue(r.result) : '—'
+      })
+      out.push(`| ${scenario} | ${esc(id)} | ${cells.join(' | ')} |`)
+    }
   }
 
   const ht = hookTable(record)

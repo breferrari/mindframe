@@ -65,8 +65,8 @@ test('a scenario env overrides the session env for that scenario only', async (t
 })
 
 test('parseMeter reads sizes, budget, clamp, collapses and truncation', () => {
-  assert.deepEqual(parseMeter('_context injected: 2.9kB / 4.0kB budget — collapsed: MF budget unset, MF budget 930_'), { bytes: 2900, budget: 4000, configured: null, collapsed: ['MF budget unset', 'MF budget 930'], truncated: false })
-  assert.deepEqual(parseMeter('_context injected: 0.1kB / 4.0kB budget_'), { bytes: 100, budget: 4000, configured: null, collapsed: [], truncated: false })
+  assert.deepEqual(parseMeter('_context injected: 2.9kB / 4.0kB budget — collapsed: MF budget unset, MF budget 930_'), { bytes: 2900, budget: 4000, configured: null, collapsed: ['MF budget unset', 'MF budget 930'], degraded: [], truncated: false, other: [] })
+  assert.deepEqual(parseMeter('_context injected: 0.1kB / 4.0kB budget_'), { bytes: 100, budget: 4000, configured: null, collapsed: [], degraded: [], truncated: false, other: [] })
   assert.equal(parseMeter('_context injected: 2.5kB_').budget, null)
   assert.equal(parseMeter('_context injected: 9.1kB / 9.1kB budget (12.0kB configured, held under the hook output cap)_').configured, 12000)
   assert.equal(parseMeter('_context injected: 9.9kB / 9.1kB budget — truncated to fit the hook output cap_').truncated, true)

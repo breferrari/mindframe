@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { ExpectError, validateExpectation } from './expect.mjs'
+import { MeasureError, validateMeasure } from './measure.mjs'
 
 export const ARMS = ['settings', 'mod']
 
@@ -139,6 +140,14 @@ export function validateSpec(raw, baseDir = process.cwd()) {
     if (!Array.isArray(s.turns) || s.turns.length === 0) throw new SpecError(`${where}.turns must be a non-empty array`)
     const turns = s.turns.map((t, j) => normalizeTurn(t, `${where}.turns[${j}]`))
     if (s.env !== undefined) checkEnv(s.env, `${where}.env`)
+    // Files for this scenario's bed only, copied after bed.files, so two
+    // scenarios can differ in one file and share everything else.
+    let files
+    try {
+      files = checkFiles(s.files ?? [], baseDir)
+    } catch (err) {
+      throw err instanceof SpecError ? new SpecError(err.message.replace('bed.files', `${where}.files`)) : err
+    }
     const expectIds = new Set()
     const expect = (s.expect ?? []).map((e, j) => {
       const w = `${where}.expect[${j}]`
@@ -151,7 +160,19 @@ export function validateSpec(raw, baseDir = process.cwd()) {
         throw err instanceof ExpectError ? new SpecError(err.message) : err
       }
     })
-    return { ...s, arms, turns, expect }
+    const measureIds = new Set()
+    const measures = (s.measures ?? []).map((m, j) => {
+      const w = `${where}.measures[${j}]`
+      try {
+        const out = validateMeasure(m, { arms, turns: turns.length }, w)
+        if (measureIds.has(out.id)) throw new MeasureError(`${w}: duplicate id ${out.id}`)
+        measureIds.add(out.id)
+        return out
+      } catch (err) {
+        throw err instanceof MeasureError ? new SpecError(err.message) : err
+      }
+    })
+    return { ...s, arms, turns, files, expect, measures }
   })
   return { ...raw, bed, mod, session, scenarios }
 }
