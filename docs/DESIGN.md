@@ -68,8 +68,10 @@ Every rule above is checked in real Claude Code sessions by the test bed, not on
 
 ### 11. The drift check: vendored bytes match the recorded commit
 
-A vault vendors the core and its chosen extensions, with a `VENDOR.json` recording the repository, the commit, and every vendored path. The drift check works like a lockfile check. For each recorded path it compares the vault's bytes with the upstream file at the recorded commit, using a hash stored in `VENDOR.json`. It fails on any difference not recorded as `modified` with a one-line `change` saying what and why. It also fails on a recorded file that is missing.
+A vault vendors the core and its chosen extensions, with a `VENDOR.json` recording the repository, the commit, and every vendored path. For each path the record stores two hashes: one of the bytes as vendored and one of upstream's bytes at the recorded commit. `modified` is computed from them, never typed by hand. The drift check works like a lockfile check. For each recorded path it hashes the vault's file and fails when that hash differs from the recorded one. It also fails when a modified file has no one-line `change` saying what and why, and when a recorded file is missing or replaced by a symlink. A record without hashes can't be verified, so it fails too; it never passes by default.
 
-A vault runs it in CI and can run it at session start.
+Text files are hashed with CRLF read as LF, so a Windows checkout that converts line ends doesn't read as an edit. Binary files, those with a NUL byte in their first 8,000 bytes, are hashed raw.
+
+A vault runs it in CI and can run it at session start. The tool and the record format are in [`core/vendor/`](../core/vendor/README.md).
 
 **Why:** rule 2 keeps vendored and vault code apart by convention. The drift check enforces the convention. Without it, a quick fix inside a vendored file would ship, work, and then disappear without warning at the next vendor update. Storing hashes means the check runs offline and needs no access to the upstream repo.

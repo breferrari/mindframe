@@ -73,6 +73,13 @@ jobs:
         with:
           node-version: 22
 
+      - name: Typecheck the core
+        # CI-only install: the core runs under --experimental-strip-types and
+        # ships no dependencies, so nothing is saved to package.json.
+        if: hashFiles('tsconfig.json') != ''
+        shell: bash
+        run: npm install --no-save --silent typescript@5.8.3 @types/node@22.9.0 && npx tsc -p .
+
       - name: Test
         if: hashFiles('package.json') != ''
         shell: bash

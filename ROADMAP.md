@@ -24,7 +24,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#7](https://github.com/breferrari/mindframe/issues/7) | Core hook I/O and output budget | ⬜ |
 | [#8](https://github.com/breferrari/mindframe/issues/8) | Vault-root discovery, the mod and the `om_mod` flag protocol | ⬜ |
 | [#9](https://github.com/breferrari/mindframe/issues/9) | Frontmatter and wikilink libraries | ⬜ |
-| [#10](https://github.com/breferrari/mindframe/issues/10) | `VENDOR.json` and the vendor drift check | ⬜ |
+| [#10](https://github.com/breferrari/mindframe/issues/10) | `VENDOR.json` and the vendor drift check | ✅ |
 | [#11](https://github.com/breferrari/mindframe/issues/11) | Test bed: core contract scenarios (ordering, budget, isolation) | 🔨 built; awaiting its live run |
 | [#12](https://github.com/breferrari/mindframe/issues/12) | Test bed: wiki-mind spec | ⏳ |
 
