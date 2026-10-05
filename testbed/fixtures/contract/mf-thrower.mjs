@@ -1,6 +1,6 @@
 // Rule 5. One bad item per extension point. Each must be reported and
 // skipped while the hook succeeds and every other extension's items arrive.
-/** @type {import('../../scripts/core/types.ts').Extension} */
+/** @type {import('../../scripts/core/index.ts').Extension} */
 const extension = {
   id: 'mf-thrower',
   sections: [

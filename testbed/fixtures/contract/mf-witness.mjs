@@ -1,6 +1,6 @@
 // Rule 5. A healthy item at every point. Its markers must arrive whatever
 // mf-thrower does.
-/** @type {import('../../scripts/core/types.ts').Extension} */
+/** @type {import('../../scripts/core/index.ts').Extension} */
 const extension = {
   id: 'mf-witness',
   sections: [{ id: 'section', priority: 50, header: '## MF witness', render: () => 'MF-WITNESS-SECTION' }],

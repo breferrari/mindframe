@@ -2,7 +2,7 @@
 // MF-ORDER-10, MF-ORDER-TIE-A, MF-ORDER-TIE-B, MF-ORDER-15 (mf-order-decl),
 // MF-ORDER-20, MF-ORDER-UNSET. Items are listed out of order on purpose,
 // and the tie pair is listed with its ids reversed.
-/** @type {import('../../scripts/core/types.ts').Extension} */
+/** @type {import('../../scripts/core/index.ts').Extension} */
 const extension = {
   id: 'mf-order',
   sections: [

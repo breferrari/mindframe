@@ -2,7 +2,7 @@
 // extension's shape, so it skips the whole extension at load and reports
 // it; every other extension still loads. Kept apart from mf-thrower, whose
 // per-point failures would otherwise never run.
-/** @type {import('../../scripts/core/types.ts').Extension} */
+/** @type {import('../../scripts/core/index.ts').Extension} */
 const extension = {
   id: 'mf-getter',
   get sections() {

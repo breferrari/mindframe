@@ -4,7 +4,7 @@
 // Priorities sit above any vault section's, so only these collapse.
 const filler = (tag) => `${tag}\n` + `${tag.toLowerCase()} filler. `.repeat(80)
 
-/** @type {import('../../scripts/core/types.ts').Extension} */
+/** @type {import('../../scripts/core/index.ts').Extension} */
 const extension = {
   id: 'mf-budget',
   sections: [

@@ -1,6 +1,6 @@
 {
   "name": "contract",
-  "description": "The core's extension contract (docs/DESIGN.md rules 4, 5, 6 and 7) in real sessions: order, the byte budget and its meter, failure isolation at every extension point, and the kill switch. Runs against any vault that implements the contract: the fixture extensions in testbed/fixtures/contract/ are copied into the bed and declared in its manifest. Settings arm only until the vault under test ships the mod.",
+  "description": "The core's extension contract (docs/DESIGN.md rules 3-7) in real sessions: declared events, order, the byte budget and its meter, failure isolation at every extension point, and the kill switch. Runs against any vault that implements the contract: the fixture extensions in testbed/fixtures/contract/ are copied into the bed and declared in its manifest. On the mod arm the settings hooks stand down and the session context arrives as an instruction file, so order, the meter and the kill switch are checked there on the model layer.",
   "bed": {
     "files": [
       { "from": "../fixtures/contract/mf-order.mjs", "path": ".claude/extensions/mf-order/index.mjs" },
@@ -22,11 +22,11 @@
       ]
     }
   },
+  "mod": { "dir": ".claude/skills/wiki-mind", "name": "wiki-mind" },
   "session": { "model": "opus", "maxBudgetUsd": 4, "allowedTools": ["Write"], "gapMs": 3000 },
   "scenarios": [
     {
       "id": "contract",
-      "arms": ["settings"],
       "turns": [
         "List every marker that starts with MF-ORDER in your session context, in the order they appear, separated by commas. If there are none, reply only: NONE.",
         "Reply with only the last line of your session context, verbatim. If you have no session context, reply only: NONE.",
@@ -35,10 +35,11 @@
         "Did a notice that an extension was skipped arrive in your context at any point in this session? If yes, reply with only one such line, verbatim. If not, reply only: NONE."
       ],
       "expect": [
-        { "id": "rule 4: order as the hook printed it", "turn": "preamble", "order": { "in": "hook:SessionStart", "items": ["MF-ORDER-10", "MF-ORDER-TIE-A", "MF-ORDER-TIE-B", "MF-ORDER-15", "MF-ORDER-20", "MF-ORDER-UNSET"] } },
+        { "id": "rule 4: order as the hook printed it", "arms": ["settings"], "turn": "preamble", "order": { "in": "hook:SessionStart", "items": ["MF-ORDER-10", "MF-ORDER-TIE-A", "MF-ORDER-TIE-B", "MF-ORDER-15", "MF-ORDER-20", "MF-ORDER-UNSET"] } },
         { "id": "rule 4: order as the model received it", "turn": 1, "order": { "in": "answer", "items": ["MF-ORDER-10", "MF-ORDER-TIE-A", "MF-ORDER-TIE-B", "MF-ORDER-15", "MF-ORDER-20", "MF-ORDER-UNSET"] } },
         {
           "id": "rule 7: the meter's numbers and collapses are true",
+          "arms": ["settings"],
           "turn": "preamble",
           "meter": {
             "in": "hook:SessionStart",
@@ -52,32 +53,39 @@
             ]
           }
         },
-        { "id": "rule 7: collapsed sections left their pointers", "turn": "preamble", "budget": { "in": "hook:SessionStart", "present": ["MF-BUDGET-930-POINTER", "MF-BUDGET-UNSET-POINTER"] } },
+        { "id": "rule 7: collapsed sections left their pointers", "arms": ["settings"], "turn": "preamble", "budget": { "in": "hook:SessionStart", "present": ["MF-BUDGET-930-POINTER", "MF-BUDGET-UNSET-POINTER"] } },
         { "id": "rule 7: the model received the meter whole", "turn": 2, "answer": { "re": "context injected: [\\d.]+kB / 4\\.0kB budget — collapsed: MF budget unset, MF budget 930" } },
-        { "id": "rule 5: a throwing section is reported, the rest arrive", "turn": "preamble", "isolates": { "event": "SessionStart", "extension": "mf-thrower, section throws", "present": ["MF-WITNESS-SECTION", "MF-ORDER-10", "MF-BUDGET-CORE-BODY"] } },
-        { "id": "rule 5: an unreadable extension is reported, the rest load", "turn": "preamble", "isolates": { "event": "SessionStart", "extension": "mf-getter: skipped", "present": ["MF-WITNESS-SECTION"] } },
-        { "id": "rule 5: a rejecting detector is counted, the witness finding shown", "turn": 1, "hook": { "event": "Stop", "output": { "all": ["MF-WITNESS-CLAIM", "extension failure"] } } },
-        { "id": "rule 5: the full Stop report names the rejecting detector", "turn": 2, "hook": { "event": "UserPromptSubmit", "output": "mf-thrower, detector rejects: skipped" } },
+        { "id": "mod: the settings SessionStart stood down", "arms": ["mod"], "turn": "preamble", "hook": { "event": "SessionStart", "silent": true } },
+        { "id": "mod: ran SessionStart", "arms": ["mod"], "modEvent": { "event": "classic.SessionStart" } },
+        { "id": "mod: delivered the context file", "arms": ["mod"], "modEvent": { "event": "prompt.context" } },
+        { "id": "mod: the settings Stop stood down every turn", "arms": ["mod"], "turn": "all", "hook": { "event": "Stop", "silent": true } },
+        { "id": "rule 5: a throwing section is reported, the rest arrive", "arms": ["settings"], "turn": "preamble", "isolates": { "event": "SessionStart", "extension": "mf-thrower, section throws", "present": ["MF-WITNESS-SECTION", "MF-ORDER-10", "MF-BUDGET-CORE-BODY"] } },
+        { "id": "rule 5: an unreadable extension is reported, the rest load", "arms": ["settings"], "turn": "preamble", "isolates": { "event": "SessionStart", "extension": "mf-getter: skipped", "present": ["MF-WITNESS-SECTION"] } },
+        { "id": "rule 5: a rejecting detector is counted, the witness finding shown", "arms": ["settings"], "turn": 1, "hook": { "event": "Stop", "output": { "all": ["MF-WITNESS-CLAIM", "extension failure"] } } },
+        { "id": "rule 5: the full Stop report names the rejecting detector", "arms": ["settings"], "turn": 2, "hook": { "event": "UserPromptSubmit", "output": "mf-thrower, detector rejects: skipped" } },
         { "id": "rule 5: a never-settling signal times out, the witness hint arrives", "turn": 3, "isolates": { "event": "UserPromptSubmit", "extension": "mf-thrower, signal hangs: skipped (timed out", "present": ["MF-WITNESS-HINT"] } },
         { "id": "rule 5: the model received the witness hint", "turn": 3, "answer": "MF-WITNESS-HINT" },
         { "id": "the write is a Write call", "turn": 4, "tools": { "includes": ["Write"] } },
         { "id": "rule 5: a wrong-shape validator is reported, the witness warning arrives", "turn": 4, "isolates": { "event": "PostToolUse", "extension": "mf-thrower, validator wrong-shape: skipped", "present": ["MF-WITNESS-WARNING"] } },
         { "id": "rule 5: the model was told what was skipped", "turn": 5, "answer": { "re": "extension mf-(thrower|getter)" } },
+        { "id": "rule 3: a session-start extension is not loaded at prompt", "turn": "all", "hook": { "event": "UserPromptSubmit", "everyOutput": { "not": "extension mf-getter" } } },
+        { "id": "rule 3: a session-start extension is not loaded at write", "turn": "all", "hook": { "event": "PostToolUse", "everyOutput": { "not": "extension mf-getter" } } },
+        { "id": "rule 3: Stop counts only its own event's failure (mf-thrower's detector)", "arms": ["settings"], "turn": 1, "hook": { "event": "Stop", "output": { "re": "\\b1 extension failure\\(s\\)" } } },
         { "id": "every UserPromptSubmit succeeded", "turn": "all", "hook": { "event": "UserPromptSubmit" } },
         { "id": "every Stop succeeded", "turn": "all", "hook": { "event": "Stop" } }
       ]
     },
     {
       "id": "kill-switch",
-      "arms": ["settings"],
       "env": { "VAULT_EXTENSIONS": "off" },
       "turns": [
-        "Say only: one.",
+        "Does your session context contain any marker that starts with MF-? If yes, reply with only the first one, verbatim. If not, reply only: NONE.",
         "Use the Write tool to create 'notes/mf-off.md' containing exactly the one line 'off'. Then say only: written."
       ],
       "expect": [
-        { "id": "rule 6: the core says extensions are off and keeps its meter", "turn": "preamble", "hook": { "event": "SessionStart", "output": { "all": ["extensions are off", "context injected"] } } },
-        { "id": "rule 6: no extension's section arrives", "turn": "preamble", "hook": { "event": "SessionStart", "everyOutput": { "not": "MF-" } } },
+        { "id": "rule 6: the core says extensions are off and keeps its meter", "arms": ["settings"], "turn": "preamble", "hook": { "event": "SessionStart", "output": { "all": ["extensions are off", "context injected"] } } },
+        { "id": "rule 6: no extension's section arrives", "arms": ["settings"], "turn": "preamble", "hook": { "event": "SessionStart", "everyOutput": { "not": "MF-" } } },
+        { "id": "rule 6: the model received no extension's section", "turn": 1, "answer": { "none": true } },
         { "id": "rule 6: no extension runs at Stop", "turn": "all", "hook": { "event": "Stop", "everyOutput": { "not": "MF-" } } },
         { "id": "rule 6: no extension runs at prompt", "turn": "all", "hook": { "event": "UserPromptSubmit", "everyOutput": { "not": "MF-" } } },
         { "id": "the write is a Write call", "turn": 2, "tools": { "includes": ["Write"] } },
