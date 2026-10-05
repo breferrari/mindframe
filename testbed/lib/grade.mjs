@@ -11,10 +11,21 @@ const readsModel = (e) => ['answer', 'shown'].includes(e[e.kind]?.in)
 
 export function grade(record, spec, verdicts = {}) {
   const rows = []
+  // What a dry run could not check, by name and why, so a dry pass never
+  // reads as full coverage (DESIGN.md rule 10).
+  const notGraded = []
   for (const s of spec.scenarios) {
+    const ran = record.runs.some((r) => r.scenario === s.id)
     for (const e of s.expect ?? []) {
       // A dry run has no model and no Claude Code: those rows aren't graded.
-      if (record.dry && (DRY_SKIPPED.has(e.kind) || readsModel(e))) continue
+      if (record.dry && ran && !e.arms.includes('settings')) {
+        notGraded.push({ scenario: s.id, id: e.id, why: 'mod arm' })
+        continue
+      }
+      if (record.dry && ran && (DRY_SKIPPED.has(e.kind) || readsModel(e))) {
+        notGraded.push({ scenario: s.id, id: e.id, why: 'model layer' })
+        continue
+      }
       for (const arm of e.arms) {
         const run = record.runs.find((r) => r.scenario === s.id && r.arm === arm)
         if (!run) continue // not run this time (--arm, --scenario)
@@ -30,7 +41,7 @@ export function grade(record, spec, verdicts = {}) {
   // judge rows make it incomplete, never passed.
   const outcome = failed > 0 || invalid.length > 0 || leaks.length > 0 ? 'fail' : pending > 0 ? 'incomplete' : 'pass'
   // Measures are recorded beside the grade and never change its outcome.
-  return { rows, invalid, leaks, failed, pending, passed: rows.length - failed - pending, outcome, measures: measureAll(record, spec) }
+  return { rows, invalid, leaks, failed, pending, passed: rows.length - failed - pending, outcome, notGraded, measures: measureAll(record, spec) }
 }
 
 // pass 0, fail 1, incomplete 3 (2 is the command line's usage error).
@@ -68,6 +79,12 @@ export function renderMarkdown(record, graded) {
   const versions = [...new Set(record.runs.map((r) => r.claudeVersion).filter(Boolean))]
   out.push(`# Test bed: ${record.spec}`, '')
   if (record.dry) out.push('**Dry run:** the hook scripts ran directly, with no model and no Claude Code, on the settings arm. Answers, what the user is shown, judged rows and mod events are not graded.', '')
+  if (graded.notGraded?.length) {
+    const by = (why) => graded.notGraded.filter((n) => n.why === why).length
+    out.push(`**${graded.notGraded.length} expectations not graded in dry** (${by('model layer')} model layer, ${by('mod arm')} mod arm only). A dry pass covers the rest:`, '')
+    for (const n of graded.notGraded) out.push(`- ${n.scenario}: ${esc(n.id)} (${n.why})`)
+    out.push('')
+  }
   const cost = record.runs.reduce((n, r) => n + (typeof r.costUsd === 'number' ? r.costUsd : 0), 0)
   out.push(`Claude Code ${versions.join(', ') || 'unknown'} · vault ${record.vault.commit ? record.vault.commit.head.slice(0, 7) + (record.vault.commit.dirty ? ' (uncommitted changes)' : '') : 'not a git repo'} · ${record.runs.length} sessions${cost > 0 ? ` · $${cost.toFixed(2)}` : ''}`, '')
   out.push(`**${graded.outcome.toUpperCase()}**: ${graded.passed} passed, ${graded.failed} failed, ${graded.pending} awaiting the blind grader${graded.invalid.length ? `; invalid runs: ${graded.invalid.join(', ')}` : ''}`, '')
