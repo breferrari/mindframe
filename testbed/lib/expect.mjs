@@ -9,7 +9,20 @@
 //   claim is only proved by the answer. `{ "none": true }` expects the
 //   model to report that nothing arrived.
 
-export const KINDS = ['hook', 'answer', 'shown', 'tools', 'modEvent', 'order', 'budget', 'meter', 'isolates', 'judge']
+export const KINDS = ['hook', 'answer', 'shown', 'tools', 'modEvent', 'order', 'budget', 'meter', 'isolates', 'linesCite', 'judge']
+
+// The lines of an answer that read as items: top-level list items and the
+// body rows of a table (its header and separator rows are left out).
+export function itemLines(text) {
+  const lines = String(text ?? '').split('\n')
+  const isSep = (l) => /^\s*\|[\s:|-]+\|\s*$/.test(l)
+  const out = []
+  lines.forEach((l, i) => {
+    if (/^([-*+]|\d+\.)\s+\S/.test(l)) out.push(l)
+    else if (/^\|.*\|\s*$/.test(l) && !isSep(l) && !isSep(lines[i + 1] ?? '')) out.push(l)
+  })
+  return out
+}
 
 // The session-start meter line, as the vendored hook-io writes it:
 //   _context injected: 2.5kB / 9.1kB budget — collapsed: A, B_
@@ -196,6 +209,11 @@ export function validateExpectation(e, { arms, turns }, where) {
       if (typeof s.name !== 'string') throw new ExpectError(`${where}.meter.sections[${i}].name is required`)
       checkMatcher(s.body, `${where}.meter.sections[${i}].body`)
     })
+  } else if (kind === 'linesCite') {
+    checkSource(v.in, `${where}.linesCite.in`)
+    if (!Array.isArray(v.cite) || v.cite.length === 0 || !v.cite.every((c) => typeof c === 'string' && c !== '')) {
+      throw new ExpectError(`${where}.linesCite.cite must be a non-empty list of strings`)
+    }
   } else if (kind === 'isolates') {
     if (typeof v.event !== 'string' || typeof v.extension !== 'string') throw new ExpectError(`${where}.isolates needs event and extension`)
     ;(v.present ?? []).forEach((m, i) => checkMatcher(m, `${where}.isolates.present[${i}]`))
@@ -321,6 +339,15 @@ function evalOnTurn(kind, v, t) {
       if (!named && !present) return [false, `${s.name} is missing, and the meter doesn't name it`]
     }
     return [true, `${m.bytes}/${m.budget} bytes, collapsed [${m.collapsed.join(', ')}]`]
+  }
+  if (kind === 'linesCite') {
+    // Every item the source lists must cite one of the allowed names: an
+    // item that cites none was invented, and fails rather than counting 0.
+    const items = itemLines(sourceText(t, v.in))
+    const cite = v.cite.map((c) => c.toLowerCase())
+    const bad = items.find((l) => !cite.some((c) => l.toLowerCase().includes(c)))
+    if (bad) return [false, `an item cites nothing known: ${JSON.stringify(bad.slice(0, 100))}`]
+    return [true, `${items.length} items, all cited`]
   }
   if (kind === 'isolates') {
     // The hook still succeeded, its output names the failed extension, and
