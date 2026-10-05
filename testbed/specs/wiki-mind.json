@@ -1,19 +1,53 @@
 {
   "name": "wiki-mind",
-  "description": "wiki-mind's own extension in real sessions: the session-start sections, the Stop checklist and detectors, the prompt signals and the §2 write validators, on both arms. The fixtures are a tiny wiki with one note per folder and deliberate drift (an unsourced concept, a one-sided synthesis, an entity Index.md doesn't annotate) and one open question.",
+  "description": "wiki-mind's own extension in real sessions: the session-start sections, the Stop checklist and detectors, the prompt signals and the §2 write validators, on both arms, and across a compaction, where the settings path falls back to pointers and the mod keeps the full context. The fixtures are a tiny wiki with one note per folder and deliberate drift (an unsourced concept, a one-sided synthesis, an entity Index.md doesn't annotate) and one open question.",
   "bed": {
     "fixtures": [
-      { "path": "sources/Paper A.md", "content": "---\ndate: 2026-01-01\ndescription: bed fixture source\ntags: [bed]\nauthors: [A. Author]\nyear: 2026\nurl: https://example.com/paper-a\n---\n\n# Paper A\n\nA source.\n" },
-      { "path": "concepts/Attention.md", "content": "---\ndate: 2026-01-01\ndescription: bed fixture concept with a source\ntags: [bed]\n---\n\n# Attention\n\nFrom [[Paper A]].\n" },
-      { "path": "concepts/Loose Idea.md", "content": "---\ndate: 2026-01-01\ndescription: bed fixture concept citing no source\ntags: [bed]\n---\n\n# Loose Idea\n\nNo source yet.\n" },
-      { "path": "entities/Tool B.md", "content": "---\ndate: 2026-01-01\ndescription: bed fixture entity missing from Index.md\ntags: [bed]\nkind: tool\n---\n\n# Tool B\n\nSee [[Paper A]].\n" },
-      { "path": "syntheses/Attention vs Nothing.md", "content": "---\ndate: 2026-01-01\ndescription: bed fixture synthesis with one side\ntags: [bed]\nsides: [\"[[Attention]]\"]\n---\n\n# Attention vs Nothing\n\nOne side only.\n" },
-      { "path": "questions/Why Attention.md", "content": "---\ndate: 2026-01-01\ndescription: MF-QUESTION-DESC\ntags: [bed]\nstatus: open\n---\n\n# Why Attention\n\nOpen.\n" },
-      { "path": "Index.md", "content": "---\ndate: 2026-01-01\ndescription: bed fixture index\ntags: [bed]\n---\n\n# Index\n\nMF-INDEX-LINE\n\n- [[Paper A]] — a source\n- [[Attention]] — a concept\n- [[Loose Idea]] — an unsourced concept\n- [[Attention vs Nothing]] — a one-sided synthesis\n- [[Why Attention]] — an open question\n" }
+      {
+        "path": "sources/Paper A.md",
+        "content": "---\ndate: 2026-01-01\ndescription: bed fixture source\ntags: [bed]\nauthors: [A. Author]\nyear: 2026\nurl: https://example.com/paper-a\n---\n\n# Paper A\n\nA source.\n"
+      },
+      {
+        "path": "concepts/Attention.md",
+        "content": "---\ndate: 2026-01-01\ndescription: bed fixture concept with a source\ntags: [bed]\n---\n\n# Attention\n\nFrom [[Paper A]].\n"
+      },
+      {
+        "path": "concepts/Loose Idea.md",
+        "content": "---\ndate: 2026-01-01\ndescription: bed fixture concept citing no source\ntags: [bed]\n---\n\n# Loose Idea\n\nNo source yet.\n"
+      },
+      {
+        "path": "entities/Tool B.md",
+        "content": "---\ndate: 2026-01-01\ndescription: bed fixture entity missing from Index.md\ntags: [bed]\nkind: tool\n---\n\n# Tool B\n\nSee [[Paper A]].\n"
+      },
+      {
+        "path": "syntheses/Attention vs Nothing.md",
+        "content": "---\ndate: 2026-01-01\ndescription: bed fixture synthesis with one side\ntags: [bed]\nsides: [\"[[Attention]]\"]\n---\n\n# Attention vs Nothing\n\nOne side only.\n"
+      },
+      {
+        "path": "questions/Why Attention.md",
+        "content": "---\ndate: 2026-01-01\ndescription: MF-QUESTION-DESC\ntags: [bed]\nstatus: open\n---\n\n# Why Attention\n\nOpen.\n"
+      },
+      {
+        "path": "Index.md",
+        "content": "---\ndate: 2026-01-01\ndescription: bed fixture index\ntags: [bed]\n---\n\n# Index\n\nMF-INDEX-LINE\n\n- [[Paper A]] — a source\n- [[Attention]] — a concept\n- [[Loose Idea]] — an unsourced concept\n- [[Attention vs Nothing]] — a one-sided synthesis\n- [[Why Attention]] — an open question\n"
+      }
     ]
   },
-  "mod": { "dir": ".claude/skills/wiki-mind", "name": "wiki-mind" },
-  "session": { "model": "opus", "maxBudgetUsd": 4, "allowedTools": ["Write"], "gapMs": 3000 },
+  "mod": {
+    "dir": ".claude/skills/wiki-mind",
+    "name": "wiki-mind"
+  },
+  "session": {
+    "model": "opus",
+    "maxBudgetUsd": 4,
+    "allowedTools": [
+      "Write"
+    ],
+    "gapMs": 3000,
+    "env": {
+      "VAULT_QMD": "off"
+    }
+  },
   "scenarios": [
     {
       "id": "wiki",
@@ -25,28 +59,353 @@
         "Did a block starting 'Vault report', 'Stop hook report' or 'Wrap-up checklist' arrive in your context with THIS message, not earlier? If yes, reply with only its first line, verbatim. If not, reply only: NONE."
       ],
       "expect": [
-        { "id": "sections: in priority order", "arms": ["settings"], "turn": "preamble", "order": { "in": "hook:SessionStart", "items": ["### Wiki", "### Open questions", "### Recent sources", "### Index"] } },
-        { "id": "sections: the counts, the open question, the source, the index head", "arms": ["settings"], "turn": "preamble", "hook": { "event": "SessionStart", "output": { "all": ["sources: 1 · concepts: 2 · entities: 1 · syntheses: 1 · questions: 1 (1 open)", "[[Why Attention]] — MF-QUESTION-DESC", "[[Paper A]] (", "MF-INDEX-LINE"] } } },
-        { "id": "sections: the meter is last, under budget, nothing collapsed", "arms": ["settings"], "turn": "preamble", "meter": { "in": "hook:SessionStart", "collapsed": [], "sections": [{ "name": "Wiki", "body": "sources: 1" }, { "name": "Open questions", "body": "MF-QUESTION-DESC" }, { "name": "Recent sources", "body": "[[Paper A]]" }, { "name": "Index", "body": "MF-INDEX-LINE" }] } },
-        { "id": "sections: the model received the counts", "turn": 1, "answer": { "includes": "sources: 1 · concepts: 2 · entities: 1 · syntheses: 1 · questions: 1 (1 open)" } },
-        { "id": "mod: the settings SessionStart stood down", "arms": ["mod"], "turn": "preamble", "hook": { "event": "SessionStart", "silent": true } },
-        { "id": "mod: ran SessionStart", "arms": ["mod"], "modEvent": { "event": "classic.SessionStart" } },
-        { "id": "mod: delivered the context file", "arms": ["mod"], "modEvent": { "event": "prompt.context" } },
-        { "id": "detectors: Stop summarises all three drifts", "arms": ["settings"], "turn": 1, "hook": { "event": "Stop", "output": { "all": ["Wrap-up checklist: update Index.md", "1 concept or entity note cites no source", "1 synthesis with fewer than two sides", "1 note Index.md doesn't annotate"] } } },
-        { "id": "detectors: the user sees the summary", "arms": ["settings"], "turn": 1, "shown": "Wrap-up checklist" },
-        { "id": "mod: the settings Stop stood down every turn", "arms": ["mod"], "turn": "all", "hook": { "event": "Stop", "silent": true } },
-        { "id": "mod: ran Stop every turn", "arms": ["mod"], "modEvent": { "event": "classic.Stop", "min": 5 } },
-        { "id": "detectors: the full report names each drifted note", "arms": ["settings"], "turn": 2, "hook": { "event": "UserPromptSubmit", "output": { "all": ["concepts/Loose Idea.md", "syntheses/Attention vs Nothing.md (sides: 1)", "entities/Tool B.md"] } } },
-        { "id": "detectors: the report reaches the agent with the next prompt", "turn": 2, "answer": { "not": { "none": true } } },
-        { "id": "detectors: Stop silent while nothing changed", "arms": ["settings"], "turn": 2, "hook": { "event": "Stop", "silent": true } },
-        { "id": "detectors: the report isn't handed over twice", "arms": ["settings"], "turn": 3, "hook": { "event": "UserPromptSubmit", "everyOutput": { "not": "Stop hook report" } } },
-        { "id": "signals: a URL routes to /wiki-ingest", "turn": 3, "hook": { "event": "UserPromptSubmit", "output": "NEW SOURCE: consider /wiki-ingest" } },
-        { "id": "signals: the model received the hint", "turn": 3, "answer": "NEW SOURCE" },
-        { "id": "validators: the write is a Write call", "turn": 4, "tools": { "includes": ["Write"] } },
-        { "id": "validators: §2 frontmatter and the source-link rule", "turn": 4, "hook": { "event": "PostToolUse", "output": { "all": ["concepts/Bare Note.md", "Missing YAML frontmatter (SPEC.md §2)", "Cites no source"] } } },
-        { "id": "detectors: the new note changes the findings", "arms": ["settings"], "turn": 4, "hook": { "event": "Stop", "output": { "all": ["2 concept or entity notes cite no source", "2 notes Index.md doesn't annotate"] } } },
-        { "id": "detectors: the changed report reaches the agent", "turn": 5, "answer": { "not": { "none": true } } },
-        { "id": "every hook succeeded", "turn": "all", "hook": { "event": "UserPromptSubmit" } }
+        {
+          "id": "sections: in priority order",
+          "arms": [
+            "settings"
+          ],
+          "turn": "preamble",
+          "order": {
+            "in": "hook:SessionStart",
+            "items": [
+              "### Wiki",
+              "### Open questions",
+              "### Recent sources",
+              "### Index"
+            ]
+          }
+        },
+        {
+          "id": "sections: the counts, the open question, the source, the index head",
+          "arms": [
+            "settings"
+          ],
+          "turn": "preamble",
+          "hook": {
+            "event": "SessionStart",
+            "output": {
+              "all": [
+                "sources: 1 · concepts: 2 · entities: 1 · syntheses: 1 · questions: 1 (1 open)",
+                "[[Why Attention]] — MF-QUESTION-DESC",
+                "[[Paper A]] (",
+                "MF-INDEX-LINE"
+              ]
+            }
+          }
+        },
+        {
+          "id": "sections: the meter is last, under budget, nothing collapsed",
+          "arms": [
+            "settings"
+          ],
+          "turn": "preamble",
+          "meter": {
+            "in": "hook:SessionStart",
+            "collapsed": [],
+            "sections": [
+              {
+                "name": "Wiki",
+                "body": "sources: 1"
+              },
+              {
+                "name": "Open questions",
+                "body": "MF-QUESTION-DESC"
+              },
+              {
+                "name": "Recent sources",
+                "body": "[[Paper A]]"
+              },
+              {
+                "name": "Index",
+                "body": "MF-INDEX-LINE"
+              }
+            ]
+          }
+        },
+        {
+          "id": "sections: the model received the counts",
+          "turn": 1,
+          "answer": {
+            "includes": "sources: 1 · concepts: 2 · entities: 1 · syntheses: 1 · questions: 1 (1 open)"
+          }
+        },
+        {
+          "id": "mod: the settings SessionStart stood down",
+          "arms": [
+            "mod"
+          ],
+          "turn": "preamble",
+          "hook": {
+            "event": "SessionStart",
+            "silent": true
+          }
+        },
+        {
+          "id": "mod: ran SessionStart",
+          "arms": [
+            "mod"
+          ],
+          "modEvent": {
+            "event": "classic.SessionStart"
+          }
+        },
+        {
+          "id": "mod: delivered the context file",
+          "arms": [
+            "mod"
+          ],
+          "modEvent": {
+            "event": "prompt.context"
+          }
+        },
+        {
+          "id": "detectors: Stop summarises all three drifts",
+          "arms": [
+            "settings"
+          ],
+          "turn": 1,
+          "hook": {
+            "event": "Stop",
+            "output": {
+              "all": [
+                "Wrap-up checklist: update Index.md",
+                "1 concept or entity note cites no source",
+                "1 synthesis with fewer than two sides",
+                "1 note Index.md doesn't annotate"
+              ]
+            }
+          }
+        },
+        {
+          "id": "detectors: the user sees the summary",
+          "arms": [
+            "settings"
+          ],
+          "turn": 1,
+          "shown": "Wrap-up checklist"
+        },
+        {
+          "id": "mod: the user sees its line under the answer",
+          "arms": [
+            "mod"
+          ],
+          "turn": "any",
+          "shown": {
+            "re": "^wiki-mind: vault check: ",
+            "flags": "m"
+          }
+        },
+        {
+          "id": "mod: the settings Stop stood down every turn",
+          "arms": [
+            "mod"
+          ],
+          "turn": "all",
+          "hook": {
+            "event": "Stop",
+            "silent": true
+          }
+        },
+        {
+          "id": "mod: ran Stop every turn",
+          "arms": [
+            "mod"
+          ],
+          "modEvent": {
+            "event": "classic.Stop",
+            "min": 5
+          }
+        },
+        {
+          "id": "detectors: the full report names each drifted note",
+          "arms": [
+            "settings"
+          ],
+          "turn": 2,
+          "hook": {
+            "event": "UserPromptSubmit",
+            "output": {
+              "all": [
+                "concepts/Loose Idea.md",
+                "syntheses/Attention vs Nothing.md (sides: 1)",
+                "entities/Tool B.md"
+              ]
+            }
+          }
+        },
+        {
+          "id": "detectors: the report reaches the agent with the next prompt",
+          "turn": 2,
+          "answer": {
+            "not": {
+              "none": true
+            }
+          }
+        },
+        {
+          "id": "detectors: Stop silent while nothing changed",
+          "arms": [
+            "settings"
+          ],
+          "turn": 2,
+          "hook": {
+            "event": "Stop",
+            "silent": true
+          }
+        },
+        {
+          "id": "detectors: the report isn't handed over twice",
+          "arms": [
+            "settings"
+          ],
+          "turn": 3,
+          "hook": {
+            "event": "UserPromptSubmit",
+            "everyOutput": {
+              "not": "Stop hook report"
+            }
+          }
+        },
+        {
+          "id": "signals: a URL routes to /wiki-ingest",
+          "turn": 3,
+          "hook": {
+            "event": "UserPromptSubmit",
+            "output": "NEW SOURCE: consider /wiki-ingest"
+          }
+        },
+        {
+          "id": "signals: the model received the hint",
+          "turn": 3,
+          "answer": "NEW SOURCE"
+        },
+        {
+          "id": "validators: the write is a Write call",
+          "turn": 4,
+          "tools": {
+            "includes": [
+              "Write"
+            ]
+          }
+        },
+        {
+          "id": "validators: §2 frontmatter and the source-link rule",
+          "turn": 4,
+          "hook": {
+            "event": "PostToolUse",
+            "output": {
+              "all": [
+                "concepts/Bare Note.md",
+                "Missing YAML frontmatter (SPEC.md §2)",
+                "Cites no source"
+              ]
+            }
+          }
+        },
+        {
+          "id": "detectors: the new note changes the findings",
+          "arms": [
+            "settings"
+          ],
+          "turn": 4,
+          "hook": {
+            "event": "Stop",
+            "output": {
+              "all": [
+                "2 concept or entity notes cite no source",
+                "2 notes Index.md doesn't annotate"
+              ]
+            }
+          }
+        },
+        {
+          "id": "detectors: the changed report reaches the agent",
+          "turn": 5,
+          "answer": {
+            "not": {
+              "none": true
+            }
+          }
+        },
+        {
+          "id": "every hook succeeded",
+          "turn": "all",
+          "hook": {
+            "event": "UserPromptSubmit"
+          }
+        }
+      ]
+    },
+    {
+      "id": "compact",
+      "turns": [
+        "Say only: one.",
+        "/compact",
+        "Reply with only the line of your session context that follows the '### Open questions' heading, verbatim. If there is none, reply only: NONE."
+      ],
+      "expect": [
+        {
+          "id": "PreCompact ran",
+          "turn": 2,
+          "hook": {
+            "event": "PreCompact"
+          }
+        },
+        {
+          "id": "settings: after compaction the counts stay whole, the rest become pointers",
+          "arms": [
+            "settings"
+          ],
+          "turn": 2,
+          "hook": {
+            "event": "SessionStart",
+            "name": "compact",
+            "output": {
+              "all": [
+                "sources: 1 · concepts: 2 · entities: 1 · syntheses: 1 · questions: 1 (1 open)",
+                "(Over budget: list questions/",
+                "(Over budget: list sources/",
+                "(Over budget: read Index.md"
+              ]
+            }
+          }
+        },
+        {
+          "id": "settings: the pointer replaces the open question",
+          "arms": [
+            "settings"
+          ],
+          "turn": 2,
+          "hook": {
+            "event": "SessionStart",
+            "name": "compact",
+            "everyOutput": {
+              "not": "MF-QUESTION-DESC"
+            }
+          }
+        },
+        {
+          "id": "mod: the settings SessionStart stood down after compaction",
+          "arms": [
+            "mod"
+          ],
+          "turn": 2,
+          "hook": {
+            "event": "SessionStart",
+            "name": "compact",
+            "silent": true
+          }
+        },
+        {
+          "id": "mod: the model still has the full open-questions section after compaction",
+          "arms": [
+            "mod"
+          ],
+          "turn": 3,
+          "answer": {
+            "includes": "[[Why Attention]] — MF-QUESTION-DESC"
+          }
+        }
       ]
     }
   ]
