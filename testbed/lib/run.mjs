@@ -39,7 +39,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
       buildBed({ vault, bed, spec, files: s.files })
       // The same builder a dry run uses; runSession adds the user's environment.
       const env = bedEnv({ base: {}, stateDir: path.join(out, 'state', name), spec, scenario: s })
-      const session = { ...spec.session, env }
+      const session = { ...spec.session, env, allowedTools: s.allowedTools ?? spec.session.allowedTools, disallowedTools: s.disallowedTools ?? spec.session.disallowedTools }
       const dirs = userQmdDirs({ ...process.env, ...env })
       const before = snapshot(dirs)
       const r = await runSession({ cmd, arm, bed, mod: spec.mod, session, turns: s.turns, logDir: path.join(out, 'logs'), name })
