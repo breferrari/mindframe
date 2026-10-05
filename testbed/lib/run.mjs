@@ -7,7 +7,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { buildBed, vaultCommit } from './bed.mjs'
-import { diff, qmdEnv, snapshot, userQmdDirs } from './residue.mjs'
+import { bedEnv } from './dry.mjs'
+import { diff, snapshot, userQmdDirs } from './residue.mjs'
 import { buildRun } from './results.mjs'
 import { runSession } from './session.mjs'
 
@@ -36,7 +37,8 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
       const name = `${s.id}-${arm}`
       const bed = path.join(out, 'beds', name)
       buildBed({ vault, bed, spec, files: s.files })
-      const env = { ...qmdEnv(path.join(out, 'state', name)), ...spec.session.env, ...s.env }
+      // The same builder a dry run uses; runSession adds the user's environment.
+      const env = bedEnv({ base: {}, stateDir: path.join(out, 'state', name), spec, scenario: s })
       const session = { ...spec.session, env }
       const dirs = userQmdDirs({ ...process.env, ...env })
       const before = snapshot(dirs)

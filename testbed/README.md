@@ -17,12 +17,14 @@ A run is **valid** only if it tested the arm it claims. The session's `init` eve
 node testbed/bin/bed.mjs run --vault <vault-dir> --spec <spec.json> [--arm settings|mod] [--scenario <id>]... [--out <dir>] [--claude <bin>]
 node testbed/bin/bed.mjs show <out-dir>/results.json
 node testbed/bin/bed.mjs compare main=<out-a>/results.json branch=<out-b>/results.json
+node testbed/bin/bed.mjs dry --vault <vault-dir> --spec <spec.json> [--scenario <id>]... [--out <dir>]
 node testbed/bin/bed.mjs build --vault <vault-dir> --spec <spec.json> --bed <new-dir>
 ```
 
 - `run` builds a fresh bed for every scenario and arm, drives one session in it, and writes `results.json`. It prints a summary per run.
 - `show` prints that summary again from a `results.json`.
-- `build` makes one bed and stops, for looking around or running a hook by hand.
+- `dry` checks a spec's log layer before a live run spends anything. For each scenario it builds a bed and runs the vault's own hook scripts directly, in the order a session would: SessionStart at startup, then per turn UserPromptSubmit, PreCompact and SessionStart (compact) for a `/compact` turn, a Write plus PostToolUse when the turn asks to create a file, and Stop. It covers the settings arm only, and grades only what the hooks printed. Answers, what the user is shown, judged rows and mod events are left out, and answer and tool measures record nothing. The scripts are the om_mod contract's entry-point names (`session-start.ts`, `classify-message.ts`, `validate-write.ts`, `pre-compact.ts`, `stop-checklist.ts`).
+- `build` makes one bed and stops, for looking around. To run a hook by hand, use `dry` instead: it gives the hook the same environment and residue check as a session.
 
 **Output stays outside the repo.** By default `run` writes to `<os temp>/mindframe-testbed/<spec>-<timestamp>/`. Debug logs and transcripts carry local paths and session ids. `--out` overrides the location; the folder must not exist yet.
 
@@ -213,6 +215,8 @@ Code that ignores those variables, such as a hard-coded config path, would still
 - a change to any other entry is only noted (`residue.touched`), because the user's own sessions write to their stores while a bed runs.
 
 The runner never deletes anything, leaks included.
+
+A dry run gets exactly the same treatment. Every hook it spawns gets its environment from the same builder as a live session (`bedEnv`), and the same before and after snapshot. Hand-run hooks get neither, which is why `dry` exists.
 
 ## How turns are paced
 
