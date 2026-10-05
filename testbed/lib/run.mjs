@@ -1,11 +1,13 @@
 // Runs every scenario of a spec on each of its arms, in a fresh bed per
 // session, and writes results.json. Raw output goes to a folder outside the
 // repo by default: debug logs and transcripts carry local paths and session
-// ids.
+// ids. Each session's qmd store and config go there too, and the user's
+// qmd folders are compared before and after it (residue.mjs).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { buildBed, vaultCommit } from './bed.mjs'
+import { diff, qmdEnv, snapshot, userQmdDirs } from './residue.mjs'
 import { buildRun } from './results.mjs'
 import { runSession } from './session.mjs'
 
@@ -34,7 +36,10 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
       const name = `${s.id}-${arm}`
       const bed = path.join(out, 'beds', name)
       buildBed({ vault, bed, spec })
-      const session = { ...spec.session, env: { ...spec.session.env, ...s.env } }
+      const env = { ...qmdEnv(path.join(out, 'state', name)), ...spec.session.env, ...s.env }
+      const session = { ...spec.session, env }
+      const dirs = userQmdDirs({ ...process.env, ...env })
+      const before = snapshot(dirs)
       const r = await runSession({ cmd, arm, bed, mod: spec.mod, session, turns: s.turns, logDir: path.join(out, 'logs'), name })
       const run = buildRun({
         scenario: s.id,
@@ -44,6 +49,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
         debugText: readOr(r.files.debug),
         exitCode: r.code,
         feed: r.feed,
+        residue: diff(before, snapshot(dirs), name),
       })
       record.runs.push(run)
       onRun(run)

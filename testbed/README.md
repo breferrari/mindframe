@@ -167,6 +167,24 @@ Until verdicts are applied, `judge` rows show as awaiting and the grade is incom
 
 Their turns and fixtures are neutral and were written for this repo. `contract.json`'s extensions are in [`fixtures/contract/`](fixtures/contract/).
 
+## What a run must not leave behind
+
+A bed vault with QMD writes an index store and a collection config named after the bed folder. Left alone, both land in the user's own qmd folders, `~/.cache/qmd` and `~/.config/qmd`, and stay there after the run. So each session runs with:
+
+| Variable | Set to | qmd's default |
+|----------|--------|---------------|
+| `INDEX_PATH` | `<out>/state/<scenario>-<arm>/qmd/index.sqlite` | `($XDG_CACHE_HOME or ~/.cache)/qmd/<index>.sqlite` |
+| `QMD_CONFIG_DIR` | `<out>/state/<scenario>-<arm>/qmd/config` | `($XDG_CONFIG_HOME or ~/.config)/qmd` |
+
+The embedding models (`<cache>/qmd/models`) stay shared, because they are large. A spec's `session.env` or a scenario's `env` can still override either variable.
+
+Code that ignores those variables, such as a hard-coded config path, would still write to the user's folders. So the runner lists both folders before and after each session:
+- an entry the session created is a **leak**, and so is a changed entry named after the bed;
+- a leak is recorded on the run, listed at the top of `results.md`, and fails the grade;
+- a change to any other entry is only noted (`residue.touched`), because the user's own sessions write to their stores while a bed runs.
+
+The runner never deletes anything, leaks included.
+
 ## How turns are paced
 
 Each turn is sent only after the previous turn's `result`, then `gapMs` later. Sent all at once, stream-json input folds several prompts into one turn, and a per-turn expectation stops meaning anything. A mod may add turns of its own (a plugin-submitted prompt); those produce extra results and don't block the feed.

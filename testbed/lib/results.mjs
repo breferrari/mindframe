@@ -36,7 +36,7 @@ const hookRow = (h) => ({
   stderr: h.stderr,
 })
 
-export function buildRun({ scenario, arm, modName, streamText, debugText, exitCode, feed }) {
+export function buildRun({ scenario, arm, modName, streamText, debugText, exitCode, feed, residue = { leaks: [], touched: [] } }) {
   const { session, turns } = parseStream(streamText)
   const debug = parseDebug(debugText)
   const armCheck = checkArm({ arm, modName, session, debug })
@@ -62,6 +62,8 @@ export function buildRun({ scenario, arm, modName, streamText, debugText, exitCo
     mod: modName ? { name: modName, timings: modTimings, problems: debug.moduleProblems.filter((p) => p.id.split('@')[0] === modName) } : null,
     debugHooks: debug.hooks,
     feed,
+    // Files the session left in the user's qmd folders; a leak fails the grade.
+    residue,
   }
 }
 
@@ -77,6 +79,7 @@ export function summarize(run) {
     if (t.tools.length) lines.push(`        tools: ${t.tools.join(', ')}`)
     lines.push(`      < ${t.answer.slice(0, 160).replace(/\n/g, ' | ')}`)
   }
+  for (const l of run.residue?.leaks ?? []) lines.push(`  LEAK: ${l.change} ${l.file}`)
   if (run.mod) {
     const byEvent = {}
     for (const s of run.mod.timings) (byEvent[s.event] ??= []).push(s.ms)

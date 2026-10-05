@@ -7,7 +7,13 @@
 //   echo-file=<p> answers with the content of bed file <p>
 //   slow          takes 300 ms per turn and answers FOLDED if the next
 //                 prompt arrived before this turn's result
-import { appendFileSync, readFileSync } from 'node:fs'
+//   qmd-good      writes a qmd store and config where INDEX_PATH and
+//                 QMD_CONFIG_DIR say, as qmd itself does
+//   qmd-leak      writes them into the XDG qmd folders, named after the
+//                 bed, ignoring both (as a hard-coded config path would)
+//   qmd-touch     changes an existing store that isn't the bed's
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
 import { createInterface } from 'node:readline'
 
 const args = process.argv.slice(2)
@@ -39,6 +45,21 @@ if (modLoads) {
   debug('hooks module fake-mod@inline classic.SessionStart settled in 12.5ms (worker hop, next() included)')
 }
 hook('SessionStart', 'SessionStart:startup', modLoads ? '' : 'session context')
+
+const put = (file, text) => {
+  mkdirSync(path.dirname(file), { recursive: true })
+  writeFileSync(file, text)
+}
+const bedName = path.basename(process.cwd())
+if (mode === 'qmd-good') {
+  put(process.env.INDEX_PATH, 'store')
+  put(path.join(process.env.QMD_CONFIG_DIR, `${bedName}.yml`), 'config')
+} else if (mode === 'qmd-leak') {
+  put(path.join(process.env.XDG_CACHE_HOME, 'qmd', `${bedName}.sqlite`), 'store')
+  put(path.join(process.env.XDG_CONFIG_HOME, 'qmd', `${bedName}.yml`), 'config')
+} else if (mode === 'qmd-touch') {
+  appendFileSync(path.join(process.env.XDG_CACHE_HOME, 'qmd', 'someone-else.sqlite'), 'more')
+}
 
 const plugins = [{ name: 'builtin-a', path: 'builtin', source: 'builtin-a@builtin' }]
 if (modLoads) plugins.unshift({ name: 'fake-mod', path: 'mod', source: 'fake-mod@inline', version: '0.0.0' })
