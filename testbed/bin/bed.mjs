@@ -17,7 +17,7 @@ const USAGE = `usage:
   bed.mjs grade <results.json>
   bed.mjs judge prepare <results.json>
   bed.mjs judge apply   <results.json> <verdicts.json>
-  bed.mjs dry   --vault <dir> --spec <file> [--scenario <id>]... [--out <dir>]
+  bed.mjs dry   --vault <dir> --spec <file> [--scenario <id>]... [--out <dir>] [--deliver]
   bed.mjs compare <label>=<results.json> <label>=<results.json>...
   bed.mjs show  <results.json>
   bed.mjs build --vault <dir> --spec <file> --bed <dir>`
@@ -57,6 +57,7 @@ const { values, positionals } = parseArgs({
     out: { type: 'string' },
     bed: { type: 'string' },
     claude: { type: 'string', default: 'claude' },
+    deliver: { type: 'boolean', default: false },
     'claude-arg': { type: 'string', multiple: true },
   },
 })
@@ -69,7 +70,7 @@ if (command === 'show') {
   const spec = loadSpec(values.spec)
   const out = values.out ? path.resolve(values.out) : defaultOut(`${spec.name}-dry`)
   console.log(`output: ${out}`)
-  const record = dryRun({ spec, vault: path.resolve(values.vault), out, only: values.scenario ?? null })
+  const record = dryRun({ spec, vault: path.resolve(values.vault), out, only: values.scenario ?? null, deliver: values.deliver })
   for (const run of record.runs) console.log(summarize(run))
   process.exitCode = EXIT[gradeFile(path.join(out, 'results.json')).outcome]
 } else if (command === 'compare') {

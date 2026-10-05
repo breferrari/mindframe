@@ -17,7 +17,7 @@ const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin',
 function vaultWithScripts(t) {
   const v = makeVault(t)
   const scripts = {
-    'session-start.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); process.stdout.write(JSON.stringify({ source: i.source, INDEX_PATH: process.env.INDEX_PATH, QMD_CONFIG_DIR: process.env.QMD_CONFIG_DIR, DEMO: process.env.DEMO }) + '\\n_context injected: 0.1kB / 9.1kB budget_\\n')`,
+    'session-start.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); process.stdout.write(JSON.stringify({ source: i.source, om_mod: i.om_mod, INDEX_PATH: process.env.INDEX_PATH, QMD_CONFIG_DIR: process.env.QMD_CONFIG_DIR, DEMO: process.env.DEMO }) + '\\n_context injected: 0.1kB / 9.1kB budget_\\n')`,
     'classify-message.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); process.stdout.write('prompt: ' + i.prompt)`,
     'validate-write.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); process.stdout.write('wrote ' + require('path').basename(i.tool_input.file_path))`,
     'pre-compact.ts': `process.stdout.write('precompact')`,
@@ -119,4 +119,19 @@ test('cli: dry grades and exits like run', (t) => {
   }
   assert.equal(code, 1)
   assert.match(readFileSync(path.join(out, 'results.md'), 'utf8'), /\*\*Dry run:\*\*[\s\S]*\| c \| nope \|/)
+})
+
+test('dry --deliver runs SessionStart the way the mod does, beside the settings hooks', async (t) => {
+  const { measure, validateMeasure } = await import('../lib/measure.mjs')
+  const out = path.join(tmp(t), 'out')
+  const run = dryRun({ spec: spec(), vault: vaultWithScripts(t), out, deliver: true }).runs[0]
+  const delivered = JSON.parse(run.deliver.output.split('\n')[0])
+  assert.equal(delivered.om_mod, 'deliver')
+  assert.equal(delivered.INDEX_PATH, qmdEnv(path.join(out, 'state', 'd-dry')).INDEX_PATH, 'the same redirect as every other spawn')
+  assert.equal(JSON.parse(run.preamble[0].output.split('\n')[0]).om_mod, undefined, 'the settings SessionStart is untouched')
+  assert.equal(run.preamble.length, 1, 'the delivery is not a settings hook')
+  const m = validateMeasure({ id: 'x', kind: 'meterSlack', turn: 'preamble', in: 'deliver' }, { arms: ['settings'], turns: 3 }, 'm')
+  assert.equal(measure(m, run).value, 9000)
+  const plain = dryRun({ spec: spec(), vault: vaultWithScripts(t), out: path.join(tmp(t), 'out2') }).runs[0]
+  assert.equal(measure(m, plain), null, 'no delivery recorded means no value, never zero')
 })

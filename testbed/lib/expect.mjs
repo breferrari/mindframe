@@ -228,6 +228,7 @@ export const isSilent = (output) => {
 
 export function sourceText(t, src) {
   if (src === 'answer') return t.answer
+  if (src === 'deliver') return t.deliver ?? ''
   if (src === 'shown') return t.informational.join('\n')
   const event = src.slice('hook:'.length)
   return t.hooks.filter((h) => h.event === event).map((h) => h.output).join('\n')

@@ -43,7 +43,12 @@ export function bedEnv({ base = process.env, stateDir, spec, scenario }) {
 // The file a turn asks to create, as "... create 'path' ...", if any.
 const CREATE = /create '([^']+)'/
 
-export function dryRun({ spec, vault, out, only, runner = execFileSync }) {
+// `deliver` also runs SessionStart the way the mod does, with
+// `om_mod: "deliver"`, and keeps its output as the run's `deliver`: what the
+// mod would hand the model as its instruction file. Measures read it as the
+// `deliver` source. It is outside the settings hooks, so no hook expectation
+// sees it.
+export function dryRun({ spec, vault, out, only, deliver = false, runner = execFileSync }) {
   if (existsSync(out)) throw new Error(`output folder exists, pick a new one: ${out}`)
   mkdirSync(out, { recursive: true })
   const record = { spec: spec.name, specDoc: spec, dry: true, vault: { commit: vaultCommit(vault) }, started: new Date().toISOString(), runs: [] }
@@ -80,6 +85,7 @@ export function dryRun({ spec, vault, out, only, runner = execFileSync }) {
     }
 
     const preamble = [hook('SessionStart', { source: 'startup' }, 'SessionStart:startup')]
+    const delivered = deliver ? hook('SessionStart', { source: 'startup', om_mod: 'deliver' }, 'SessionStart:deliver') : null
     const turns = s.turns.map((t, i) => {
       for (const a of t.before) applyBefore(bed, a)
       const hooks = [hook('UserPromptSubmit', { prompt: t.text })]
@@ -116,6 +122,7 @@ export function dryRun({ spec, vault, out, only, runner = execFileSync }) {
       mod: null,
       debugHooks: [],
       feed: [],
+      ...(delivered ? { deliver: { exitCode: delivered.exitCode, output: delivered.output } } : {}),
       residue: diff(before, snapshot(dirs), name),
     })
   }
