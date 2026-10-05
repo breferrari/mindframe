@@ -1,0 +1,88 @@
+{
+  "name": "contract",
+  "description": "The core's extension contract (docs/DESIGN.md rules 4, 5, 6 and 7) in real sessions: order, the byte budget and its meter, failure isolation at every extension point, and the kill switch. Runs against any vault that implements the contract: the fixture extensions in testbed/fixtures/contract/ are copied into the bed and declared in its manifest. Settings arm only until the vault under test ships the mod.",
+  "bed": {
+    "files": [
+      { "from": "../fixtures/contract/mf-order.mjs", "path": ".claude/extensions/mf-order/index.mjs" },
+      { "from": "../fixtures/contract/mf-order-decl.mjs", "path": ".claude/extensions/mf-order-decl/index.mjs" },
+      { "from": "../fixtures/contract/mf-budget.mjs", "path": ".claude/extensions/mf-budget/index.mjs" },
+      { "from": "../fixtures/contract/mf-thrower.mjs", "path": ".claude/extensions/mf-thrower/index.mjs" },
+      { "from": "../fixtures/contract/mf-witness.mjs", "path": ".claude/extensions/mf-witness/index.mjs" },
+      { "from": "../fixtures/contract/mf-getter.mjs", "path": ".claude/extensions/mf-getter/index.mjs" }
+    ],
+    "manifest": {
+      "set": { "eager_layer_budget_bytes": 4000 },
+      "extensions": [
+        { "id": "mf-order", "module": ".claude/extensions/mf-order/index.mjs", "events": ["session-start"] },
+        { "id": "mf-order-decl", "module": ".claude/extensions/mf-order-decl/index.mjs", "events": ["session-start"], "priority": 15 },
+        { "id": "mf-budget", "module": ".claude/extensions/mf-budget/index.mjs", "events": ["session-start"] },
+        { "id": "mf-thrower", "module": ".claude/extensions/mf-thrower/index.mjs", "events": ["session-start", "stop", "prompt", "write"], "timeoutMs": 200 },
+        { "id": "mf-witness", "module": ".claude/extensions/mf-witness/index.mjs", "events": ["session-start", "stop", "prompt", "write"] },
+        { "id": "mf-getter", "module": ".claude/extensions/mf-getter/index.mjs", "events": ["session-start"] }
+      ]
+    }
+  },
+  "session": { "model": "opus", "maxBudgetUsd": 4, "allowedTools": ["Write"], "gapMs": 3000 },
+  "scenarios": [
+    {
+      "id": "contract",
+      "arms": ["settings"],
+      "turns": [
+        "List every marker that starts with MF-ORDER in your session context, in the order they appear, separated by commas. If there are none, reply only: NONE.",
+        "Reply with only the last line of your session context, verbatim. If you have no session context, reply only: NONE.",
+        "MF-PING. Did any routing hint arrive in your context with THIS message? If yes, reply with only the hint lines, verbatim. If not, reply only: NONE.",
+        "Use the Write tool to create 'notes/mf-scratch.md' containing exactly the one line 'scratch'. Then say only: written.",
+        "Did a notice that an extension was skipped arrive in your context at any point in this session? If yes, reply with only one such line, verbatim. If not, reply only: NONE."
+      ],
+      "expect": [
+        { "id": "rule 4: order as the hook printed it", "turn": "preamble", "order": { "in": "hook:SessionStart", "items": ["MF-ORDER-10", "MF-ORDER-TIE-A", "MF-ORDER-TIE-B", "MF-ORDER-15", "MF-ORDER-20", "MF-ORDER-UNSET"] } },
+        { "id": "rule 4: order as the model received it", "turn": 1, "order": { "in": "answer", "items": ["MF-ORDER-10", "MF-ORDER-TIE-A", "MF-ORDER-TIE-B", "MF-ORDER-15", "MF-ORDER-20", "MF-ORDER-UNSET"] } },
+        {
+          "id": "rule 7: the meter's numbers and collapses are true",
+          "turn": "preamble",
+          "meter": {
+            "in": "hook:SessionStart",
+            "maxBytes": 4000,
+            "collapsed": ["MF budget unset", "MF budget 930"],
+            "sections": [
+              { "name": "MF budget core", "body": "MF-BUDGET-CORE-BODY" },
+              { "name": "MF budget 920", "body": "MF-BUDGET-920-BODY" },
+              { "name": "MF budget 930", "body": "MF-BUDGET-930-BODY" },
+              { "name": "MF budget unset", "body": "MF-BUDGET-UNSET-BODY" }
+            ]
+          }
+        },
+        { "id": "rule 7: collapsed sections left their pointers", "turn": "preamble", "budget": { "in": "hook:SessionStart", "present": ["MF-BUDGET-930-POINTER", "MF-BUDGET-UNSET-POINTER"] } },
+        { "id": "rule 7: the model received the meter whole", "turn": 2, "answer": { "re": "context injected: [\\d.]+kB / 4\\.0kB budget — collapsed: MF budget unset, MF budget 930" } },
+        { "id": "rule 5: a throwing section is reported, the rest arrive", "turn": "preamble", "isolates": { "event": "SessionStart", "extension": "mf-thrower, section throws", "present": ["MF-WITNESS-SECTION", "MF-ORDER-10", "MF-BUDGET-CORE-BODY"] } },
+        { "id": "rule 5: an unreadable extension is reported, the rest load", "turn": "preamble", "isolates": { "event": "SessionStart", "extension": "mf-getter: skipped", "present": ["MF-WITNESS-SECTION"] } },
+        { "id": "rule 5: a rejecting detector is counted, the witness finding shown", "turn": 1, "hook": { "event": "Stop", "output": { "all": ["MF-WITNESS-CLAIM", "extension failure"] } } },
+        { "id": "rule 5: the full Stop report names the rejecting detector", "turn": 2, "hook": { "event": "UserPromptSubmit", "output": "mf-thrower, detector rejects: skipped" } },
+        { "id": "rule 5: a never-settling signal times out, the witness hint arrives", "turn": 3, "isolates": { "event": "UserPromptSubmit", "extension": "mf-thrower, signal hangs: skipped (timed out", "present": ["MF-WITNESS-HINT"] } },
+        { "id": "rule 5: the model received the witness hint", "turn": 3, "answer": "MF-WITNESS-HINT" },
+        { "id": "the write is a Write call", "turn": 4, "tools": { "includes": ["Write"] } },
+        { "id": "rule 5: a wrong-shape validator is reported, the witness warning arrives", "turn": 4, "isolates": { "event": "PostToolUse", "extension": "mf-thrower, validator wrong-shape: skipped", "present": ["MF-WITNESS-WARNING"] } },
+        { "id": "rule 5: the model was told what was skipped", "turn": 5, "answer": { "re": "extension mf-(thrower|getter)" } },
+        { "id": "every UserPromptSubmit succeeded", "turn": "all", "hook": { "event": "UserPromptSubmit" } },
+        { "id": "every Stop succeeded", "turn": "all", "hook": { "event": "Stop" } }
+      ]
+    },
+    {
+      "id": "kill-switch",
+      "arms": ["settings"],
+      "env": { "VAULT_EXTENSIONS": "off" },
+      "turns": [
+        "Say only: one.",
+        "Use the Write tool to create 'notes/mf-off.md' containing exactly the one line 'off'. Then say only: written."
+      ],
+      "expect": [
+        { "id": "rule 6: the core says extensions are off and keeps its meter", "turn": "preamble", "hook": { "event": "SessionStart", "output": { "all": ["extensions are off", "context injected"] } } },
+        { "id": "rule 6: no extension's section arrives", "turn": "preamble", "hook": { "event": "SessionStart", "everyOutput": { "not": "MF-" } } },
+        { "id": "rule 6: no extension runs at Stop", "turn": "all", "hook": { "event": "Stop", "everyOutput": { "not": "MF-" } } },
+        { "id": "rule 6: no extension runs at prompt", "turn": "all", "hook": { "event": "UserPromptSubmit", "everyOutput": { "not": "MF-" } } },
+        { "id": "the write is a Write call", "turn": 2, "tools": { "includes": ["Write"] } },
+        { "id": "rule 6: no extension validates the write", "turn": 2, "hook": { "event": "PostToolUse", "everyOutput": { "not": "MF-" } } }
+      ]
+    }
+  ]
+}

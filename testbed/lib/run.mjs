@@ -34,7 +34,8 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
       const name = `${s.id}-${arm}`
       const bed = path.join(out, 'beds', name)
       buildBed({ vault, bed, spec })
-      const r = await runSession({ cmd, arm, bed, mod: spec.mod, session: spec.session, turns: s.turns, logDir: path.join(out, 'logs'), name })
+      const session = { ...spec.session, env: { ...spec.session.env, ...s.env } }
+      const r = await runSession({ cmd, arm, bed, mod: spec.mod, session, turns: s.turns, logDir: path.join(out, 'logs'), name })
       const run = buildRun({
         scenario: s.id,
         arm,

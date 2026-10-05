@@ -79,6 +79,8 @@ The builder refuses a folder that exists and never deletes anything.
 |-----|---------|
 | `name` | Lowercase id; names the output folder |
 | `bed.include`, `bed.copy`, `bed.fixtures` | See [The bed](#the-bed). A fixture has `content`, or `fill` bytes of `char` (default `x`) after an optional `header` |
+| `bed.files` | `[{ from, path }]`: files copied from the repo into the bed. `from` is relative to the spec file, so a spec can use fixtures beside it |
+| `bed.manifest` | `{ set, extensions }`: edits the bed's `vault-manifest.json`. `set` replaces top-level keys (never `extensions`); `extensions` appends declarations after the vault's own |
 | `mod.dir`, `mod.name` | The mod folder inside the bed, and its plugin name (default: the folder name). Needed for the mod arm |
 | `session.model` | Default `opus`. Use a smaller model only where the model's answers are not what is measured |
 | `session.maxBudgetUsd` | Per-session cap, default 4 |
@@ -86,6 +88,7 @@ The builder refuses a folder that exists and never deletes anything.
 | `session.gapMs`, `settleMs`, `turnTimeoutMs` | The pause after a result before the next turn (2 s); the wait after the last result for late events (5 s); the longest a turn may take (180 s) |
 | `session.env` | Extra environment for the session, such as a hook's state-path override |
 | `scenarios[].arms` | Default both |
+| `scenarios[].env` | Merged over `session.env` for this scenario, such as a kill switch |
 | `scenarios[].turns` | A string, or `{ text, before }`. `before` actions run in the bed just before the turn is sent: `{ "append": path, "bytes": n, "char": "y" }` or `{ "write": path, "content": "..." }` |
 
 All paths are relative POSIX paths inside the bed. The runner refuses `..`, absolute paths and backslashes.
@@ -108,13 +111,14 @@ There are two layers. A log shows that a hook ran, not what reached the model. S
 
 | Kind | Layer | Passes when |
 |------|-------|-------------|
-| `hook: { event, name?, ran?, exit?, silent?, output? }` | log | Hooks of that event (and name) ran in the turn and every one exited 0, or exited with `exit` where one is given. `silent: true`: every one printed nothing or `{}`; `silent: false`: at least one printed something. `output`: at least one output matches. `ran: false`: none ran |
+| `hook: { event, name?, ran?, exit?, silent?, output?, everyOutput? }` | log | Hooks of that event (and name) ran in the turn and every one exited 0, or exited with `exit` where one is given. `silent: true`: every one printed nothing or `{}`; `silent: false`: at least one printed something. `output`: at least one output matches; `everyOutput`: every output does, which a negative such as `{ "not": "MF-" }` needs. `ran: false`: none ran |
 | `answer: <matcher>` | model | The model's answer in the turn matches |
 | `shown: <matcher>` | log | What the user was shown (a Stop `systemMessage`, a mod's line under the answer) matches |
 | `tools: { includes?, max? }` | log | The turn called these tools, and no more than `max` calls in all |
 | `modEvent: { event, min?, maxMs? }` | log | The mod's handler for `event` settled at least `min` times (default 1) in the run, none slower than `maxMs`. Mod arm only |
 | `order: { in, items }` | either | Every item is present in the source, in this order. Presence is checked first, so a missing item fails rather than sorting first |
 | `budget: { in, maxBytes?, lastLine?, present?, absent? }` | either | The source is non-empty and at most `maxBytes` bytes (UTF-8, exact). Its last line matches `lastLine`, so a meter line that arrived proves nothing was cut. `present` sections survived and `absent` ones were dropped |
+| `meter: { in, maxBytes?, collapsed?, sections }` | either | The last line is a session-start meter (`_context injected: X.XkB / Y.YkB budget — collapsed: A, B_`), not truncated, and its claims are true. The size it reports fits its budget and `maxBytes`. The bytes that arrived fit `maxBytes`, and are no fewer than it reports (±50 bytes of rounding). Its collapsed list equals `collapsed`. Each of `sections` (`{ name, body }`) is named as collapsed exactly when its body is missing |
 | `isolates: { event, extension, present? }` | log | The hook still exited 0, its output names the extension that failed, and the other sections (`present`) are still there |
 | `judge: { question, rubric }` | model | A blind model grader decides (see below). Needs a numbered turn |
 
@@ -159,7 +163,9 @@ Until verdicts are applied, `judge` rows show as awaiting and the grade is incom
 |------|-------|--------|
 | [`specs/obsidian-mind.json`](specs/obsidian-mind.json) | obsidian-mind v9.0.1 | **Settings arm:** all five settings hooks (SessionStart, UserPromptSubmit, PostToolUse, PreCompact, Stop). **Mod arm:** SessionStart and Stop delivery, with the settings hooks standing down. **Model layer:** the context's meter line at startup (both arms) and after `/compact` (mod arm), and a Stop report delivered once, then again after the findings change |
 
-Its turns and fixtures are neutral and were written for this repo.
+| [`specs/contract.json`](specs/contract.json) | any vault that implements the extension contract (today: wiki-mind) | `docs/DESIGN.md` rules 4–7. **Rule 4:** item, declaration and unset priorities, and ties by id, as the hook printed them and as the model received them. **Rule 7:** the meter's numbers and collapses checked against what arrived. **Rule 5:** a throw, a rejection, a never-settling call, a wrong shape and a throwing getter, each reported while the hook succeeds and the witness extension's items arrive. **Rule 6:** the kill switch. Settings arm only until the vault ships the mod |
+
+Their turns and fixtures are neutral and were written for this repo. `contract.json`'s extensions are in [`fixtures/contract/`](fixtures/contract/).
 
 ## How turns are paced
 

@@ -3,7 +3,7 @@
 // sections read git, so fixtures are committed to keep them from showing up
 // as uncommitted changes.
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 const git = (cwd, args, opts = {}) => execFileSync('git', args, { cwd, encoding: 'utf8', ...opts })
@@ -25,6 +25,16 @@ export function writeFixture(bed, f) {
   else writeFileSync(file, (f.header ?? '') + (f.char ?? 'x').repeat(f.fill))
 }
 
+// Applies bed.manifest to the bed's vault-manifest.json, creating it when
+// the vault has none.
+export function editManifest(bed, edit) {
+  const file = path.join(bed, 'vault-manifest.json')
+  const manifest = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {}
+  Object.assign(manifest, edit.set)
+  if (edit.extensions.length) manifest.extensions = [...(manifest.extensions ?? []), ...edit.extensions]
+  writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n')
+}
+
 // The bed folder must not exist: the builder never overwrites or deletes.
 export function buildBed({ vault, bed, spec }) {
   if (existsSync(bed)) throw new Error(`bed folder exists, pick a new one: ${bed}`)
@@ -41,7 +51,13 @@ export function buildBed({ vault, bed, spec }) {
     const src = toNative(vault, c)
     if (existsSync(src)) cpSync(src, toNative(bed, c), { recursive: true, verbatimSymlinks: true })
   }
+  for (const f of spec.bed.files) {
+    const dst = toNative(bed, f.path)
+    mkdirSync(path.dirname(dst), { recursive: true })
+    cpSync(f.source, dst)
+  }
   for (const f of spec.bed.fixtures) writeFixture(bed, f)
+  if (spec.bed.manifest) editManifest(bed, spec.bed.manifest)
 
   git(bed, ['init', '-q'])
   git(bed, ['config', 'user.email', 'bed@example.com'])
