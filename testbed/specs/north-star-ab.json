@@ -1,6 +1,6 @@
 {
   "name": "north-star-ab",
-  "description": "obsidian-mind#304: does a session know the vault's goals when the North Star is too long for the session-start hook budget? Runs on obsidian-mind with a synthetic North Star of two shapes, on both arms; run it against main and against the degradation-ladder branch and put the two side by side with `bed.mjs compare`. The mod's larger instruction-file budget is the control: it should fit either way. Recall is measured, not graded. The blind and steer scenarios (settings arm only) measure what the hook delivered: blind forbids reading the file, so recall is only what arrived; steer asks a question that does not mention goals, so naming one means the session knew it unprompted.",
+  "description": "obsidian-mind#304: does a session know the vault's goals when the North Star is too long for the session-start hook budget? Runs on obsidian-mind with a synthetic North Star of two shapes, on both arms; run it against main and against the degradation-ladder branch and put the two side by side with `bed.mjs compare`. The mod's larger instruction-file budget is the control: it should fit either way. Recall is measured, not graded. The blind and steer scenarios (settings arm only) measure what the hook delivered: blind turns every tool off (an allowlist, `tools: []`), so the goals named are only what arrived, so recall is only what arrived; steer asks a question that does not mention goals, so naming one means the session knew it unprompted.",
   "bed": {
     "include": [
       "."
@@ -521,12 +521,6 @@
           "path": "brain/North Star.md"
         }
       ],
-      "disallowedTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash"
-      ],
       "turns": [
         "Say only: ready.",
         "What should I work on next? Name the goals you're aware of.",
@@ -607,6 +601,45 @@
             "Drowsmere",
             "Embergast",
             "Foxmantle"
+          ]
+        },
+        {
+          "id": "goals named by number when asked what to work on",
+          "posthoc": true,
+          "kind": "count",
+          "turn": 2,
+          "in": "answer",
+          "markers": [
+            "Goal 01",
+            "Goal 02",
+            "Goal 03",
+            "Goal 04",
+            "Goal 05",
+            "Goal 06",
+            "Goal 07",
+            "Goal 08",
+            "Goal 09",
+            "Goal 10",
+            "Goal 11",
+            "Goal 12",
+            "Goal 13",
+            "Goal 14",
+            "Goal 15",
+            "Goal 16",
+            "Goal 17",
+            "Goal 18",
+            "Goal 19",
+            "Goal 20",
+            "Goal 21",
+            "Goal 22",
+            "Goal 23",
+            "Goal 24",
+            "Goal 25",
+            "Goal 26",
+            "Goal 27",
+            "Goal 28",
+            "Goal 29",
+            "Goal 30"
           ]
         },
         {
@@ -720,7 +753,8 @@
             "max": 0
           }
         }
-      ]
+      ],
+      "tools": []
     },
     {
       "id": "steer-30x380",
@@ -774,6 +808,45 @@
             "Drowsmere",
             "Embergast",
             "Foxmantle"
+          ]
+        },
+        {
+          "id": "goals named by number, unprompted",
+          "posthoc": true,
+          "kind": "count",
+          "turn": 2,
+          "in": "answer",
+          "markers": [
+            "Goal 01",
+            "Goal 02",
+            "Goal 03",
+            "Goal 04",
+            "Goal 05",
+            "Goal 06",
+            "Goal 07",
+            "Goal 08",
+            "Goal 09",
+            "Goal 10",
+            "Goal 11",
+            "Goal 12",
+            "Goal 13",
+            "Goal 14",
+            "Goal 15",
+            "Goal 16",
+            "Goal 17",
+            "Goal 18",
+            "Goal 19",
+            "Goal 20",
+            "Goal 21",
+            "Goal 22",
+            "Goal 23",
+            "Goal 24",
+            "Goal 25",
+            "Goal 26",
+            "Goal 27",
+            "Goal 28",
+            "Goal 29",
+            "Goal 30"
           ]
         },
         {
@@ -893,12 +966,6 @@
           "path": "brain/North Star.md"
         }
       ],
-      "disallowedTools": [
-        "Read",
-        "Grep",
-        "Glob",
-        "Bash"
-      ],
       "turns": [
         "Say only: ready.",
         "What should I work on next? Name the goals you're aware of.",
@@ -943,6 +1010,27 @@
             "Kettlevane",
             "Lumbrisk",
             "Marrowgate"
+          ]
+        },
+        {
+          "id": "goals named by number when asked what to work on",
+          "posthoc": true,
+          "kind": "count",
+          "turn": 2,
+          "in": "answer",
+          "markers": [
+            "Goal 01",
+            "Goal 02",
+            "Goal 03",
+            "Goal 04",
+            "Goal 05",
+            "Goal 06",
+            "Goal 07",
+            "Goal 08",
+            "Goal 09",
+            "Goal 10",
+            "Goal 11",
+            "Goal 12"
           ]
         },
         {
@@ -1038,7 +1126,8 @@
             "max": 0
           }
         }
-      ]
+      ],
+      "tools": []
     },
     {
       "id": "steer-12-live",
@@ -1074,6 +1163,27 @@
             "Kettlevane",
             "Lumbrisk",
             "Marrowgate"
+          ]
+        },
+        {
+          "id": "goals named by number, unprompted",
+          "posthoc": true,
+          "kind": "count",
+          "turn": 2,
+          "in": "answer",
+          "markers": [
+            "Goal 01",
+            "Goal 02",
+            "Goal 03",
+            "Goal 04",
+            "Goal 05",
+            "Goal 06",
+            "Goal 07",
+            "Goal 08",
+            "Goal 09",
+            "Goal 10",
+            "Goal 11",
+            "Goal 12"
           ]
         },
         {

@@ -3,7 +3,7 @@
 // arm.
 import { DRY_SKIPPED } from './dry.mjs'
 import { evaluate } from './expect.mjs'
-import { formatValue, measureAll } from './measure.mjs'
+import { formatValue, measureAll, measureLabel } from './measure.mjs'
 
 export function grade(record, spec, verdicts = {}) {
   const rows = []
@@ -98,7 +98,8 @@ export function renderMarkdown(record, graded) {
         const r = graded.measures.find((x) => x.scenario === scenario && x.id === id && x.arm === a)
         return r ? formatValue(r.result) : '—'
       })
-      out.push(`| ${scenario} | ${esc(id)} | ${cells.join(' | ')} |`)
+      const row = graded.measures.find((x) => x.scenario === scenario && x.id === id)
+      out.push(`| ${scenario} | ${esc(measureLabel(row))} | ${cells.join(' | ')} |`)
     }
   }
 

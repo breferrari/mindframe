@@ -141,6 +141,8 @@ export function validateSpec(raw, baseDir = process.cwd()) {
     if (!Array.isArray(s.turns) || s.turns.length === 0) throw new SpecError(`${where}.turns must be a non-empty array`)
     const turns = s.turns.map((t, j) => normalizeTurn(t, `${where}.turns[${j}]`))
     if (s.env !== undefined) checkEnv(s.env, `${where}.env`)
+    // tools is an allowlist of built-in tools; [] means none at all.
+    if (s.tools !== undefined && !(Array.isArray(s.tools) && s.tools.every((x) => typeof x === 'string' && x !== ''))) throw new SpecError(`${where}.tools must be a list of tool names, or [] for none`)
     for (const k of ['allowedTools', 'disallowedTools']) {
       if (s[k] !== undefined && !(Array.isArray(s[k]) && s[k].every((x) => typeof x === 'string' && x !== ''))) throw new SpecError(`${where}.${k} must be a list of tool names`)
     }

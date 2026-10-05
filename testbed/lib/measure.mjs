@@ -37,6 +37,7 @@ export function validateMeasure(m, { arms, turns }, where) {
   }
   if (m.kind === 'count' && new Set(m.markers.map((x) => x.toLowerCase())).size !== m.markers.length) throw new MeasureError(`${where}.markers must be distinct`)
   if (m.kind === 'toolRead' && (typeof m.path !== 'string' || m.path === '')) throw new MeasureError(`${where}.path is required`)
+  if (m.posthoc !== undefined && typeof m.posthoc !== 'boolean') throw new MeasureError(`${where}.posthoc must be true or false`)
   if (m.kind === 'meterLevel' && (typeof m.section !== 'string' || m.section === '')) throw new MeasureError(`${where}.section is required`)
   return out
 }
@@ -92,12 +93,16 @@ export function measureAll(record, spec) {
     for (const m of s.measures ?? []) {
       for (const arm of m.arms) {
         const run = record.runs.find((r) => r.scenario === s.id && r.arm === arm)
-        if (run) rows.push({ scenario: s.id, arm, id: m.id, kind: m.kind, result: measure(m, run) })
+        if (run) rows.push({ scenario: s.id, arm, id: m.id, kind: m.kind, posthoc: m.posthoc === true, result: measure(m, run) })
       }
     }
   }
   return rows
 }
+
+// A measure chosen after seeing the results says so wherever it is shown,
+// so it is never read as one decided in advance.
+export const measureLabel = (row) => (row.posthoc ? `${row.id} (post-hoc)` : row.id)
 
 export function formatValue(result) {
   if (result === null) return '—'

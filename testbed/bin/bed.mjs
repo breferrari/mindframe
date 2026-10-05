@@ -18,7 +18,7 @@ const USAGE = `usage:
   bed.mjs judge prepare <results.json>
   bed.mjs judge apply   <results.json> <verdicts.json>
   bed.mjs dry   --vault <dir> --spec <file> [--scenario <id>]... [--out <dir>] [--deliver]
-  bed.mjs compare <label>=<results.json> <label>=<results.json>...
+  bed.mjs compare <label>=<results.json> <label>=<results.json>... [--spec <file>]
   bed.mjs show  <results.json>
   bed.mjs build --vault <dir> --spec <file> --bed <dir>`
 
@@ -80,7 +80,8 @@ if (command === 'show') {
     return { label: p.slice(0, at), record: readJson(p.slice(at + 1)) }
   })
   if (labelled.length < 2) fail('compare needs two or more labelled results')
-  console.log(compare(labelled))
+  // --spec grades the stored runs against a newer spec, e.g. one with a measure added since.
+  console.log(compare(labelled, values.spec ? loadSpec(values.spec) : null))
 } else if (command === 'grade') {
   if (!positionals[0]) fail('grade needs a results.json')
   process.exitCode = EXIT[gradeFile(positionals[0]).outcome]

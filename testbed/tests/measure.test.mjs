@@ -132,3 +132,19 @@ test('the North Star fixtures have the shapes the A/B relies on, and match the f
   assert.equal(b.done, 3)
   assert.ok(b.focus > 12000 && b.focus < 12600, `Current Focus ${b.focus} bytes`)
 })
+
+test('compare can grade stored runs against a newer spec; a post-hoc measure says so', () => {
+  const old = validateSpec(minimalSpec({ scenarios: [{ id: 's', arms: ['settings'], turns: ['a'], measures: [{ id: 'markers', kind: 'count', turn: 1, in: 'answer', markers: ['A'] }] }] }))
+  const newer = validateSpec(
+    minimalSpec({
+      scenarios: [{ id: 's', arms: ['settings'], turns: ['a'], measures: [{ id: 'markers', kind: 'count', turn: 1, in: 'answer', markers: ['A'] }, { id: 'numbers', posthoc: true, kind: 'count', turn: 1, in: 'answer', markers: ['Goal 01'] }] }],
+    }),
+  )
+  const rec = (answer, head) => ({ spec: 'demo', specDoc: old, vault: { commit: { head: head.repeat(40), dirty: false } }, runs: [run({ turns: [turn(1, { answer })] })] })
+  const pair = [{ label: 'a', record: rec('A and Goal 01', 'a') }, { label: 'b', record: rec('nothing', 'b') }]
+  assert.doesNotMatch(compare(pair), /numbers/, 'the stored spec has no such measure')
+  const md = compare(pair, newer)
+  assert.ok(md.includes('| numbers (post-hoc) | 1/1 | 0/1 |'), md)
+  assert.ok(md.includes('| markers | 1/1 | 0/1 |'), md)
+  assert.throws(() => validateMeasure({ id: 'x', posthoc: 'yes', kind: 'bytes', in: 'answer' }, ctx, 'm'), /posthoc/)
+})

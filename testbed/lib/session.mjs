@@ -37,6 +37,10 @@ export function claudeArgs({ arm, bed, mod, session, debugFile }) {
   // Tools the model may not use at all this session, such as Read when what
   // is measured is only what the hooks delivered.
   if (session.disallowedTools?.length) args.push('--disallowedTools', session.disallowedTools.join(','))
+  // An allowlist of built-in tools; an empty one turns every tool off. Only an
+  // allowlist is sure: a denylist misses tools it didn't think of (a Windows
+  // session also has PowerShell, which read the file in an early blind run).
+  if (Array.isArray(session.tools)) args.push('--tools', session.tools.join(','))
   if (arm === 'mod') args.push('--plugin-dir', path.join(bed, ...mod.dir.split('/')))
   return args
 }
