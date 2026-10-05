@@ -3,6 +3,7 @@
 // expectations per turn are the grader's (testbed/README.md has the format).
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { ExpectError, validateExpectation } from './expect.mjs'
 
 export const ARMS = ['settings', 'mod']
 
@@ -97,7 +98,19 @@ export function validateSpec(raw) {
     if (arms.includes('mod') && !mod) throw new SpecError(`${where}: the mod arm needs spec.mod`)
     if (!Array.isArray(s.turns) || s.turns.length === 0) throw new SpecError(`${where}.turns must be a non-empty array`)
     const turns = s.turns.map((t, j) => normalizeTurn(t, `${where}.turns[${j}]`))
-    return { ...s, arms, turns }
+    const expectIds = new Set()
+    const expect = (s.expect ?? []).map((e, j) => {
+      const w = `${where}.expect[${j}]`
+      try {
+        const out = validateExpectation(e, { arms, turns: turns.length }, w)
+        if (expectIds.has(out.id)) throw new ExpectError(`${w}: duplicate id ${out.id}`)
+        expectIds.add(out.id)
+        return out
+      } catch (err) {
+        throw err instanceof ExpectError ? new SpecError(err.message) : err
+      }
+    })
+    return { ...s, arms, turns, expect }
   })
   return { ...raw, bed, mod, session, scenarios }
 }
