@@ -207,6 +207,66 @@
           "kind": "bytes",
           "turn": "preamble",
           "in": "hook:SessionStart"
+        },
+        {
+          "id": "goal markers the mod delivers (dry --deliver)",
+          "arms": [
+            "settings"
+          ],
+          "kind": "count",
+          "turn": "preamble",
+          "in": "deliver",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate",
+            "Nettlecombe",
+            "Orrinsby",
+            "Pellucine",
+            "Quarrowe",
+            "Rimblestone",
+            "Saltreach",
+            "Thistlemark",
+            "Umberlith",
+            "Vexmoor",
+            "Wrenhallow",
+            "Yarrowdeep",
+            "Zelkovan",
+            "Ambrelin",
+            "Bossenrow",
+            "Cindervale",
+            "Drowsmere",
+            "Embergast",
+            "Foxmantle"
+          ]
+        },
+        {
+          "id": "North Star level the mod delivers (dry --deliver)",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "deliver",
+          "section": "North Star (current goals)"
+        },
+        {
+          "id": "mod budget left unused (dry --deliver)",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterSlack",
+          "turn": "preamble",
+          "in": "deliver"
         }
       ],
       "expect": [
@@ -372,6 +432,48 @@
           "kind": "bytes",
           "turn": "preamble",
           "in": "hook:SessionStart"
+        },
+        {
+          "id": "goal markers the mod delivers (dry --deliver)",
+          "arms": [
+            "settings"
+          ],
+          "kind": "count",
+          "turn": "preamble",
+          "in": "deliver",
+          "markers": [
+            "Brindlewick",
+            "Corvantine",
+            "Dashmere",
+            "Elvorrow",
+            "Fennigast",
+            "Glimmerholt",
+            "Harrowind",
+            "Islemont",
+            "Jasperlane",
+            "Kettlevane",
+            "Lumbrisk",
+            "Marrowgate"
+          ]
+        },
+        {
+          "id": "North Star level the mod delivers (dry --deliver)",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterLevel",
+          "turn": "preamble",
+          "in": "deliver",
+          "section": "North Star (current goals)"
+        },
+        {
+          "id": "mod budget left unused (dry --deliver)",
+          "arms": [
+            "settings"
+          ],
+          "kind": "meterSlack",
+          "turn": "preamble",
+          "in": "deliver"
         }
       ],
       "expect": [

@@ -19,7 +19,8 @@ export const MEASURE_KINDS = ['count', 'toolRead', 'meterLevel', 'meterSlack', '
 
 export class MeasureError extends Error {}
 
-const SOURCE = /^(answer|shown|hook:[A-Za-z]+)$/
+// `deliver` is a dry run's mod delivery (dry --deliver); live runs have none.
+const SOURCE = /^(answer|shown|deliver|hook:[A-Za-z]+)$/
 
 export function validateMeasure(m, { arms, turns }, where) {
   if (typeof m.id !== 'string' || m.id === '') throw new MeasureError(`${where}.id is required`)
@@ -40,7 +41,7 @@ export function validateMeasure(m, { arms, turns }, where) {
   return out
 }
 
-const preambleOf = (run) => ({ index: 'preamble', hooks: run.preamble, answer: '', informational: [], tools: [], toolCalls: [] })
+const preambleOf = (run) => ({ index: 'preamble', hooks: run.preamble, answer: '', informational: [], tools: [], toolCalls: [], deliver: run.deliver?.output ?? '' })
 
 function turnsFor(run, turn) {
   if (turn === 'preamble') return [preambleOf(run)]
@@ -54,6 +55,7 @@ const norm = (s) => s.replace(/\\/g, '/').toLowerCase()
 // invalid run, a missing turn, no meter).
 export function measure(m, run) {
   if (!run.valid) return null
+  if (m.in === 'deliver' && !run.deliver) return null
   // A dry run has no answers and no model-made tool calls to measure.
   if (run.dry && (m.kind === 'toolRead' || m.in === 'answer')) return null
   const ts = turnsFor(run, m.turn)

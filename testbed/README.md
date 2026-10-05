@@ -17,7 +17,7 @@ A run is **valid** only if it tested the arm it claims. The session's `init` eve
 node testbed/bin/bed.mjs run --vault <vault-dir> --spec <spec.json> [--arm settings|mod] [--scenario <id>]... [--out <dir>] [--claude <bin>]
 node testbed/bin/bed.mjs show <out-dir>/results.json
 node testbed/bin/bed.mjs compare main=<out-a>/results.json branch=<out-b>/results.json
-node testbed/bin/bed.mjs dry --vault <vault-dir> --spec <spec.json> [--scenario <id>]... [--out <dir>]
+node testbed/bin/bed.mjs dry --vault <vault-dir> --spec <spec.json> [--scenario <id>]... [--out <dir>] [--deliver]
 node testbed/bin/bed.mjs build --vault <vault-dir> --spec <spec.json> --bed <new-dir>
 ```
 
@@ -25,6 +25,7 @@ node testbed/bin/bed.mjs build --vault <vault-dir> --spec <spec.json> --bed <new
 - `show` prints that summary again from a `results.json`.
 - `dry` checks a spec's log layer before a live run spends anything. For each scenario it builds a bed and runs the vault's own hook scripts directly, in the order a session would: SessionStart at startup, then per turn UserPromptSubmit, PreCompact and SessionStart (compact) for a `/compact` turn, a Write plus PostToolUse when the turn asks to create a file, and Stop. It covers the settings arm only, and grades only what the hooks printed. Answers, what the user is shown, judged rows and mod events are left out, and answer and tool measures record nothing. The scripts are the om_mod contract's entry-point names (`session-start.ts`, `classify-message.ts`, `validate-write.ts`, `pre-compact.ts`, `stop-checklist.ts`).
 - A scenario can set its own `allowedTools` and `disallowedTools`, replacing the session's. `disallowedTools` removes tools from the session entirely, so a measure reads only what the hooks delivered.
+- `dry --deliver` also runs SessionStart the way the mod does (`om_mod: "deliver"`), with the same environment and residue check, and keeps the output as the run's `deliver`. That is what the mod would hand the model as its instruction file. Measures read it with `"in": "deliver"`; in a live run, or a dry run without `--deliver`, they record nothing. No hook expectation sees it.
 - `build` makes one bed and stops, for looking around. To run a hook by hand, use `dry` instead: it gives the hook the same environment and residue check as a session.
 
 **Output stays outside the repo.** By default `run` writes to `<os temp>/mindframe-testbed/<spec>-<timestamp>/`. Debug logs and transcripts carry local paths and session ids. `--out` overrides the location; the folder must not exist yet.
@@ -150,7 +151,7 @@ An A/B needs numbers, not verdicts: how many of 30 goals a session named, whethe
 | `meterSlack: { in }` | the budget the meter says went unused: its budget minus the size it reports |
 | `bytes: { in }` | the source's size in bytes |
 
-Each takes `turn` (default `"any"`) and `arms`. A measure on an invalid run or a missing turn records nothing (`—`), never zero.
+Each takes `turn` (default `"any"`) and `arms`. `in` is `answer`, `shown`, `hook:<Event>`, or `deliver` (a dry run's mod delivery, from `dry --deliver`). A measure on an invalid run or a missing turn records nothing (`—`), never zero.
 
 Tool calls are recorded with only what they touched (a file, path, pattern, command or URL, cut to 300 characters), so a transcript's file contents never land in `results.json`.
 
