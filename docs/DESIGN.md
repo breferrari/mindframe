@@ -24,7 +24,7 @@ The dispatcher runs only the extensions the manifest names. It never discovers t
 
 ### 4. Ordering: numeric priority, unset last, ties broken by id
 
-Each extension may set a numeric priority. Lower numbers run first, extensions without a priority run after all that have one, and equal priorities sort by extension id.
+Each extension may set a numeric priority. Priority 0 is the most important. A larger number means lower priority: it runs later, and under the budget (rule 7) it is cut first. Extensions without a priority are the lowest of all, and equal priorities sort by extension id.
 
 **Why:** order decides what the model reads first, and which sections survive the budget (rule 7). It has to be the same on every machine and every run. Load order, file-system order and object-key order all vary, but a sort on (priority, id) does not.
 
@@ -42,7 +42,7 @@ One environment variable turns off every extension for a session. The core's own
 
 ### 7. The core owns the output budget; extensions return sections, never stdout
 
-An extension returns structured sections (a title, a body, a priority). It never writes to stdout itself. The core assembles the sections in order and fits them to the event's byte budget. Low-priority sections are shortened or dropped first, and a meter line records what was cut.
+An extension returns structured sections (a title, a body, a priority). It never writes to stdout itself. The core assembles the sections in order and fits them to the event's byte budget. The lowest-priority sections, those with the largest numbers and then those with none (rule 4), are shortened or dropped first, and a meter line records what was cut.
 
 **Why:** hook output that reaches the model has hard size limits. Past them, the platform may cut the output silently to a preview while still reporting success. If extensions printed their own output, no single place could enforce the limit, and the cut would land wherever the bytes ran out, often in the middle of the most important section. When the core owns the budget, the cut is deliberate, follows priority, and is visible in the meter.
 
