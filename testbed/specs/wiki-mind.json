@@ -177,6 +177,19 @@
           }
         },
         {
+          "id": "detectors: no orphan before the new note (every fixture note is linked)",
+          "arms": [
+            "settings"
+          ],
+          "turn": 1,
+          "hook": {
+            "event": "Stop",
+            "everyOutput": {
+              "not": "orphan note"
+            }
+          }
+        },
+        {
           "id": "detectors: the user sees the summary",
           "arms": [
             "settings"
@@ -314,6 +327,22 @@
               "all": [
                 "2 concept or entity notes cite no source",
                 "2 notes Index.md doesn't annotate"
+              ]
+            }
+          }
+        },
+        {
+          "id": "detectors: the new note, unlinked and without frontmatter, is an orphan with frontmatter problems",
+          "arms": [
+            "settings"
+          ],
+          "turn": 4,
+          "hook": {
+            "event": "Stop",
+            "output": {
+              "all": [
+                "1 orphan note",
+                "1 note with frontmatter problems"
               ]
             }
           }
