@@ -31,6 +31,7 @@ How to work on the mindframe repo. What mindframe is and how it is laid out: [RE
 `testbed/` runs hooks and the mod in real Claude Code sessions. Its rules:
 
 - **Beds hold infrastructure only.** A bed copies a vault's `.claude/`, agent configs and `vault-manifest.json`, plus fixtures the expectation spec writes. Never a vault's notes. Turns and fixtures in this repo are neutral and written for it.
+- **A run leaves nothing on the machine.** Each session's qmd store and config go to the run's output folder. Anything that still lands in the user's qmd folders is reported as a leak and fails the grade. Leaks are reported, never deleted.
 - **Raw run output stays outside the repo.** Debug logs and transcripts carry local paths and session ids; they go to a temp directory by default. Summaries that land in a PR are written by hand from them, scrubbed of both.
 - **Model-behaviour runs use Opus.** A smaller model is fine only where the model's answer is not what is measured.
 - **Nothing deletes by variable path.** The bed builder refuses a folder that already exists; pick a new name.

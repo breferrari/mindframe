@@ -4,6 +4,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// Every test process gets qmd folders of its own, so the runner's residue
+// snapshots never read the machine's real ones and the stand-in claude can
+// leak into them on purpose.
+const QMD_HOME = mkdtempSync(path.join(os.tmpdir(), 'mf-bed-xdg-'))
+process.env.XDG_CACHE_HOME = path.join(QMD_HOME, 'cache')
+process.env.XDG_CONFIG_HOME = path.join(QMD_HOME, 'config')
+process.on('exit', () => rmSync(QMD_HOME, { recursive: true, force: true }))
+
 export const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures')
 export const FAKE_CLAUDE = [process.execPath, path.join(FIXTURES, 'fake-claude.mjs')]
 

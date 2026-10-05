@@ -15,12 +15,13 @@ export function grade(record, spec, verdicts = {}) {
     }
   }
   const invalid = record.runs.filter((r) => !r.valid).map((r) => `${r.scenario}/${r.arm}`)
+  const leaks = record.runs.flatMap((r) => (r.residue?.leaks ?? []).map((l) => ({ run: `${r.scenario}/${r.arm}`, ...l })))
   const failed = rows.filter((r) => r.pass === false).length
   const pending = rows.filter((r) => r.pass === null).length
   // A grade that skipped what it couldn't check is not a pass: pending
   // judge rows make it incomplete, never passed.
-  const outcome = failed > 0 || invalid.length > 0 ? 'fail' : pending > 0 ? 'incomplete' : 'pass'
-  return { rows, invalid, failed, pending, passed: rows.length - failed - pending, outcome }
+  const outcome = failed > 0 || invalid.length > 0 || leaks.length > 0 ? 'fail' : pending > 0 ? 'incomplete' : 'pass'
+  return { rows, invalid, leaks, failed, pending, passed: rows.length - failed - pending, outcome }
 }
 
 // pass 0, fail 1, incomplete 3 (2 is the command line's usage error).
@@ -59,6 +60,11 @@ export function renderMarkdown(record, graded) {
   out.push(`# Test bed: ${record.spec}`, '')
   out.push(`Claude Code ${versions.join(', ') || 'unknown'} · vault ${record.vault.commit ? record.vault.commit.head.slice(0, 7) + (record.vault.commit.dirty ? ' (uncommitted changes)' : '') : 'not a git repo'} · ${record.runs.length} sessions`, '')
   out.push(`**${graded.outcome.toUpperCase()}**: ${graded.passed} passed, ${graded.failed} failed, ${graded.pending} awaiting the blind grader${graded.invalid.length ? `; invalid runs: ${graded.invalid.join(', ')}` : ''}`, '')
+  if (graded.leaks?.length) {
+    out.push("**Left in the user's qmd folders** (a leak fails the grade; nothing was deleted):", '')
+    for (const l of graded.leaks) out.push(`- ${l.run}: ${l.change} ${l.file}`)
+    out.push('')
+  }
   if (graded.outcome === 'incomplete') out.push('Not a pass: the blind grader has not ruled on every judged answer. Run `bed.mjs judge prepare`, then `judge apply`.', '')
 
   const arms = [...new Set(record.runs.map((r) => r.arm))]
