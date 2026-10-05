@@ -34,3 +34,56 @@ test('validation: cite must be a non-empty list', () => {
   assert.throws(() => validateExpectation({ id: 'g', turn: 1, linesCite: { in: 'answer', cite: [] } }, ctx, 'e'), /non-empty/)
   assert.throws(() => validateExpectation({ id: 'g', turn: 1, linesCite: { in: 'stdout', cite: ['a'] } }, ctx, 'e'), /source/)
 })
+
+// Real-shaped answers from the North Star A/B (synthetic vault).
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { goalItems } from '../lib/expect.mjs'
+import { MARKERS } from '../fixtures/north-star/generate.mjs'
+import { FIXTURES } from './_helpers.mjs'
+
+const answer = (name) => readFileSync(path.join(FIXTURES, 'answers', name), 'utf8')
+const goalsExp = validateExpectation(
+  { id: 'g', turn: 1, linesCite: { in: 'answer', items: 'goals', cite: [...MARKERS, ...Array.from({ length: 30 }, (_, i) => `Goal ${String(i + 1).padStart(2, '0')}`)] } },
+  ctx,
+  'e',
+)
+
+test('goalItems: goal rows, linked items and titled items; not status lines, sentences or steps', () => {
+  const text = [
+    '- **Active work:** none.',
+    "- **Your goals file wasn't loaded.** It was cut.",
+    '1. Paste the file here.',
+    '- [[Goal 03]] - stabilise the dashboard',
+    '- **Ship the guide** — by Friday',
+    '| Theme | Goals (plan) |',
+    '|---|---|',
+    '| Finish | 01 Brindlewick |',
+    '',
+    '| Step | Why |',
+    '|---|---|',
+    '| read | to see |',
+  ].join('\n')
+  assert.deepEqual(goalItems(text), ['- [[Goal 03]] - stabilise the dashboard', '- **Ship the guide** — by Friday', '| Finish | 01 Brindlewick |'])
+})
+
+test("an honest refusal passes: its items explain, they don't name goals", () => {
+  const r = evaluate(goalsExp, run(answer('honest-refusal.md')))
+  assert.equal(r.pass, true, r.detail)
+})
+
+test('invented goals fail, naming the first one', () => {
+  const r = evaluate(goalsExp, run(answer('invented-goals.md')))
+  assert.equal(r.pass, false)
+  assert.match(r.detail, /Close the Q4 review cycle/)
+})
+
+test('a goal table that cites the markers passes', () => {
+  const r = evaluate(goalsExp, run(answer('goal-table.md')))
+  assert.equal(r.pass, true, r.detail)
+  assert.match(r.detail, /2 items/)
+})
+
+test('items must be "all" or "goals"', () => {
+  assert.throws(() => validateExpectation({ id: 'g', turn: 1, linesCite: { in: 'answer', items: 'some', cite: ['a'] } }, ctx, 'e'), /"all" or "goals"/)
+})
