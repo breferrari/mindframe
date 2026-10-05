@@ -25,7 +25,7 @@ export function checkArm({ arm, modName, session, debug }) {
 
 // Per hook, per turn: what ran and how it ended. A hook that started and
 // never responded (killed, timed out) keeps status 'started'.
-const hookRow = (h) => ({
+export const hookRow = (h) => ({
   event: h.event,
   name: h.name,
   status: h.status,

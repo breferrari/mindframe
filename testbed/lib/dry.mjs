@@ -20,6 +20,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { buildBed, vaultCommit } from './bed.mjs'
 import { diff, qmdEnv, snapshot, userQmdDirs } from './residue.mjs'
+import { hookRow } from './results.mjs'
 
 // The vault's entry points, by event. Every vault on the om_mod contract
 // uses these names (the mod runs two of them by path).
@@ -81,7 +82,8 @@ export function dryRun({ spec, vault, out, only, deliver = false, runner = execF
         output = err.stdout ?? ''
         stderr = String(err.stderr ?? '').slice(0, 2000)
       }
-      return { event, name: hookName, status: 'responded', exitCode, outcome: exitCode === 0 ? 'success' : 'error', output, stderr }
+      // The same row a live run records, outputBytes included.
+      return hookRow({ event, name: hookName, status: 'responded', exitCode, outcome: exitCode === 0 ? 'success' : 'error', output, stderr })
     }
 
     const preamble = [hook('SessionStart', { source: 'startup' }, 'SessionStart:startup')]

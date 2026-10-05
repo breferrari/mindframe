@@ -135,3 +135,13 @@ test('dry --deliver runs SessionStart the way the mod does, beside the settings 
   const plain = dryRun({ spec: spec(), vault: vaultWithScripts(t), out: path.join(tmp(t), 'out2') }).runs[0]
   assert.equal(measure(m, plain), null, 'no delivery recorded means no value, never zero')
 })
+
+test('a dry run records hook rows the way a live run does, byte counts included', async (t) => {
+  const { summarize } = await import('../lib/results.mjs')
+  const out = path.join(tmp(t), 'out')
+  const run = dryRun({ spec: spec(), vault: vaultWithScripts(t), out }).runs[0]
+  for (const h of [...run.preamble, ...run.turns.flatMap((x) => x.hooks)]) assert.equal(h.outputBytes, Buffer.byteLength(h.output), h.name)
+  const text = summarize(run)
+  assert.doesNotMatch(text, /undefined/)
+  assert.match(text, /UserPromptSubmit: success exit=0 \d+B/)
+})
