@@ -179,3 +179,31 @@ test('a dry run skips any expectation that reads the answer or what the user saw
   const record = dryRun({ spec: s, vault: vaultWithScripts(t), out: path.join(tmp(t), 'out') })
   assert.deepEqual(grade(record, record.specDoc).rows.map((r) => [r.id, r.pass]), [['order in hook', true]])
 })
+
+test('a dry pass says what it did not check: model-layer and mod-arm expectations, counted and named', (t) => {
+  const s = validateSpec(
+    minimalSpec({
+      scenarios: [
+        {
+          id: 'n',
+          turns: ['x'],
+          expect: [
+            { id: 'start ran', turn: 'preamble', hook: { event: 'SessionStart', output: 'startup' } },
+            { id: 'the model answered', turn: 1, answer: 'y' },
+            { id: 'order in the answer', turn: 1, order: { in: 'answer', items: ['a', 'b'] } },
+            { id: 'mod delivered', arms: ['mod'], turn: 'preamble', hook: { event: 'SessionStart', silent: true } },
+          ],
+        },
+      ],
+    }),
+  )
+  const record = dryRun({ spec: s, vault: vaultWithScripts(t), out: path.join(tmp(t), 'out') })
+  const g = grade(record, record.specDoc)
+  assert.equal(g.outcome, 'pass')
+  assert.deepEqual(g.notGraded.map((n) => [n.id, n.why]), [['the model answered', 'model layer'], ['order in the answer', 'model layer'], ['mod delivered', 'mod arm']])
+  const md = renderMarkdown(record, g)
+  assert.match(md, /\*\*3 expectations not graded in dry\*\* \(2 model layer, 1 mod arm only\)/)
+  assert.match(md, /- n: order in the answer \(model layer\)/)
+  const live = grade({ ...record, dry: false }, record.specDoc)
+  assert.equal(live.notGraded.length, 0, 'a live grade has nothing it skipped')
+})
