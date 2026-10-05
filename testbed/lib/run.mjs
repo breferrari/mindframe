@@ -35,7 +35,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
       if (arms && !arms.includes(arm)) continue
       const name = `${s.id}-${arm}`
       const bed = path.join(out, 'beds', name)
-      buildBed({ vault, bed, spec })
+      buildBed({ vault, bed, spec, files: s.files })
       const env = { ...qmdEnv(path.join(out, 'state', name)), ...spec.session.env, ...s.env }
       const session = { ...spec.session, env }
       const dirs = userQmdDirs({ ...process.env, ...env })

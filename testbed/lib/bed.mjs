@@ -36,7 +36,8 @@ export function editManifest(bed, edit) {
 }
 
 // The bed folder must not exist: the builder never overwrites or deletes.
-export function buildBed({ vault, bed, spec }) {
+// `files` are a scenario's own, copied after the spec's bed.files.
+export function buildBed({ vault, bed, spec, files: own = [] }) {
   if (existsSync(bed)) throw new Error(`bed folder exists, pick a new one: ${bed}`)
   const files = infrastructureFiles(vault, spec.bed.include)
   mkdirSync(bed, { recursive: true })
@@ -51,7 +52,7 @@ export function buildBed({ vault, bed, spec }) {
     const src = toNative(vault, c)
     if (existsSync(src)) cpSync(src, toNative(bed, c), { recursive: true, verbatimSymlinks: true })
   }
-  for (const f of spec.bed.files) {
+  for (const f of [...spec.bed.files, ...own]) {
     const dst = toNative(bed, f.path)
     mkdirSync(path.dirname(dst), { recursive: true })
     cpSync(f.source, dst)

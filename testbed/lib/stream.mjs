@@ -24,7 +24,17 @@ export function parseJsonl(text) {
   return out
 }
 
-const newTurn = (index) => ({ index, prompt: null, answer: '', tools: [], hooks: [], informational: [], result: null })
+const newTurn = (index) => ({ index, prompt: null, answer: '', tools: [], toolCalls: [], hooks: [], informational: [], result: null })
+
+// The parts of a tool call's input that say what it touched: a file, a
+// path, a search pattern, a command. Long values are cut; the rest is
+// dropped, so a transcript's file contents never land in results.json.
+const TOOL_TARGETS = ['file_path', 'path', 'notebook_path', 'pattern', 'command', 'url']
+function toolTarget(input) {
+  const out = {}
+  for (const k of TOOL_TARGETS) if (typeof input?.[k] === 'string') out[k] = input[k].slice(0, 300)
+  return out
+}
 
 function hookEntry(m) {
   return {
@@ -99,7 +109,10 @@ export function parseStream(text) {
       if (!t) continue
       for (const c of m.message?.content ?? []) {
         if (c.type === 'text') t.answer += (t.answer ? '\n' : '') + c.text
-        if (c.type === 'tool_use') t.tools.push(c.name)
+        if (c.type === 'tool_use') {
+          t.tools.push(c.name)
+          t.toolCalls.push({ name: c.name, input: toolTarget(c.input) })
+        }
       }
     } else if (m.type === 'result') {
       if (!cur) continue
