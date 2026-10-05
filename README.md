@@ -12,7 +12,10 @@ core/          the extension registry, hook input and output with the output bud
                frontmatter and wikilink parsing
 extensions/    first-party and optional; a vault picks the ones it wants
 testbed/       runs every hook and the mod in real Claude Code sessions against a vault
+docs/          design rationale: the extension contract and why it is shaped that way
 ```
+
+The build order is in [ROADMAP.md](ROADMAP.md); how to work on the repo is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - **The core declares extension points per lifecycle event:** session-start sections, Stop and hygiene detectors, prompt signals, write validators, pre-tool guards, and MCP tools.
 - **A vault's own behaviour lives outside the core,** in its `.claude/extensions/`, declared in `vault-manifest.json`. Updating the core never touches it.
