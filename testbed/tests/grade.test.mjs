@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { grade, hookTable, renderMarkdown } from '../lib/grade.mjs'
+import { EXIT, grade, hookTable, renderMarkdown } from '../lib/grade.mjs'
 import * as judge from '../lib/judge.mjs'
 import { validateSpec } from '../lib/spec.mjs'
 import { FAKE_CLAUDE, makeVault, minimalSpec, tmp } from './_helpers.mjs'
@@ -47,7 +47,7 @@ test('grade: one row per expectation per arm; judged rows wait for verdicts', ()
   ])
   assert.equal(g.failed, 1)
   assert.equal(g.pending, 2)
-  assert.equal(g.ok, false)
+  assert.equal(g.outcome, 'fail')
   const withVerdicts = grade(record, spec, { 's/settings/applies the rule': true, 's/mod/applies the rule': false })
   assert.equal(withVerdicts.pending, 0)
   assert.equal(withVerdicts.failed, 2)
@@ -58,8 +58,28 @@ test('grade: an invalid run fails the grade even with no expectations on it', ()
   const r = { ...record, runs: [{ ...record.runs[0], scenario: 'basic', valid: false, armCheck: { ok: false, reason: 'x' } }] }
   const g = grade(r, bare)
   assert.equal(g.rows.length, 0)
-  assert.equal(g.ok, false)
+  assert.equal(g.outcome, 'fail')
   assert.deepEqual(g.invalid, ['basic/settings'])
+})
+
+test('grade: judged rows still pending make it incomplete, never a pass', () => {
+  const passing = validateSpec(
+    minimalSpec({
+      scenarios: [{ id: 's', turns: ['a', 'b'], expect: [{ id: 'answers', arms: ['settings'], turn: 1, answer: 'A' }, { id: 'rule', arms: ['settings'], turn: 2, judge: { question: 'q', rubric: 'r' } }] }],
+    }),
+  )
+  const g = grade(record, passing)
+  assert.equal(g.failed, 0)
+  assert.equal(g.pending, 1)
+  assert.equal(g.outcome, 'incomplete')
+  assert.equal(EXIT.incomplete, 3)
+  assert.notEqual(EXIT.incomplete, EXIT.fail)
+  assert.notEqual(EXIT.incomplete, EXIT.pass)
+  const md = renderMarkdown(record, g)
+  assert.match(md.split('\n').slice(0, 6).join('\n'), /\*\*INCOMPLETE\*\*/)
+  assert.match(md, /Not a pass/)
+  assert.equal(grade(record, passing, { 's/settings/rule': true }).outcome, 'pass')
+  assert.equal(grade(record, passing, { 's/settings/rule': false }).outcome, 'fail')
 })
 
 test('hook table: runs, failures and silent runs per event and arm', () => {
@@ -131,4 +151,22 @@ test('cli: run grades at the end and exits 1 on a failed expectation; grade re-g
   const g = JSON.parse(readFileSync(path.join(out, 'grades.json'), 'utf8'))
   assert.equal(g.failed, 1)
   assert.equal(node(['grade', path.join(out, 'results.json')]).code, 1)
+})
+
+test('cli: a run whose only gap is a pending judge exits 3', (t) => {
+  const vault = makeVault(t)
+  const out = path.join(tmp(t), 'out')
+  const specFile = path.join(tmp(t), 'spec.json')
+  writeFileSync(
+    specFile,
+    JSON.stringify(minimalSpec({ scenarios: [{ id: 'basic', arms: ['settings'], turns: ['one'], expect: [{ id: 'echoes', turn: 1, answer: 'echo: one' }, { id: 'judged', turn: 1, judge: { question: 'q', rubric: 'r' } }] }] })),
+  )
+  let code = 0
+  try {
+    execFileSync(process.execPath, [BIN, 'run', '--vault', vault, '--spec', specFile, '--out', out, '--claude', FAKE_CLAUDE[0], '--claude-arg', FAKE_CLAUDE[1]], { encoding: 'utf8' })
+  } catch (e) {
+    code = e.status
+  }
+  assert.equal(code, 3)
+  assert.match(readFileSync(path.join(out, 'results.md'), 'utf8'), /\*\*INCOMPLETE\*\*/)
 })

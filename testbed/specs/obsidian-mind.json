@@ -43,7 +43,7 @@
         { "id": "Stop reports drift on the first turn", "arms": ["settings"], "turn": 1, "hook": { "event": "Stop", "output": "Wrap-up checklist" } },
         { "id": "user sees the checklist", "arms": ["settings"], "turn": 1, "shown": "Wrap-up checklist" },
         { "id": "user sees the mod's line", "arms": ["mod"], "turn": "any", "shown": { "re": "^obsidian-mind: ", "flags": "m" } },
-        { "id": "settings Stop stands down for the mod", "arms": ["mod"], "turn": "any", "hook": { "event": "Stop", "silent": true } },
+        { "id": "settings Stop stands down for the mod", "arms": ["mod"], "turn": "all", "hook": { "event": "Stop", "silent": true } },
         { "id": "mod ran Stop", "arms": ["mod"], "modEvent": { "event": "classic.Stop", "min": 5 } },
         { "id": "report reaches the agent with the next prompt", "turn": 2, "answer": { "not": { "none": true } } },
         { "id": "report delivered once", "turn": 3, "answer": { "none": true } },

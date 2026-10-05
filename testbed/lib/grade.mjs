@@ -17,8 +17,14 @@ export function grade(record, spec, verdicts = {}) {
   const invalid = record.runs.filter((r) => !r.valid).map((r) => `${r.scenario}/${r.arm}`)
   const failed = rows.filter((r) => r.pass === false).length
   const pending = rows.filter((r) => r.pass === null).length
-  return { rows, invalid, failed, pending, passed: rows.length - failed - pending, ok: failed === 0 && invalid.length === 0 }
+  // A grade that skipped what it couldn't check is not a pass: pending
+  // judge rows make it incomplete, never passed.
+  const outcome = failed > 0 || invalid.length > 0 ? 'fail' : pending > 0 ? 'incomplete' : 'pass'
+  return { rows, invalid, failed, pending, passed: rows.length - failed - pending, outcome }
 }
+
+// pass 0, fail 1, incomplete 3 (2 is the command line's usage error).
+export const EXIT = { pass: 0, fail: 1, incomplete: 3 }
 
 // Every hook the runs saw, by event and arm: how many times it ran, and how
 // many of those did not end with exit 0.
@@ -52,7 +58,8 @@ export function renderMarkdown(record, graded) {
   const versions = [...new Set(record.runs.map((r) => r.claudeVersion).filter(Boolean))]
   out.push(`# Test bed: ${record.spec}`, '')
   out.push(`Claude Code ${versions.join(', ') || 'unknown'} · vault ${record.vault.commit ? record.vault.commit.head.slice(0, 7) + (record.vault.commit.dirty ? ' (uncommitted changes)' : '') : 'not a git repo'} · ${record.runs.length} sessions`, '')
-  out.push(`**${graded.ok ? 'PASS' : 'FAIL'}**: ${graded.passed} passed, ${graded.failed} failed, ${graded.pending} awaiting the blind grader${graded.invalid.length ? `; invalid runs: ${graded.invalid.join(', ')}` : ''}`, '')
+  out.push(`**${graded.outcome.toUpperCase()}**: ${graded.passed} passed, ${graded.failed} failed, ${graded.pending} awaiting the blind grader${graded.invalid.length ? `; invalid runs: ${graded.invalid.join(', ')}` : ''}`, '')
+  if (graded.outcome === 'incomplete') out.push('Not a pass: the blind grader has not ruled on every judged answer. Run `bed.mjs judge prepare`, then `judge apply`.', '')
 
   const arms = [...new Set(record.runs.map((r) => r.arm))]
   out.push('## Expectations', '')

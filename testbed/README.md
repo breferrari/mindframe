@@ -102,7 +102,7 @@ Write the expected behaviour before the run: if you can't say what each turn mus
 ]
 ```
 
-Every expectation has an `id`, unique in its scenario, and exactly one kind. `arms` defaults to the scenario's arms. `turn` is a 1-based turn number, `"preamble"` (hooks before the first prompt) or `"any"` (passes if any one turn passes).
+Every expectation has an `id`, unique in its scenario, and exactly one kind. `arms` defaults to the scenario's arms. `turn` is a 1-based turn number, `"preamble"` (hooks before the first prompt), `"any"` (passes if any one turn passes) or `"all"` (passes only if every turn does; the first that fails is named). For `hook`, `"any"` and `"all"` include the preamble. For a `hook` on `"all"`, every run of that hook across the session is checked together. `silent: true` is refused on `"any"`, because one silent turn says nothing about the others: write `"all"`.
 
 There are two layers. A log shows that a hook ran, not what reached the model. So any claim that something was delivered is made on the model layer: a turn asks the model, and the expectation reads its answer.
 
@@ -129,7 +129,15 @@ Ask the model a question it can answer NONE to ("Did X arrive with THIS message?
 
 ## Grading
 
-`run` grades as it finishes. It writes `grades.json` and `results.md` next to `results.json`, and exits 1 if any expectation failed or any run was invalid. `results.md` holds:
+`run` grades as it finishes. It writes `grades.json` and `results.md` next to `results.json`. A grade has one of three outcomes:
+
+| Outcome | When | Exit |
+|---------|------|------|
+| pass | every expectation passed and every run was valid | 0 |
+| fail | an expectation failed, or a run was invalid | 1 |
+| incomplete | nothing failed, but `judge` rows await the blind grader | 3 |
+
+Incomplete is never a pass: a grade that skipped what it couldn't check hasn't passed (DESIGN.md rule 10). Exit 2 is a usage error. `results.md` holds:
 - the verdict;
 - a table of expectations by arm, with the reason for each failure;
 - a table of every hook by arm: times run, failures, silent runs;
@@ -143,7 +151,7 @@ Ask the model a question it can answer NONE to ("Did X arrive with THIS message?
 2. Give `judge-prompt.md` to one tool-less model call, and save its JSON array.
 3. `bed.mjs judge apply <results.json> <verdicts.json>` maps the verdicts back and grades again. A missing, duplicated or unknown verdict refuses the whole set.
 
-Until verdicts are applied, `judge` rows show as awaiting and don't fail the grade.
+Until verdicts are applied, `judge` rows show as awaiting and the grade is incomplete.
 
 ## Specs in this repo
 

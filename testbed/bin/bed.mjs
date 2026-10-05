@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { buildBed } from '../lib/bed.mjs'
-import { grade, renderMarkdown } from '../lib/grade.mjs'
+import { EXIT, grade, renderMarkdown } from '../lib/grade.mjs'
 import * as judge from '../lib/judge.mjs'
 import { summarize } from '../lib/results.mjs'
 import { defaultOut, runSpec } from '../lib/run.mjs'
@@ -62,7 +62,7 @@ if (command === 'show') {
   for (const run of readJson(positionals[0]).runs) console.log(summarize(run))
 } else if (command === 'grade') {
   if (!positionals[0]) fail('grade needs a results.json')
-  process.exitCode = gradeFile(positionals[0]).ok ? 0 : 1
+  process.exitCode = EXIT[gradeFile(positionals[0]).outcome]
 } else if (command === 'judge') {
   const [sub, results, verdictsFile] = positionals
   if (!results) fail('judge needs prepare or apply, and a results.json')
@@ -81,7 +81,7 @@ if (command === 'show') {
     if (!verdictsFile) fail('judge apply needs a verdicts.json')
     const verdicts = judge.apply(readJson(beside(results, 'judge-key.json')), readJson(verdictsFile))
     writeFileSync(beside(results, 'judge.json'), JSON.stringify(verdicts, null, 1))
-    process.exitCode = gradeFile(results).ok ? 0 : 1
+    process.exitCode = EXIT[gradeFile(results).outcome]
   } else {
     fail(`unknown judge command: ${sub}`)
   }
@@ -106,7 +106,7 @@ if (command === 'show') {
       cmd: [values.claude, ...(values['claude-arg'] ?? [])],
       onRun: (run) => console.log(summarize(run)),
     })
-    process.exitCode = gradeFile(path.join(out, 'results.json')).ok ? 0 : 1
+    process.exitCode = EXIT[gradeFile(path.join(out, 'results.json')).outcome]
   }
 } else {
   fail(command ? `unknown command: ${command}` : 'no command')

@@ -76,7 +76,7 @@ test('hook: ran, exit, silent, output, name, and ran: false', () => {
   assert.equal(ev({ id: 'a', turn: 2, hook: { event: 'Stop', silent: true } }, r).pass, true)
   assert.equal(ev({ id: 'a', turn: 1, hook: { event: 'Stop', silent: true } }, r).pass, false)
   assert.equal(ev({ id: 'a', turn: 1, hook: { event: 'Stop', silent: false } }, r).pass, true)
-  assert.equal(ev({ id: 'a', turn: 'any', hook: { event: 'Stop', silent: true } }, r).pass, false, 'any + silent needs every run silent')
+  assert.equal(ev({ id: 'a', turn: 'all', hook: { event: 'Stop', silent: true } }, r).pass, false, 'all + silent needs every run silent')
   assert.equal(ev({ id: 'a', turn: 'preamble', hook: { event: 'SessionStart', name: 'startup' } }, r).pass, true)
   assert.equal(ev({ id: 'a', turn: 'preamble', hook: { event: 'SessionStart', name: 'compact' } }, r).pass, false)
   assert.equal(ev({ id: 'a', turn: 1, hook: { event: 'PreCompact' } }, r).pass, false)
@@ -158,6 +158,24 @@ test('modEvent: settled count and slowest time; invalid runs fail everything', (
   const res = ev({ id: 'a', turn: 1, answer: 'x' }, bad)
   assert.equal(res.pass, false)
   assert.match(res.detail, /run invalid/)
+})
+
+test('silent: true on "any" is refused, naming the expectation; "all" says it', () => {
+  assert.throws(() => validateExpectation({ id: 'stands down', turn: 'any', hook: { event: 'Stop', silent: true } }, ctx, 'e'), /stands down.*use turn "all"/)
+  assert.equal(validateExpectation({ id: 'x', turn: 'any', hook: { event: 'Stop', silent: false } }, ctx, 'e').turn, 'any')
+  assert.equal(validateExpectation({ id: 'x', turn: 'all', hook: { event: 'Stop', silent: true } }, ctx, 'e').turn, 'all')
+})
+
+test('"all": every turn passes, and the first that fails is named', () => {
+  const r = run({ turns: [turn(1, { answer: 'ok', hooks: [hook('Stop', '{}')] }), turn(2, { answer: 'no', hooks: [hook('Stop', '')] })] })
+  assert.equal(ev({ id: 'a', turn: 'all', hook: { event: 'Stop', silent: true } }, r).pass, true)
+  const one = ev({ id: 'a', turn: 'all', answer: 'ok' }, r)
+  assert.equal(one.pass, false)
+  assert.match(one.detail, /^turn 2:/)
+  assert.equal(ev({ id: 'a', turn: 'all', answer: { re: '^(ok|no)$' } }, r).pass, true)
+  const noisy = run({ turns: [turn(1, { hooks: [hook('Stop', '{}')] }), turn(2, { hooks: [hook('Stop', '{"systemMessage":"x"}')] })] })
+  assert.equal(ev({ id: 'a', turn: 'all', hook: { event: 'Stop', silent: true } }, noisy).pass, false)
+  assert.equal(ev({ id: 'a', turn: 'any', hook: { event: 'Stop', silent: false } }, noisy).pass, true)
 })
 
 test("'any' passes when one turn passes", () => {

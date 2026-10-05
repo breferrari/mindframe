@@ -98,8 +98,8 @@ export function validateExpectation(e, { arms, turns }, where) {
     if (!out.arms.every((a) => a === 'mod')) throw new ExpectError(`${where}: modEvent applies to the mod arm only; set arms: ["mod"]`)
   } else {
     const t = e.turn
-    const ok = t === 'preamble' || t === 'any' || (Number.isInteger(t) && t >= 1 && t <= turns)
-    if (!ok) throw new ExpectError(`${where}.turn must be 1..${turns}, "preamble" or "any"`)
+    const ok = t === 'preamble' || t === 'any' || t === 'all' || (Number.isInteger(t) && t >= 1 && t <= turns)
+    if (!ok) throw new ExpectError(`${where}.turn must be 1..${turns}, "preamble", "any" or "all"`)
   }
 
   const v = e[kind]
@@ -107,6 +107,11 @@ export function validateExpectation(e, { arms, turns }, where) {
     if (typeof v.event !== 'string') throw new ExpectError(`${where}.hook.event is required`)
     if (v.name !== undefined) checkMatcher(v.name, `${where}.hook.name`)
     if (v.output !== undefined) checkMatcher(v.output, `${where}.hook.output`)
+    // "any" means one passing turn is enough; silence on one turn says
+    // nothing about the others, so the spec has to say "all".
+    if (v.silent === true && e.turn === 'any') {
+      throw new ExpectError(`${where} (${e.id}): hook.silent: true on turn "any" would pass on one silent turn; use turn "all"`)
+    }
     if (v.ran === false && (v.output !== undefined || v.silent !== undefined || v.exit !== undefined)) {
       throw new ExpectError(`${where}.hook: ran: false takes no other checks`)
     }
@@ -142,9 +147,13 @@ export function validateExpectation(e, { arms, turns }, where) {
 
 // ---- evaluation -------------------------------------------------------------
 
-function turnsFor(run, turn) {
-  if (turn === 'preamble') return [{ index: 'preamble', hooks: run.preamble, answer: '', informational: [], tools: [] }]
-  if (turn === 'any') return [{ index: 'preamble', hooks: run.preamble, answer: '', informational: [], tools: [] }, ...run.turns]
+// The turns an expectation reads. The preamble (hooks before the first
+// prompt) counts as a turn for hook expectations only: it has no answer,
+// nothing shown and no tools.
+function turnsFor(run, turn, kind) {
+  const preamble = { index: 'preamble', hooks: run.preamble, answer: '', informational: [], tools: [] }
+  if (turn === 'preamble') return [preamble]
+  if (turn === 'any' || turn === 'all') return kind === 'hook' ? [preamble, ...run.turns] : run.turns
   return run.turns.filter((t) => t.index === turn)
 }
 
@@ -242,9 +251,10 @@ export function evaluate(e, run, verdicts = {}) {
     if (v.maxMs !== undefined && max > v.maxMs) return { ...base, pass: false, detail: `${v.event} took ${max}ms > ${v.maxMs}` }
     return { ...base, pass: true, detail: `${times.length}x, max ${max}ms` }
   }
-  const ts = turnsFor(run, e.turn)
+  const ts = turnsFor(run, e.turn, e.kind)
   if (ts.length === 0) return { ...base, pass: false, detail: `turn ${e.turn} is not in the run (${run.turns.length} turns)` }
-  if (e.kind === 'hook') {
+  if (e.kind === 'hook' && e.turn !== 'any') {
+    // One turn, or "all": every run of the hook across the turns at once.
     const [pass, detail] = evalHook(v, ts)
     return { ...base, pass, detail }
   }
@@ -253,10 +263,19 @@ export function evaluate(e, run, verdicts = {}) {
     if (!(key in verdicts)) return { ...base, pass: null, detail: 'awaiting the blind grader' }
     return { ...base, pass: verdicts[key] === true, detail: 'blind grader' }
   }
-  // 'any' passes when one turn passes; a numbered turn is one turn.
+  const check = (t) => (e.kind === 'hook' ? evalHook(v, [t]) : evalOnTurn(e.kind, v, t))
+  if (e.turn === 'all') {
+    // Every turn passes; the first that doesn't is the detail.
+    for (const t of ts) {
+      const [pass, detail] = check(t)
+      if (!pass) return { ...base, pass: false, detail: `turn ${t.index}: ${detail}` }
+    }
+    return { ...base, pass: true, detail: `${ts.length} turns` }
+  }
+  // "any" passes when one turn passes; a numbered turn is one turn.
   let last = [false, '']
   for (const t of ts) {
-    last = evalOnTurn(e.kind, v, t)
+    last = check(t)
     if (last[0]) break
   }
   return { ...base, pass: last[0], detail: last[1] }
