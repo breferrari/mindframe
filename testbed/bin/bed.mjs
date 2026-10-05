@@ -8,6 +8,7 @@ import { EXIT, grade, renderMarkdown } from '../lib/grade.mjs'
 import * as judge from '../lib/judge.mjs'
 import { compare } from '../lib/compare.mjs'
 import { dryRun } from '../lib/dry.mjs'
+import { reparse } from '../lib/reparse.mjs'
 import { summarize } from '../lib/results.mjs'
 import { defaultOut, runSpec } from '../lib/run.mjs'
 import { ARMS, loadSpec } from '../lib/spec.mjs'
@@ -15,6 +16,7 @@ import { ARMS, loadSpec } from '../lib/spec.mjs'
 const USAGE = `usage:
   bed.mjs run   --vault <dir> --spec <file> [--arm settings|mod] [--scenario <id>]... [--out <dir>] [--claude <bin> [--claude-arg <arg>]...]
   bed.mjs grade <results.json>
+  bed.mjs reparse <out-dir>
   bed.mjs judge prepare <results.json>
   bed.mjs judge apply   <results.json> <verdicts.json>
   bed.mjs dry   --vault <dir> --spec <file> [--scenario <id>]... [--out <dir>] [--deliver]
@@ -82,6 +84,11 @@ if (command === 'show') {
   if (labelled.length < 2) fail('compare needs two or more labelled results')
   // --spec grades the stored runs against a newer spec, e.g. one with a measure added since.
   console.log(compare(labelled, values.spec ? loadSpec(values.spec) : null))
+} else if (command === 'reparse') {
+  if (!positionals[0]) fail('reparse needs an output folder')
+  const { kept } = reparse(path.resolve(positionals[0]))
+  console.log(`previous results kept as ${path.basename(kept)}`)
+  process.exitCode = EXIT[gradeFile(path.join(path.resolve(positionals[0]), 'results.json')).outcome]
 } else if (command === 'grade') {
   if (!positionals[0]) fail('grade needs a results.json')
   process.exitCode = EXIT[gradeFile(positionals[0]).outcome]

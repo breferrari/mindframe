@@ -20,7 +20,8 @@ export function compare(labelled, spec = null) {
   for (const { label, record, g } of graded) {
     const versions = [...new Set(record.runs.map((r) => r.claudeVersion).filter(Boolean))].join(', ') || '?'
     const commit = record.vault.commit ? record.vault.commit.head.slice(0, 7) + (record.vault.commit.dirty ? '+' : '') : '?'
-    out.push(`- **${label}**: vault ${commit}, Claude Code ${versions}, grade ${g.outcome}`)
+    const cost = record.runs.reduce((n, r) => n + (typeof r.costUsd === 'number' ? r.costUsd : 0), 0)
+    out.push(`- **${label}**: vault ${commit}, Claude Code ${versions}, grade ${g.outcome}${cost > 0 ? `, $${cost.toFixed(2)} over ${record.runs.length} sessions` : ''}`)
   }
   const scenarios = [...new Set(graded.flatMap(({ record }) => record.runs.map((r) => r.scenario)))]
   for (const scenario of scenarios) {

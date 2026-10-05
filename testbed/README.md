@@ -16,6 +16,7 @@ A run is **valid** only if it tested the arm it claims. The session's `init` eve
 ```sh
 node testbed/bin/bed.mjs run --vault <vault-dir> --spec <spec.json> [--arm settings|mod] [--scenario <id>]... [--out <dir>] [--claude <bin>]
 node testbed/bin/bed.mjs show <out-dir>/results.json
+node testbed/bin/bed.mjs reparse <out-dir>
 node testbed/bin/bed.mjs compare main=<out-a>/results.json branch=<out-b>/results.json
 node testbed/bin/bed.mjs dry --vault <vault-dir> --spec <spec.json> [--scenario <id>]... [--out <dir>] [--deliver]
 node testbed/bin/bed.mjs build --vault <vault-dir> --spec <spec.json> --bed <new-dir>
@@ -23,6 +24,7 @@ node testbed/bin/bed.mjs build --vault <vault-dir> --spec <spec.json> --bed <new
 
 - `run` builds a fresh bed for every scenario and arm, drives one session in it, and writes `results.json`. It prints a summary per run.
 - `show` prints that summary again from a `results.json`.
+- `reparse` rebuilds a finished run's results from its raw logs with the current parser, then grades again. A parser fix then reaches sessions already paid for, with no new ones. The exit code, the feed and the residue snapshots are kept as recorded, and the previous `results.json` is kept beside the new one.
 - `dry` checks a spec's log layer before a live run spends anything. For each scenario it builds a bed and runs the vault's own hook scripts directly, in the order a session would: SessionStart at startup, then per turn UserPromptSubmit, PreCompact and SessionStart (compact) for a `/compact` turn, a Write plus PostToolUse when the turn asks to create a file, and Stop. It covers the settings arm only, and grades only what the hooks printed. Answers, what the user is shown, judged rows and mod events are left out, and answer and tool measures record nothing. The scripts are the om_mod contract's entry-point names (`session-start.ts`, `classify-message.ts`, `validate-write.ts`, `pre-compact.ts`, `stop-checklist.ts`).
 - A scenario can set its own `allowedTools`, `disallowedTools` and `tools`, replacing the session's. To measure only what the hooks delivered, use `tools: []`, which turns every built-in tool off (`--tools ""`). A `disallowedTools` list is a denylist, and a denylist misses tools nobody thought of. The first blind run of the North Star A/B disallowed Read, Grep, Glob and Bash, and on Windows the model read the file through PowerShell. Its `no tool was used` expectation failed, so the grade said so instead of passing quietly, and blind scenarios use the allowlist since.
 - `dry --deliver` also runs SessionStart the way the mod does (`om_mod: "deliver"`), with the same environment and residue check, and keeps the output as the run's `deliver`. That is what the mod would hand the model as its instruction file. Measures read it with `"in": "deliver"`; in a live run, or a dry run without `--deliver`, they record nothing. No hook expectation sees it.
@@ -233,6 +235,8 @@ Formats as written by Claude Code 2.1.289. The parsers are `lib/stream.mjs` and 
 |------|--------|
 | Each settings hook per turn: event, name, exit code, outcome, output | stream: `system/hook_started`, `system/hook_response` (`--include-hook-events`) |
 | A hook that started and never responded | stream: a `hook_started` with no matching `hook_response` (status `started`) |
+| A `/compact` turn | stream: `system/status` "compacting" opens it, and its compact SessionStart lands there. PreCompact is not a stream event: it is read from the replayed `<local-command-stdout>Compacted PreCompact [<command>] completed successfully</local-command-stdout>` |
+| What a session cost | stream: `total_cost_usd` on the last `result` (a running total), as the run's `costUsd`; `results.md` and `compare` add them up |
 | The turn's prompt, answer and tool calls | stream: replayed `user` (`--replay-user-messages`), `assistant` |
 | What the user was shown (a Stop `systemMessage`, a mod's line under the answer) | stream: `system/informational` |
 | Hooks that ran before the first prompt (SessionStart) | stream, kept as the run's `preamble` |

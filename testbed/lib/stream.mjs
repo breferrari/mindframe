@@ -51,12 +51,38 @@ function hookEntry(m) {
 
 // A turn starts at its first UserPromptSubmit hook, its replayed prompt, or
 // its init, whichever comes first after the previous result.
+//
+// A /compact turn is a local command and looks different (2.1.289): after
+// the previous result come `system/status` "compacting", the SessionStart
+// hooks with source compact, `init`, `system/compact_boundary`, the summary
+// as a user message that is not a replay, and then the replayed
+// `<local-command-stdout>`. There is no UserPromptSubmit and no Stop. So
+// "compacting", or a compact, clear or resume SessionStart arriving with no
+// turn open, starts the next turn too; otherwise those hooks would be kept
+// with the turn before.
 function startsTurn(m) {
   return (
     (m.type === 'system' && m.subtype === 'hook_started' && m.hook_event === 'UserPromptSubmit') ||
+    (m.type === 'system' && m.subtype === 'hook_started' && m.hook_event === 'SessionStart' && /:(compact|clear|resume)$/.test(m.hook_name ?? '')) ||
+    (m.type === 'system' && m.subtype === 'status' && m.status === 'compacting') ||
     (m.type === 'user' && m.isReplay === true) ||
     (m.type === 'system' && m.subtype === 'init')
   )
+}
+
+// PreCompact never reaches the stream as a hook event; the /compact command's
+// own output names each one: "Compacted PreCompact [<command>] completed
+// successfully". The command holds brackets of its own (shell tests), so the
+// match runs to the last "] completed" or "] failed" before the next one.
+const PRE_COMPACT = /PreCompact \[([\s\S]*?)\] (completed successfully|failed[^\n<]*?)(?=, PreCompact \[|<\/local-command-stdout>|$)/g
+
+export function preCompactHooks(stdout) {
+  const out = []
+  for (const m of String(stdout).matchAll(PRE_COMPACT)) {
+    const ok = m[2] === 'completed successfully'
+    out.push({ id: null, name: 'PreCompact', event: 'PreCompact', status: 'responded', exitCode: ok ? 0 : 1, outcome: ok ? 'success' : 'error', output: '', stderr: ok ? '' : m[2], from: 'local-command-stdout' })
+  }
+  return out
 }
 
 export function parseStream(text) {
@@ -104,6 +130,7 @@ export function parseStream(text) {
     } else if (m.type === 'user' && m.isReplay === true) {
       const c = m.message?.content
       cur.prompt = typeof c === 'string' ? c : JSON.stringify(c)
+      if (cur.prompt.includes('<local-command-stdout>')) cur.hooks.push(...preCompactHooks(cur.prompt))
     } else if (m.type === 'assistant') {
       const t = target()
       if (!t) continue

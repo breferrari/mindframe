@@ -64,7 +64,8 @@ export function renderMarkdown(record, graded) {
   const versions = [...new Set(record.runs.map((r) => r.claudeVersion).filter(Boolean))]
   out.push(`# Test bed: ${record.spec}`, '')
   if (record.dry) out.push('**Dry run:** the hook scripts ran directly, with no model and no Claude Code, on the settings arm. Answers, what the user is shown, judged rows and mod events are not graded.', '')
-  out.push(`Claude Code ${versions.join(', ') || 'unknown'} · vault ${record.vault.commit ? record.vault.commit.head.slice(0, 7) + (record.vault.commit.dirty ? ' (uncommitted changes)' : '') : 'not a git repo'} · ${record.runs.length} sessions`, '')
+  const cost = record.runs.reduce((n, r) => n + (typeof r.costUsd === 'number' ? r.costUsd : 0), 0)
+  out.push(`Claude Code ${versions.join(', ') || 'unknown'} · vault ${record.vault.commit ? record.vault.commit.head.slice(0, 7) + (record.vault.commit.dirty ? ' (uncommitted changes)' : '') : 'not a git repo'} · ${record.runs.length} sessions${cost > 0 ? ` · $${cost.toFixed(2)}` : ''}`, '')
   out.push(`**${graded.outcome.toUpperCase()}**: ${graded.passed} passed, ${graded.failed} failed, ${graded.pending} awaiting the blind grader${graded.invalid.length ? `; invalid runs: ${graded.invalid.join(', ')}` : ''}`, '')
   if (graded.leaks?.length) {
     out.push("**Left in the user's qmd folders** (a leak fails the grade; nothing was deleted):", '')
