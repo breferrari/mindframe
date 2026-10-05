@@ -296,7 +296,7 @@
             "output": {
               "all": [
                 "concepts/Bare Note.md",
-                "Missing YAML frontmatter (SPEC.md §2)",
+                "Missing YAML frontmatter",
                 "Cites no source"
               ]
             }
