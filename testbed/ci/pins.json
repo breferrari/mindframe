@@ -2,7 +2,7 @@
   "description": "The vault commits CI dry-runs each shipped spec against. Moving a pin is a reviewed change: the dry grade on the new commit must pass, or the spec must change with it.",
   "vaults": {
     "obsidian-mind": { "repository": "https://github.com/breferrari/obsidian-mind", "commit": "4eb7290" },
-    "wiki-mind": { "repository": "https://github.com/breferrari/wiki-mind", "commit": "02ab32d" }
+    "wiki-mind": { "repository": "https://github.com/breferrari/wiki-mind", "commit": "560a241" }
   },
   "specs": [
     { "spec": "obsidian-mind", "vault": "obsidian-mind" },
