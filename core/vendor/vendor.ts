@@ -30,7 +30,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { applyFile, diffFile, formatPatch, parsePatch, PatchError, type Patch } from "./patch.ts";
+import { applyFile, diffFile, formatPatch, parsePatch, PatchError, type FilePatch, type Patch } from "./patch.ts";
 
 export const SCHEMA_VERSION = 3;
 export const DEFAULT_RECORD = ".claude/VENDOR.json";
@@ -403,6 +403,98 @@ export function migrate(input: MigrateInput): { record: VendorRecord; patches: A
 	}
 	if (problems.length) throw new VendorError(problems.join("\n"));
 	return { record: { ...input.record, schemaVersion: SCHEMA_VERSION, files } as VendorRecord, patches };
+}
+
+// ---- patch new ----------------------------------------------------------------
+
+export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** The next free patch number in a folder, as four digits. */
+export const nextNumber = (existing: readonly string[]): string => String(Math.max(0, ...existing.map((n) => Number(n.slice(0, 4)) || 0)) + 1).padStart(4, "0");
+
+/** A file's upstream path inside an upstream checkout. */
+export const upstreamPathOf = (record: VendorRecord, file: string): string => {
+	const up = record.files[file]?.upstream ?? file;
+	return typeof record.sourceRoot === "string" && record.sourceRoot !== "" ? `${record.sourceRoot}/${up}` : up;
+};
+
+export type NewPatchInput = {
+	readonly vault: string;
+	readonly upstreamRoot: string;
+	readonly record: VendorRecord;
+	readonly patches: PatchSet;
+	readonly slug: string;
+	readonly files: readonly string[];
+	/** Description, Forwarded and the rest, in order. */
+	readonly header: ReadonlyArray<readonly [string, string]>;
+};
+
+/**
+ * Turns local edits to vendored files into one new patch. Each file's
+ * change is measured from upstream plus the patches it already carries, so
+ * a new patch stacks on the old ones. Returns the patch and the record with
+ * the patch listed and the new hashes; writes nothing.
+ */
+export function newPatch(input: NewPatchInput): { name: string; text: string; record: VendorRecord } {
+	if (input.record.schemaVersion !== SCHEMA_VERSION) throw new VendorError(`the record is schema ${input.record.schemaVersion}; run migrate first`);
+	if (!SLUG.test(input.slug)) throw new VendorError(`${input.slug}: a slug is lowercase words joined by dashes`);
+	if (input.files.length === 0) throw new VendorError("name the files the patch changes");
+	const fwd = forwardedProblem(input.header.find(([k]) => k === "Forwarded")?.[1]);
+	if (fwd) throw new VendorError(fwd);
+	if (!input.header.find(([k]) => k === "Description")?.[1]?.trim()) throw new VendorError("a patch needs a Description");
+
+	const name = `${nextNumber([...input.patches.keys()])}-${input.slug}.patch`;
+	const diffs: FilePatch[] = [];
+	const files: Record<string, FileEntry> = { ...input.record.files };
+	const problems: string[] = [];
+	for (const file of input.files) {
+		const entry = input.record.files[file];
+		if (!entry) {
+			problems.push(`${file}: not in the record; only vendored files take patches`);
+			continue;
+		}
+		const own = readFileSync(resolveInside(input.vault, file));
+		const theirs = readFileSync(resolveInside(input.upstreamRoot, upstreamPathOf(input.record, file)));
+		if (contentHash(theirs) !== entry.upstreamSha256) {
+			problems.push(`${file}: the upstream checkout isn't at the recorded commit (its hash differs)`);
+			continue;
+		}
+		if (isBinary(own) || isBinary(theirs)) {
+			problems.push(`${file}: a binary file can't carry a patch`);
+			continue;
+		}
+		let base: string;
+		try {
+			base = repatch(file, Buffer.from(theirs).toString("utf8"), entry.patches ?? [], input.patches);
+		} catch (err) {
+			problems.push(`${file}: its existing patches don't apply to upstream: ${err instanceof Error ? err.message : String(err)}`);
+			continue;
+		}
+		const diff = diffFile(file, base, Buffer.from(own).toString("utf8"));
+		if (diff === null) {
+			problems.push(`${file}: no change to make a patch of`);
+			continue;
+		}
+		diffs.push(diff);
+		files[file] = { ...entry, sha256: contentHash(own), patches: [...(entry.patches ?? []), name] };
+	}
+	if (problems.length) throw new VendorError(problems.join("\n"));
+	const text = formatPatch({ header: input.header, files: diffs });
+	return { name, text, record: { ...input.record, files } };
+}
+
+/** `owner/repo` from a GitHub URL, for gh's --repo. */
+export function repoSlug(repository: string): string {
+	const m = /github\.com[/:]([^/]+)\/([^/.]+?)(?:\.git)?\/?$/.exec(repository);
+	if (!m) throw new VendorError(`${repository}: not a GitHub repository URL; give --forward <url> instead`);
+	return `${m[1]}/${m[2]}`;
+}
+
+/** A patch with one header field set (added at the end when absent). */
+export function withHeader(p: Patch, key: string, value: string): Patch {
+	const has = p.header.some(([k]) => k === key);
+	const header = has ? p.header.map(([k, v]) => (k === key ? ([k, value] as const) : ([k, v] as const))) : [...p.header, [key, value] as const];
+	return { ...p, header };
 }
 
 // ---- check --------------------------------------------------------------------
