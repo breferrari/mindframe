@@ -1,4 +1,4 @@
-// `vendor patch new` and `vendor patch upstream`, end to end against real
+// `vendor patch begin`, `vendor patch new` and `vendor patch upstream`, end to end against real
 // git repos (an upstream with a bare remote as its origin) and a stand-in
 // for gh, so nothing here touches GitHub.
 import assert from "node:assert/strict";
@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { test, type TestContext } from "node:test";
 import { main, prTitle, type Run } from "./cli.ts";
+import { decide } from "../scripts/vendor-guard.ts";
 import { contentHash, formatRecord, parseRecord, readRecord } from "./vendor.ts";
 
 const LIB = Array.from({ length: 12 }, (_, i) => `export const v${i} = ${i}`).join("\n") + "\n";
@@ -91,6 +92,20 @@ test("patch new --not-needed: writes the next patch, lists it, and check passes"
 	assert.deepEqual(readRecord(s.recFile).files[LIB_PATH]!.patches, ["0001-bump-v3.patch"]);
 	assert.equal(s.cli("check", "--vault", s.vault), 0, s.lines.join("\n"));
 	assert.equal(s.calls.length, 0, "no gh call without --issue");
+});
+
+test("patch begin lets the guard allow edits to vendored files, refuses others, and patch new ends it", (t) => {
+	const s = setup(t);
+	const editCall = { tool_name: "Edit", tool_input: { file_path: path.join(s.vault, ...LIB_PATH.split("/")) } };
+	assert.notEqual(decide(editCall, s.vault, Date.now()), null, "guarded before begin");
+	assert.equal(s.cli("patch", "begin", "--vault", s.vault), 2, "needs files");
+	assert.equal(s.cli("patch", "begin", "notes/a.md", "--vault", s.vault), 1);
+	assert.match(s.lines.join("\n"), /notes\/a\.md: not a vendored file/);
+	assert.equal(s.cli("patch", "begin", LIB_PATH, "--vault", s.vault), 0, s.lines.join("\n"));
+	assert.equal(decide(editCall, s.vault, Date.now()), null, "allowed after begin");
+	s.edit("v3 = 3", "v3 = 33");
+	assert.equal(s.cli("patch", "new", "bump-v3", LIB_PATH, ...s.up("--description", "Bump v3 for this vault", "--not-needed", "local")), 0, s.lines.join("\n"));
+	assert.notEqual(decide(editCall, s.vault, Date.now()), null, "guarded again once the patch is made");
 });
 
 test("patch new needs exactly one upstream answer and a description", (t) => {

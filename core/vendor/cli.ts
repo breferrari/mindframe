@@ -5,6 +5,7 @@
  *   node --experimental-strip-types core/vendor/cli.ts record  --upstream <checkout> [--vault <dir>] [--record <path>]
  *        [--set <key>=<value>]... [<path>...]
  *   node --experimental-strip-types core/vendor/cli.ts migrate --upstream <checkout> [--vault <dir>] [--record <path>]
+ *   node --experimental-strip-types core/vendor/cli.ts patch begin <file>... [--vault <dir>]
  *   node --experimental-strip-types core/vendor/cli.ts patch new <slug> <file>... --upstream <checkout>
  *        --description "<the change to make>" (--forward <url> | --issue | --not-needed "<reason>")
  *   node --experimental-strip-types core/vendor/cli.ts patch upstream <NNNN-slug.patch> --upstream <checkout> [--pr] [--base <branch>]
@@ -18,6 +19,8 @@
  * schema-2 record, writing a patch per modified file into `vendor-patches/`
  * beside the record.
  *
+ * `patch begin` lets the vault's write guard (core/scripts/vendor-guard.ts)
+ * allow edits to the given vendored files for 30 minutes.
  * `patch new` turns local edits to vendored files into the next patch, and
  * won't write one without an upstream answer: a URL it is given, an issue it
  * files with gh (--issue; the Description is the issue's title, so write it
@@ -34,6 +37,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { nearestVaultRoot } from "../scripts/lib/project-dir.ts";
+import { beginEdits, endEdits, vendoredAt } from "../scripts/vendor-guard.ts";
 import { applyFile, formatPatch } from "./patch.ts";
 import {
 	DEFAULT_RECORD,
@@ -103,6 +108,7 @@ export function main(
 	log: (line: string) => void = console.log,
 	today: () => string = () => new Date().toISOString().slice(0, 10),
 	run: Run = realRun,
+	now: () => number = Date.now,
 ): number {
 	const [command, ...rest] = argv;
 	try {
@@ -199,7 +205,25 @@ export function main(
 
 		if (command === "patch") {
 			const [sub, ...args] = positionals;
-			if (sub !== "new" && sub !== "upstream") throw new UsageError("patch takes new or upstream");
+			if (sub !== "begin" && sub !== "new" && sub !== "upstream") throw new UsageError("patch takes begin, new or upstream");
+			// The vault root, where the guard keeps its windows: --vault may name a folder inside it.
+			const vaultRoot = nearestVaultRoot(vault) ?? vault;
+			/** Each file's path from the vault root, refusing one no record lists. */
+			const guarded = (files: readonly string[]) =>
+				files.map((f) => {
+					const v = vendoredAt(vaultRoot, path.resolve(vault, f));
+					if (v === null) throw new VendorError(`${f}: not a vendored file`);
+					return v.rel;
+				});
+
+			if (sub === "begin") {
+				if (args.length === 0) throw new UsageError("patch begin needs the files you'll edit");
+				const rels = guarded(args);
+				beginEdits(vaultRoot, rels, now());
+				log(`vendor: ${rels.join(", ")} open for edits for 30 minutes; make the patch with "vendor patch new"`);
+				return 0;
+			}
+
 			if (!values.upstream) throw new UsageError(`patch ${sub} needs --upstream <checkout>`);
 			const upstreamRoot = path.resolve(values.upstream);
 			const record = readRecord(recordFile);
@@ -234,6 +258,12 @@ export function main(
 				mkdirSync(patchDir, { recursive: true });
 				writeFileSync(path.join(patchDir, made.name), made.text);
 				writeFileSync(recordFile, formatRecord(made.record));
+				// The patch is made: close the guard's windows on its files (best effort, never a failure).
+				try {
+					endEdits(vaultRoot, files.flatMap((f) => vendoredAt(vaultRoot, path.resolve(vault, f))?.rel ?? []));
+				} catch {
+					/* the guard's bookkeeping, not the patch */
+				}
 				log(`vendor: wrote ${made.name} (Forwarded: ${forwarded})`);
 				return 0;
 			}

@@ -6,6 +6,7 @@ A vault carries a copy of the core and its chosen extensions, and the copy is up
 node --experimental-strip-types core/vendor/cli.ts check   [--vault <dir>] [--record <path>]
 node --experimental-strip-types core/vendor/cli.ts record  --upstream <checkout> [--vault <dir>] [--record <path>] [--set <key>=<value>]... [<path>...]
 node --experimental-strip-types core/vendor/cli.ts migrate --upstream <checkout> [--vault <dir>] [--record <path>]
+node --experimental-strip-types core/vendor/cli.ts patch begin <file>... [--vault <dir>]
 node --experimental-strip-types core/vendor/cli.ts patch new <slug> <file>... --upstream <checkout> --description "<the change to make>" \n     (--forward <url> | --issue | --not-needed "<reason>")
 node --experimental-strip-types core/vendor/cli.ts patch upstream <NNNN-slug.patch> --upstream <checkout> [--pr] [--base <branch>]
 node --experimental-strip-types core/vendor/cli.ts update  --upstream <checkout> [--vault <dir>] [--record <path>] [--resolved <file>]...
@@ -81,6 +82,14 @@ A Windows checkout with `core.autocrlf=true` has CRLF line ends in its working t
 ## `migrate`
 
 Converts a schema-2 record, from an upstream checkout at the record's commit. Each `modified` file becomes one patch: the diff from upstream to the vault's bytes, with the old `change` line as `Description` and `Forwarded` left empty. `check` fails until every `Forwarded` is filled, so each local change gets an upstream answer the day the vault migrates. Patch numbers continue after any already in the folder.
+
+## The write guard and `patch begin`
+
+A vault runs [`core/scripts/vendor-guard.ts`](../scripts/vendor-guard.ts) as a PreToolUse hook on Edit, Write, MultiEdit and NotebookEdit. An edit to a file a `VENDOR.json` lists is denied, and the message names three routes, in order: an extension in `.claude/extensions/`, a fix upstream, or a local patch.
+
+`patch begin <file>...` lets the guard allow edits to those files for 30 minutes. `patch new` closes the window once the patch is made. The windows live in `.claude/.vendor-begin/`, which ignores itself in git.
+
+The guard is a prompt, not a boundary: it allows the edit on any internal error, and `check` in CI stays the guarantee.
 
 ## `patch new`
 
