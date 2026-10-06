@@ -6,6 +6,8 @@ How to work on the mindframe repo. What mindframe is and how it is laid out: [RE
 
 - Branch and PR for every change. Never push to `main`.
 - PR titles use `type: short description`. Types: `feat`, `fix`, `docs`, `chore`, `ci`, `test`, `refactor`. CI checks the format.
+- **Every title is imperative: the change to make, verb first.** That applies to PR titles after their `type:` prefix (`feat: lift the registry`, `fix: keep stored runs valid`) and to issue titles, which carry no prefix (`Move the Stop flow into the core`). Never a description (`Core: one Stop flow`) or a status (`Baseline run`). CI checks only the prefix: whether a word is an imperative is for review, not a word list.
+- Roadmap rows use their issue's title.
 - One issue per PR, based on `main`. No stacked PRs. Update the issue's roadmap row in the same PR.
 - Add or remove a top-level path only together with the README's layout section.
 
