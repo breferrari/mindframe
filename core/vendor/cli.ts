@@ -8,6 +8,7 @@
  *   node --experimental-strip-types core/vendor/cli.ts patch new <slug> <file>... --upstream <checkout>
  *        --description "<the change to make>" (--forward <url> | --issue | --not-needed "<reason>")
  *   node --experimental-strip-types core/vendor/cli.ts patch upstream <NNNN-slug.patch> --upstream <checkout> [--pr] [--base <branch>]
+ *   node --experimental-strip-types core/vendor/cli.ts update  --upstream <checkout at the new commit> [--resolved <file>]...
  *
  * `check` exits 0 when every vendored file is exactly upstream plus its
  * recorded patches and every patch says where it went upstream, and 1 with
@@ -44,6 +45,9 @@ import {
 	headerOf,
 	migrate,
 	newPatch,
+	planUpdate,
+	privateLines,
+	statementProblem,
 	patchDirFor,
 	readPatchDir,
 	readRecord,
@@ -76,6 +80,18 @@ function cleanHead(run: Run, upstreamRoot: string): string {
 	return commit;
 }
 
+/**
+ * Refuses to post text holding a local path or a session artifact: an issue
+ * or PR from a vault goes to a public tracker, and a user's vault path must
+ * never land there.
+ */
+function refusePrivate(text: string, where: string): void {
+	const leaks = privateLines(text);
+	if (leaks.length) {
+		throw new VendorError([`${where} would carry a local path or a session artifact; take it out of the change or its Description first:`, ...leaks.map((l) => `  ${l.slice(0, 160)}`)].join("\n"));
+	}
+}
+
 /** The last line of a command's output: gh prints the new issue's or PR's URL last. */
 const lastLine = (out: string): string => out.split("\n").pop()!.trim();
 
@@ -104,6 +120,7 @@ export function main(
 				"not-needed": { type: "string" },
 				pr: { type: "boolean", default: false },
 				base: { type: "string" },
+				resolved: { type: "string", multiple: true },
 			},
 		});
 		const vault = path.resolve(values.vault!);
@@ -161,6 +178,25 @@ export function main(
 			return 0;
 		}
 
+		if (command === "update") {
+			if (!values.upstream) throw new UsageError("update needs --upstream <checkout at the commit to update to>");
+			const upstreamRoot = path.resolve(values.upstream);
+			const commit = cleanHead(run, upstreamRoot);
+			const record = readRecord(recordFile);
+			const plan = planUpdate({ vault, upstreamRoot, commit, record, patches: readPatchDir(patchDir), resolved: values.resolved ?? [] });
+			for (const f of plan.files) writeFileSync(resolveInside(vault, f.file), f.bytes);
+			if (plan.record === null) {
+				for (const file of plan.conflicts) log(`vendor: ${file}: conflict; resolve the markers, then run update again with --resolved ${file}`);
+				log(`vendor: nothing else written; the record still names ${record.commit.slice(0, 7)}`);
+				return 1;
+			}
+			for (const p of plan.patchFiles) writeFileSync(path.join(patchDir, p.name), p.text);
+			writeFileSync(recordFile, formatRecord(plan.record));
+			for (const name of plan.retired) log(`vendor: ${name}: upstream has it now; retired (Applied-Upstream: ${commit.slice(0, 7)})`);
+			log(`vendor: updated ${Object.keys(plan.record.files).length} files to ${record.repository} at ${commit.slice(0, 7)}`);
+			return 0;
+		}
+
 		if (command === "patch") {
 			const [sub, ...args] = positionals;
 			if (sub !== "new" && sub !== "upstream") throw new UsageError("patch takes new or upstream");
@@ -176,6 +212,8 @@ export function main(
 				if (routes !== 1) throw new UsageError('patch new needs exactly one of --forward <url>, --issue, or --not-needed "<reason>": a patch is made with its upstream answer');
 				const description = values.description?.trim();
 				if (!description) throw new UsageError('patch new needs --description "<the change to make>"');
+				const statement = statementProblem(description);
+				if (statement) throw new VendorError(statement);
 				if (cleanHead(run, upstreamRoot) !== record.commit) throw new VendorError(`the upstream checkout isn't at the record's commit ${record.commit.slice(0, 7)}`);
 				const header = (forwarded: string): Array<[string, string]> => [
 					["Description", description],
@@ -189,6 +227,7 @@ export function main(
 					const diff = dry.text.slice(dry.text.indexOf("diff --git"));
 					const fence = "```";
 					const body = `A vault that vendors this repository carries this change as a patch.\n\n${fence}diff\n${diff}${fence}\n`;
+					refusePrivate(`${description}\n${body}`, "the issue");
 					forwarded = lastLine(run("gh", ["issue", "create", "--repo", repoSlug(record.repository), "--title", description, "--body", body], vault));
 				}
 				const made = newPatch({ vault, upstreamRoot, record, patches, slug, files, header: header(forwarded) });
@@ -218,6 +257,11 @@ export function main(
 				} catch (err) {
 					throw new VendorError(`${name} doesn't apply to the upstream checkout: ${err instanceof Error ? err.message : String(err)}`);
 				}
+			}
+			if (values.pr) {
+				const statement = statementProblem(description);
+				if (statement) throw new VendorError(statement);
+				refusePrivate(`${description}\n${formatPatch(patch)}`, "the pull request");
 			}
 			run("git", ["checkout", "-q", "-b", branch], upstreamRoot);
 			for (const [target, text] of writes) writeFileSync(target, text);

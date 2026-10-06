@@ -30,7 +30,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { applyFile, diffFile, formatPatch, parsePatch, PatchError, type FilePatch, type Patch } from "./patch.ts";
+import { applyFile, diffFile, formatPatch, merge3, parsePatch, PatchError, type FilePatch, type Patch } from "./patch.ts";
 
 export const SCHEMA_VERSION = 3;
 export const DEFAULT_RECORD = ".claude/VENDOR.json";
@@ -495,6 +495,233 @@ export function withHeader(p: Patch, key: string, value: string): Patch {
 	const has = p.header.some(([k]) => k === key);
 	const header = has ? p.header.map(([k, v]) => (k === key ? ([k, value] as const) : ([k, v] as const))) : [...p.header, [key, value] as const];
 	return { ...p, header };
+}
+
+// ---- publishing guard ---------------------------------------------------------
+
+/**
+ * What must never be posted to a public tracker from a vault: a local
+ * absolute path (a user's home or drive path) or a session artifact. The
+ * same patterns as CI's artifact grep (.github/workflows/ci.yml).
+ */
+const PRIVATE = /claude\.ai\/(code\/)?session|^Claude-Session:|(^|[^A-Za-z0-9/])[A-Za-z]:(\\{1,2}|\/)[A-Za-z0-9_.-]+(\\{1,2}|\/)[A-Za-z0-9_.-]+(\\{1,2}|\/)|\/Users\/[^/\s]+\/|\/home\/[^/\s]+\//m;
+
+/** Lines of `text` that would leak a local path or a session artifact. */
+export function privateLines(text: string): string[] {
+	return text.split("\n").filter((l) => PRIVATE.test(l));
+}
+
+/**
+ * A Description becomes an issue or PR title, so it must read as the change
+ * to make ("Give the meter a trailing newline"), not as a statement about
+ * the code ("The meter lacks a newline."). A light check for the obvious
+ * statement forms; review catches the rest.
+ */
+export function statementProblem(description: string): string | null {
+	const d = description.trim();
+	if (/^(the|it|this|these|there|a|an)\b/i.test(d)) return `Description reads as a statement ("${d}"): write the change to make, verb first, e.g. "Give the meter a trailing newline"`;
+	if (d.endsWith(".")) return `Description ends with a period ("${d}"): write it as a title, the change to make, verb first`;
+	return null;
+}
+
+// ---- update -------------------------------------------------------------------
+
+export type UpdateInput = {
+	readonly vault: string;
+	/** An upstream checkout at the commit to update to. */
+	readonly upstreamRoot: string;
+	readonly commit: string;
+	readonly record: VendorRecord;
+	readonly patches: PatchSet;
+	/** Files whose conflict markers have been resolved by hand; their vault bytes are taken as the result. */
+	readonly resolved?: readonly string[];
+};
+
+export type UpdatePlan = {
+	/** The record at the new commit; null when there are conflicts. */
+	readonly record: VendorRecord | null;
+	/** Vault files to write: the new upstream with patches, or merged text with conflict markers. */
+	readonly files: ReadonlyArray<{ readonly file: string; readonly bytes: Uint8Array }>;
+	/** Patch files to rewrite, with refreshed hunks or an Applied-Upstream header. */
+	readonly patchFiles: ReadonlyArray<{ readonly name: string; readonly text: string }>;
+	readonly retired: readonly string[];
+	readonly conflicts: readonly string[];
+};
+
+/**
+ * Moves a vault's vendored files to a new upstream commit, carrying its
+ * patches across. For each file, the old upstream is rebuilt by undoing the
+ * vault's patches (so no pristine copy is needed); then each patch is
+ * re-applied exactly to the new upstream:
+ * - it applies: kept, its hunks rewritten for the new line numbers;
+ * - it doesn't, but undoing it does: upstream already has it, and it
+ *   retires for this file (the two-check rule); a patch retired from every
+ *   file it touched gets Applied-Upstream and leaves the record;
+ * - neither: a conflict. The file gets a three-way merge (base: the old
+ *   upstream, ours: the vault, theirs: the new upstream) with markers, and
+ *   nothing else is written.
+ * After the markers are resolved, `resolved` names the file: its bytes are
+ * taken as the result, and the file's remaining changes are folded into its
+ * first conflicting patch.
+ * Computes everything; writes nothing.
+ */
+export function planUpdate(input: UpdateInput): UpdatePlan {
+	const { record, patches } = input;
+	if (record.schemaVersion !== SCHEMA_VERSION) throw new VendorError(`the record is schema ${record.schemaVersion}; run migrate first`);
+	const short = input.commit.slice(0, 7);
+	const files: Array<{ file: string; bytes: Uint8Array }> = [];
+	const text = (t: string): Uint8Array => Buffer.from(t, "utf8");
+	const conflicts: string[] = [];
+	const entries: Record<string, FileEntry> = {};
+	// Per patch: its sections as they stand after the update, and which files it still changes.
+	const sections = new Map<string, Map<string, FilePatch | null>>();
+	const setSection = (name: string, file: string, section: FilePatch | null) => {
+		if (!sections.has(name)) sections.set(name, new Map());
+		sections.get(name)!.set(file, section);
+	};
+	const problems: string[] = [];
+
+	for (const file of Object.keys(record.files).sort()) {
+		const entry = record.files[file]!;
+		const names = entry.patches ?? [];
+		let ownBytes: Uint8Array;
+		let newBytes: Uint8Array;
+		try {
+			ownBytes = readFileSync(resolveInside(input.vault, file));
+		} catch {
+			problems.push(`${file}: missing in the vault; run check`);
+			continue;
+		}
+		try {
+			newBytes = readFileSync(resolveInside(input.upstreamRoot, upstreamPathOf(record, file)));
+		} catch {
+			problems.push(`${file}: no longer upstream at ${short}; drop it from the record or vendor its replacement`);
+			continue;
+		}
+		const newHash = contentHash(newBytes);
+		if (names.length === 0) {
+			if (contentHash(ownBytes) !== entry.upstreamSha256) {
+				problems.push(`${file}: edited without a patch; run check`);
+				continue;
+			}
+			entries[file] = { upstream: entry.upstream, sha256: newHash, upstreamSha256: newHash };
+			files.push({ file, bytes: newBytes });
+			continue;
+		}
+		const own = Buffer.from(ownBytes).toString("utf8");
+		const theirs = Buffer.from(newBytes).toString("utf8");
+
+		/** The patches after the one at `i` that also change this file. */
+		const later = (i: number) => names.slice(i + 1).filter((n) => patches.get(n)?.patch?.files.some((p) => p.path === file));
+		const combine = (stuck: string, i: number, how: string) =>
+			`${file}: ${stuck} ${how}, but the patches after it (${later(i).join(", ")}) also change it; combine them into one patch with "vendor patch new", then update`;
+		// Carries the file's patches onto the new upstream, in order. A patch
+		// that applies (its lines may have moved; its context must match
+		// exactly) is kept and re-anchored; one whose change upstream already
+		// has retires for this file. At the first that does neither, the rest of
+		// the change, up to `final`, folds into that patch; with no `final`, the
+		// carry stops there.
+		type Carried = { readonly at: string; readonly kept: string[] } | { readonly stuck: string; readonly index: number };
+		const carry = (final: string | null): Carried => {
+			let at = theirs;
+			const kept: string[] = [];
+			for (const [i, name] of names.entries()) {
+				const section = patches.get(name)?.patch?.files.find((p) => p.path === file);
+				if (!section) continue;
+				try {
+					const next = applyFile(at, section, false, { offset: true });
+					setSection(name, file, diffFile(file, at, next));
+					at = next;
+					kept.push(name);
+					continue;
+				} catch {
+					/* not as it stands: absorbed, or it needs a merge */
+				}
+				try {
+					applyFile(at, section, true, { offset: true });
+					setSection(name, file, null); // upstream has it already
+					continue;
+				} catch {
+					/* upstream doesn't have it either */
+				}
+				if (final === null) return { stuck: name, index: i };
+				setSection(name, file, diffFile(file, at, final));
+				kept.push(name);
+				return { at: final, kept };
+			}
+			return { at, kept };
+		};
+		const settle = (c: { readonly at: string; readonly kept: string[] }, bytes: Uint8Array) => {
+			const kept = c.kept.filter((n) => sections.get(n)?.get(file) !== null);
+			entries[file] = { upstream: entry.upstream, sha256: contentHash(bytes), upstreamSha256: newHash, ...(kept.length ? { patches: kept } : {}) };
+			files.push({ file, bytes });
+		};
+
+		if (input.resolved?.includes(file)) {
+			if (/^(<<<<<<<|>>>>>>>) /m.test(own) || /^(=======|\|\|\|\|\|\|\| base)$/m.test(own)) {
+				problems.push(`${file}: still has conflict markers`);
+				continue;
+			}
+			const first = carry(null);
+			if ("stuck" in first && later(first.index).length) {
+				problems.push(combine(first.stuck, first.index, "was resolved by hand"));
+				continue;
+			}
+			const done = carry(own);
+			if (!("stuck" in done)) settle(done, ownBytes);
+			continue;
+		}
+
+		let base: string;
+		try {
+			base = unpatch(file, own, names, patches);
+		} catch (err) {
+			problems.push(`${file}: its patches don't undo cleanly (${err instanceof Error ? err.message : String(err)}); run check`);
+			continue;
+		}
+		if (textHash(base) !== entry.upstreamSha256) {
+			problems.push(`${file}: its patches don't lead back to upstream; run check`);
+			continue;
+		}
+		const tried = carry(null);
+		if (!("stuck" in tried)) {
+			settle(tried, text(tried.at));
+			continue;
+		}
+		// The three-way merge: base is the old upstream, ours the vault, theirs the new upstream.
+		const merged = merge3(base, own, theirs);
+		if (merged.conflicts > 0) {
+			files.push({ file, bytes: text(merged.text) });
+			conflicts.push(file);
+			continue;
+		}
+		if (later(tried.index).length) {
+			problems.push(combine(tried.stuck, tried.index, "merged cleanly"));
+			continue;
+		}
+		const done = carry(merged.text);
+		if (!("stuck" in done)) settle(done, text(done.at));
+	}
+	if (problems.length) throw new VendorError(problems.join("\n"));
+
+	if (conflicts.length) {
+		return { record: null, files: files.filter((f) => conflicts.includes(f.file)), patchFiles: [], retired: [], conflicts };
+	}
+
+	const patchFiles: Array<{ name: string; text: string }> = [];
+	const retired: string[] = [];
+	for (const [name, bySection] of sections) {
+		const p = patches.get(name)!.patch!;
+		const files2 = p.files.map((f) => (bySection.has(f.path) ? bySection.get(f.path) : f)).filter((f): f is FilePatch => f !== null && f !== undefined);
+		if (files2.length === 0) {
+			patchFiles.push({ name, text: formatPatch(withHeader(p, "Applied-Upstream", short)) });
+			retired.push(name);
+		} else {
+			patchFiles.push({ name, text: formatPatch({ ...p, files: files2 }) });
+		}
+	}
+	const next = { ...record, commit: input.commit, files: entries } as VendorRecord;
+	return { record: next, files, patchFiles, retired, conflicts };
 }
 
 // ---- check --------------------------------------------------------------------
