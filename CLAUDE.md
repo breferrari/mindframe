@@ -23,7 +23,8 @@ Update this table in the PR that adds or removes a top-level path.
 
 | Path | What |
 |------|------|
-| `core/` | The core. Today: `core/vendor/`, the `VENDOR.json` record and offline drift check. The extension registry arrives with the Phase 2 lift |
+| `core/scripts/` | The core as a vault carries it, mirroring `.claude/scripts/`: `core/` (the extension registry, types, public `index.ts`, QMD session work) and `lib/` (hook I/O, the budget, qmd, wikilinks). Lifted from wiki-mind; see its README |
+| `core/vendor/` | The `VENDOR.json` record and offline drift check |
 | `testbed/` | Runs a vault's hooks and mod in real or dry sessions and grades them: `bin/`, `lib/`, `specs/`, `fixtures/`, `ci/pins.json`, tests |
 | `docs/DESIGN.md` | The core's contract, rule by rule, with the failure each prevents |
 | `ROADMAP.md` | Phases as milestones, one issue per row |
