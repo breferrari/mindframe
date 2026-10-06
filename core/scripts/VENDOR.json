@@ -2,133 +2,111 @@
   "commit": "3ce7381f73e2953a23ee0216fd0eb63ee86d8306",
   "files": {
     "core/index.ts": {
-      "modified": false,
       "sha256": "b965013432c4973e66159c26f6c74e38e43fb07db66f14070faabe39204ab843",
       "upstream": "core/index.ts",
       "upstreamSha256": "b965013432c4973e66159c26f6c74e38e43fb07db66f14070faabe39204ab843"
     },
     "core/qmd-session.test.ts": {
-      "modified": false,
       "sha256": "9e9373a79366fa480707c27b2c1d7fe92acdb4a9c8e7d65a5b077dfcb74a9183",
       "upstream": "core/qmd-session.test.ts",
       "upstreamSha256": "9e9373a79366fa480707c27b2c1d7fe92acdb4a9c8e7d65a5b077dfcb74a9183"
     },
     "core/qmd-session.ts": {
-      "modified": false,
       "sha256": "0cd8856d680d18f2f605a42b492a045df8d41bcb0568c71c865a36c37eaedca2",
       "upstream": "core/qmd-session.ts",
       "upstreamSha256": "0cd8856d680d18f2f605a42b492a045df8d41bcb0568c71c865a36c37eaedca2"
     },
     "core/registry.test.ts": {
-      "modified": false,
       "sha256": "2e16726561c70fdc8c69942531b267ddc471bdcd783ad0843b3ba36f21ade98d",
       "upstream": "core/registry.test.ts",
       "upstreamSha256": "2e16726561c70fdc8c69942531b267ddc471bdcd783ad0843b3ba36f21ade98d"
     },
     "core/registry.ts": {
-      "modified": false,
       "sha256": "78e0d0e96116caf05b91d96d7c0fa58f3e52397a0b002ee0af8aaf485fed50c7",
       "upstream": "core/registry.ts",
       "upstreamSha256": "78e0d0e96116caf05b91d96d7c0fa58f3e52397a0b002ee0af8aaf485fed50c7"
     },
     "core/types.ts": {
-      "modified": false,
       "sha256": "3416b8cf8fb7f1913ece0b16685eb3b7d4e1ceee89d40f821e1f5996ac01beb2",
       "upstream": "core/types.ts",
       "upstreamSha256": "3416b8cf8fb7f1913ece0b16685eb3b7d4e1ceee89d40f821e1f5996ac01beb2"
     },
     "lib/frontmatter.ts": {
-      "modified": false,
       "sha256": "cbfca1040a6866a83c4b6ac17519bd69f3ca050efbbf2ab6054e4b0d689570b8",
       "upstream": "lib/frontmatter.ts",
       "upstreamSha256": "cbfca1040a6866a83c4b6ac17519bd69f3ca050efbbf2ab6054e4b0d689570b8"
     },
     "lib/hook-io.ts": {
-      "modified": false,
       "sha256": "6eddaeb3e73c7d31af51264974c998b28433c9051fc21d4d4d6aefdad91f4822",
       "upstream": "lib/hook-io.ts",
       "upstreamSha256": "6eddaeb3e73c7d31af51264974c998b28433c9051fc21d4d4d6aefdad91f4822"
     },
     "lib/om-mod.ts": {
-      "modified": false,
       "sha256": "90221c42785ca6d1bc581f6255a1f786093bd7c612da9a3d724b90c526dbdca7",
       "upstream": "lib/om-mod.ts",
       "upstreamSha256": "90221c42785ca6d1bc581f6255a1f786093bd7c612da9a3d724b90c526dbdca7"
     },
     "lib/project-dir.ts": {
-      "modified": false,
       "sha256": "fcd33c92325e685ac31754f32d6a9519509133ccc469094a82f0783930e09e38",
       "upstream": "lib/project-dir.ts",
       "upstreamSha256": "fcd33c92325e685ac31754f32d6a9519509133ccc469094a82f0783930e09e38"
     },
     "lib/prose-width.ts": {
-      "modified": false,
       "sha256": "2d0fa9c392ed77ece98b10d4fe0634139570b66f6425aa95e3aacf64450e99ed",
       "upstream": "lib/prose-width.ts",
       "upstreamSha256": "2d0fa9c392ed77ece98b10d4fe0634139570b66f6425aa95e3aacf64450e99ed"
     },
     "lib/qmd.ts": {
-      "modified": false,
       "sha256": "887487cc52b17e8494c248d65faaba6b2006e9844acfe67164c78fb06af86848",
       "upstream": "lib/qmd.ts",
       "upstreamSha256": "887487cc52b17e8494c248d65faaba6b2006e9844acfe67164c78fb06af86848"
     },
     "lib/regex.ts": {
-      "modified": false,
       "sha256": "4bdbbb1e83027db42d459cb17c3d71af7a91e09e3b53356c02188e2feb093c96",
       "upstream": "lib/regex.ts",
       "upstreamSha256": "4bdbbb1e83027db42d459cb17c3d71af7a91e09e3b53356c02188e2feb093c96"
     },
     "lib/session-start.ts": {
-      "modified": false,
       "sha256": "3593de22dfe5f8dfa5e78663717c06c4ff82001abfe5dc6e0421a78d2564a27d",
       "upstream": "lib/session-start.ts",
       "upstreamSha256": "3593de22dfe5f8dfa5e78663717c06c4ff82001abfe5dc6e0421a78d2564a27d"
     },
     "lib/wikilinks.ts": {
-      "modified": false,
       "sha256": "876c6ed61fe0d2e38adcf5d4678643955037e7e1e4a03845e7a883e8a565754b",
       "upstream": "lib/wikilinks.ts",
       "upstreamSha256": "876c6ed61fe0d2e38adcf5d4678643955037e7e1e4a03845e7a883e8a565754b"
     },
     "tests/frontmatter.test.ts": {
-      "modified": false,
       "sha256": "7f36d89088f5e0e7df4fdb20e09bb58c34cbfc5b33feaa8ddf5e97275e0c3aa3",
       "upstream": "tests/frontmatter.test.ts",
       "upstreamSha256": "7f36d89088f5e0e7df4fdb20e09bb58c34cbfc5b33feaa8ddf5e97275e0c3aa3"
     },
     "tests/hook-io.test.ts": {
-      "modified": false,
       "sha256": "9b3f3cc1399b67116a8ebb08f12110117dc06300b251ef57c1061a212096f9c7",
       "upstream": "tests/hook-io.test.ts",
       "upstreamSha256": "9b3f3cc1399b67116a8ebb08f12110117dc06300b251ef57c1061a212096f9c7"
     },
     "tests/om-mod.test.ts": {
-      "modified": false,
       "sha256": "ca15b12d08609ed8e698ffdda449afb6ee53de9bdc95e1457a5cfc7562cecd99",
       "upstream": "tests/om-mod.test.ts",
       "upstreamSha256": "ca15b12d08609ed8e698ffdda449afb6ee53de9bdc95e1457a5cfc7562cecd99"
     },
     "tests/project-dir.test.ts": {
-      "modified": false,
       "sha256": "e738d5af8410a60c3f3f0965b1728ac903b0c5b1ef43456af13b1be545abda28",
       "upstream": "tests/project-dir.test.ts",
       "upstreamSha256": "e738d5af8410a60c3f3f0965b1728ac903b0c5b1ef43456af13b1be545abda28"
     },
     "tests/prose-width.test.ts": {
-      "modified": false,
       "sha256": "7627ad4666aa52e32099e5f20bbeed7f734dc10f5b1d9a5797d3bee2237957be",
       "upstream": "tests/prose-width.test.ts",
       "upstreamSha256": "7627ad4666aa52e32099e5f20bbeed7f734dc10f5b1d9a5797d3bee2237957be"
     },
     "tests/regex.test.ts": {
-      "modified": false,
       "sha256": "2a405bbcbd2ada4b3382d39a6c89efd9610852a67647423c0bae05bb2e9d8894",
       "upstream": "tests/regex.test.ts",
       "upstreamSha256": "2a405bbcbd2ada4b3382d39a6c89efd9610852a67647423c0bae05bb2e9d8894"
     },
     "tests/wikilinks.test.ts": {
-      "modified": false,
       "sha256": "db63042a973a284e01722e2981d11f63cc43a8a32ddf2143bc5769f1639352ad",
       "upstream": "tests/wikilinks.test.ts",
       "upstreamSha256": "db63042a973a284e01722e2981d11f63cc43a8a32ddf2143bc5769f1639352ad"
@@ -137,6 +115,6 @@
   "license": "MIT",
   "package": "wiki-mind",
   "repository": "https://github.com/breferrari/wiki-mind",
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "sourceRoot": ".claude/scripts"
 }

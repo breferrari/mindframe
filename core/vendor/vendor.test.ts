@@ -5,7 +5,22 @@ import os from "node:os";
 import path from "node:path";
 import { test, type TestContext } from "node:test";
 import { main } from "./cli.ts";
-import { buildRecord, checkRecord, contentHash, formatRecord, isBinary, parseRecord, readRecord, toLf, type VendorRecord } from "./vendor.ts";
+import { diffFile, formatPatch } from "./patch.ts";
+import {
+	buildRecord,
+	checkRecord,
+	contentHash,
+	forwardedProblem,
+	formatRecord,
+	isBinary,
+	migrate,
+	parseRecord,
+	readPatchDir,
+	readRecord,
+	slugOf,
+	toLf,
+	type VendorRecord,
+} from "./vendor.ts";
 
 const tmp = (t: TestContext): string => {
 	const dir = mkdtempSync(path.join(os.tmpdir(), "mf-vendor-test-"));
@@ -19,8 +34,10 @@ const put = (root: string, rel: string, content: string | Uint8Array): void => {
 };
 const git = (cwd: string, ...args: string[]): string => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
-const LIB = "export const answer = 42\nexport const name = 'lib'\n";
+const LIB = "export const answer = 42\nexport const name = 'lib'\nexport const tail = true\n";
+const FIXED = LIB.replace("42", "43");
 const BIN = new Uint8Array([0x89, 0x50, 0x00, 0x0d, 0x0a, 0x01]);
+const LIB_PATH = ".claude/scripts/lib.ts";
 
 /** An upstream repo at one commit, and a vault holding an exact copy of its two files. */
 function setup(t: TestContext) {
@@ -37,119 +54,172 @@ function setup(t: TestContext) {
 	git(upstream, "add", "-A");
 	git(upstream, "commit", "-q", "--no-gpg-sign", "-m", "up");
 	const commit = git(upstream, "rev-parse", "HEAD");
-	put(vault, ".claude/scripts/lib.ts", LIB);
+	put(vault, LIB_PATH, LIB);
 	put(vault, ".claude/logo.bin", BIN);
 	const base = {
 		repository: "https://example.com/upstream",
 		license: "MIT",
 		files: {
-			".claude/scripts/lib.ts": { upstream: "src/lib.ts", modified: false },
-			".claude/logo.bin": { upstream: "src/logo.bin", modified: false },
+			[LIB_PATH]: { upstream: "src/lib.ts" },
+			".claude/logo.bin": { upstream: "src/logo.bin" },
 		},
 	};
-	const record = (paths = Object.keys(base.files), changes?: Record<string, string>, b: object = base): VendorRecord =>
-		buildRecord({ vault, upstreamRoot: upstream, commit, base: b as never, paths, changes });
-	return { upstream, vault, commit, base, record };
+	const patchDir = path.join(vault, ".claude", "vendor-patches");
+	const record = (b: object = base, paths = Object.keys(base.files)): VendorRecord =>
+		buildRecord({ vault, upstreamRoot: upstream, commit, base: b as never, paths, patches: readPatchDir(patchDir) });
+	/** Edits the vault's lib and writes a patch for it; returns the patch name. */
+	const patchLib = (forwarded: string, name = "0001-lib.patch", extra: Array<[string, string]> = []): string => {
+		put(vault, LIB_PATH, FIXED);
+		put(patchDir, name, formatPatch({ header: [["Description", "fix the answer"], ["Forwarded", forwarded], ...extra], files: [diffFile(LIB_PATH, LIB, FIXED)!] }));
+		return name;
+	};
+	const withPatches = (names: string[]) => ({ ...base, files: { ...base.files, [LIB_PATH]: { upstream: "src/lib.ts", patches: names } } });
+	const check = (r: VendorRecord) => checkRecord(vault, r, readPatchDir(patchDir)).map((p) => p.problem);
+	return { upstream, vault, commit, base, record, patchDir, patchLib, withPatches, check };
 }
 
-test("text hashes with CRLF read as LF; binary hashes raw; binary means a NUL in the first 8 KB", () => {
-	const lf = Buffer.from("a\nb\n");
-	const crlf = Buffer.from("a\r\nb\r\n");
-	assert.equal(contentHash(lf), contentHash(crlf));
-	assert.notEqual(contentHash(lf), contentHash(Buffer.from("a\nc\n")));
+test("hashes: text with CRLF read as LF, binary raw; binary is a NUL in the first 8,000 bytes", () => {
+	assert.equal(contentHash(Buffer.from("a\nb\n")), contentHash(Buffer.from("a\r\nb\r\n")));
 	assert.deepEqual(Buffer.from(toLf(Buffer.from("a\rb\r\n"))), Buffer.from("a\rb\n"), "a lone CR stays");
 	assert.equal(isBinary(BIN), true);
-	assert.notEqual(contentHash(BIN), contentHash(toLf(BIN)), "binary bytes are not normalised");
-	assert.equal(isBinary(Buffer.concat([Buffer.alloc(8000, 0x61), Buffer.from([0])])), false, "a NUL past 8 KB doesn't count");
+	assert.notEqual(contentHash(BIN), contentHash(toLf(BIN)));
+	assert.equal(isBinary(Buffer.concat([Buffer.alloc(8000, 0x61), Buffer.from([0])])), false);
 	assert.equal(isBinary(Buffer.concat([Buffer.alloc(7999, 0x61), Buffer.from([0])])), true);
 });
 
-test("record: an exact copy is unmodified, with equal hashes; keys sorted, trailing newline", (t) => {
+test("Forwarded: a URL or not-needed with a reason; nothing else, and never empty", () => {
+	assert.equal(forwardedProblem("https://github.com/o/r/issues/1"), null);
+	assert.equal(forwardedProblem("not-needed: this vault only"), null);
+	for (const bad of [undefined, "", "  ", "later", "not-needed:", "not-needed: ", "no", "ftp://x"]) assert.notEqual(forwardedProblem(bad), null, String(bad));
+});
+
+test("record: an exact copy has no patches and equal hashes; schema 3, keys sorted", (t) => {
 	const s = setup(t);
 	const r = s.record();
-	assert.equal(r.schemaVersion, 2);
-	assert.equal(r.commit, s.commit);
+	assert.equal(r.schemaVersion, 3);
 	for (const e of Object.values(r.files)) {
-		assert.equal(e.modified, false);
 		assert.equal(e.sha256, e.upstreamSha256);
-		assert.equal(e.change, undefined);
+		assert.equal(e.patches, undefined);
+		assert.ok(!("modified" in e) && !("change" in e));
 	}
-	const text = formatRecord(r);
-	assert.ok(text.endsWith("}\n"));
-	const keys = Object.keys(JSON.parse(text));
+	const keys = Object.keys(JSON.parse(formatRecord(r)));
 	assert.deepEqual(keys, [...keys].sort());
 });
 
-test("record: an edited file needs a change line, and then is modified", (t) => {
+test("record: a file that differs from upstream without patches is refused, pointing at patch new", (t) => {
 	const s = setup(t);
-	put(s.vault, ".claude/scripts/lib.ts", LIB + "// local fix\n");
-	assert.throws(() => s.record(), /lib\.ts: differs from upstream; give its change/);
-	const r = s.record(undefined, { ".claude/scripts/lib.ts": "adds a local fix." });
-	const e = r.files[".claude/scripts/lib.ts"]!;
-	assert.equal(e.modified, true);
-	assert.equal(e.change, "adds a local fix.");
-	assert.notEqual(e.sha256, e.upstreamSha256);
+	put(s.vault, LIB_PATH, FIXED);
+	assert.throws(() => s.record(), /lib\.ts: differs from upstream; make the change a patch with `vendor patch new`/);
 });
 
-test("record: a path outside the vault, or through a symlink, is refused", (t) => {
+test("record: a patched file is kept when its patches lead exactly back to upstream", (t) => {
 	const s = setup(t);
-	assert.throws(() => s.record(["../outside.ts"]), /not a relative path inside the vault/);
-	assert.throws(() => s.record(["C:/x.ts"]), /not a relative path inside the vault/);
-	put(s.vault, "real/lib.ts", LIB);
-	try {
-		symlinkSync(path.join(s.vault, "real", "lib.ts"), path.join(s.vault, "link.ts"));
-	} catch {
-		t.skip("this machine can't create symlinks");
-		return;
-	}
-	assert.throws(() => s.record(["link.ts"]), /symlink/);
+	const name = s.patchLib("not-needed: test");
+	const r = s.record(s.withPatches([name]));
+	assert.deepEqual(r.files[LIB_PATH]!.patches, [name]);
+	assert.notEqual(r.files[LIB_PATH]!.sha256, r.files[LIB_PATH]!.upstreamSha256);
+	put(s.vault, LIB_PATH, FIXED + "// more\n");
+	assert.throws(() => s.record(s.withPatches([name])), /hunk|lead back/);
 });
 
 test("check: an exact copy passes, including a CRLF checkout of it", (t) => {
 	const s = setup(t);
 	const r = s.record();
-	assert.deepEqual(checkRecord(s.vault, r), []);
-	put(s.vault, ".claude/scripts/lib.ts", LIB.replace(/\n/g, "\r\n"));
-	assert.deepEqual(checkRecord(s.vault, r), [], "core.autocrlf=true must not read as an edit");
+	assert.deepEqual(s.check(r), []);
+	put(s.vault, LIB_PATH, LIB.replace(/\n/g, "\r\n"));
+	assert.deepEqual(s.check(r), []);
 });
 
-test("check: a real edit fails, under LF or CRLF", (t) => {
+test("check: an edit without a patch fails, under LF or CRLF; a binary file compares raw", (t) => {
 	const s = setup(t);
 	const r = s.record();
-	put(s.vault, ".claude/scripts/lib.ts", LIB.replace("42", "43"));
-	assert.match(checkRecord(s.vault, r)[0]!.problem, /edited without a record/);
-	put(s.vault, ".claude/scripts/lib.ts", LIB.replace("42", "43").replace(/\n/g, "\r\n"));
-	assert.match(checkRecord(s.vault, r)[0]!.problem, /edited without a record/);
-});
-
-test("check: a binary file is compared raw", (t) => {
-	const s = setup(t);
-	const r = s.record();
+	put(s.vault, LIB_PATH, FIXED);
+	assert.deepEqual(s.check(r), ["edited without a patch (bytes differ from sha256)"]);
+	put(s.vault, LIB_PATH, FIXED.replace(/\n/g, "\r\n"));
+	assert.deepEqual(s.check(r), ["edited without a patch (bytes differ from sha256)"]);
+	put(s.vault, LIB_PATH, LIB);
 	put(s.vault, ".claude/logo.bin", toLf(BIN));
-	const p = checkRecord(s.vault, r);
-	assert.equal(p.length, 1);
-	assert.equal(p[0]!.file, ".claude/logo.bin");
+	assert.deepEqual(s.check(r), ["edited without a patch (bytes differ from sha256)"]);
 });
 
-test("check: missing files, wrong modified flags, missing or stray change lines", (t) => {
+test("check: a patched file passes when its patch is forwarded, under LF and CRLF", (t) => {
+	const s = setup(t);
+	const name = s.patchLib("https://github.com/o/r/pull/7");
+	const r = s.record(s.withPatches([name]));
+	assert.deepEqual(s.check(r), []);
+	put(s.vault, LIB_PATH, FIXED.replace(/\n/g, "\r\n"));
+	assert.deepEqual(s.check(r), [], "a CRLF checkout of a patched file");
+});
+
+test("check: Forwarded and Description are required, and Forwarded must be a URL or not-needed", (t) => {
+	const s = setup(t);
+	const name = s.patchLib("https://x/1");
+	const r = s.record(s.withPatches([name]));
+	const rewrite = (header: Array<[string, string]>) => put(s.patchDir, name, formatPatch({ header, files: [diffFile(LIB_PATH, LIB, FIXED)!] }));
+	rewrite([["Description", "d"], ["Forwarded", ""]]);
+	assert.match(s.check(r).join("\n"), /Forwarded is empty/);
+	rewrite([["Description", "d"], ["Forwarded", "later"]]);
+	assert.match(s.check(r).join("\n"), /Forwarded is "later"/);
+	rewrite([["Forwarded", "not-needed: local only"]]);
+	assert.match(s.check(r).join("\n"), /Description is missing/);
+	rewrite([["Description", "d"], ["Forwarded", "not-needed: local only"]]);
+	assert.deepEqual(s.check(r), []);
+});
+
+test("check: an orphan patch, a listed patch that is missing, and an unparseable patch all fail", (t) => {
+	const s = setup(t);
+	const name = s.patchLib("https://x/1");
+	const r = s.record(s.withPatches([name]));
+	put(s.patchDir, "0002-stray.patch", formatPatch({ header: [["Description", "d"], ["Forwarded", "https://x/2"]], files: [diffFile("other.ts", "a\n", "b\n")!] }));
+	assert.match(s.check(r).join("\n"), /0002-stray\.patch: in vendor-patches\/ but no file lists it/);
+	rmSync(path.join(s.patchDir, "0002-stray.patch"));
+	put(s.patchDir, "0003-broken.patch", "not a patch\n");
+	assert.match(s.check(r).join("\n"), /0003-broken\.patch: header line 1/);
+	rmSync(path.join(s.patchDir, "0003-broken.patch"));
+	rmSync(path.join(s.patchDir, name));
+	const problems = s.check(r).join("\n");
+	assert.match(problems, /0001-lib\.patch: listed in the record but not in vendor-patches\//);
+	assert.match(problems, /0001-lib\.patch is missing/);
+});
+
+test("check: patches that don't lead back to upstream fail, even when sha256 was updated to match", (t) => {
+	const s = setup(t);
+	const name = s.patchLib("https://x/1");
+	const r = s.record(s.withPatches([name]));
+	// Someone edits the patched file again and re-hashes it by hand.
+	const sneaky = FIXED.replace("tail = true", "tail = false");
+	put(s.vault, LIB_PATH, sneaky);
+	const forged = { ...r, files: { ...r.files, [LIB_PATH]: { ...r.files[LIB_PATH]!, sha256: contentHash(Buffer.from(sneaky)) } } } as VendorRecord;
+	assert.match(s.check(forged).join("\n"), /hunk 1 doesn't match|lead back/);
+});
+
+test("check: a patch that changes a file which doesn't list it fails", (t) => {
+	const s = setup(t);
+	const name = s.patchLib("https://x/1");
+	const r = s.record(s.withPatches([name]));
+	const two = formatPatch({ header: [["Description", "d"], ["Forwarded", "https://x/1"]], files: [diffFile(LIB_PATH, LIB, FIXED)!, diffFile(".claude/other.ts", "a\n", "b\n")!] });
+	put(s.patchDir, name, two);
+	assert.match(s.check(r).join("\n"), /changes \.claude\/other\.ts, which doesn't list it/);
+});
+
+test("check: a retired patch may stay in the folder unlisted, but not stay listed", (t) => {
+	const s = setup(t);
+	const name = s.patchLib("https://x/1", "0001-lib.patch", [["Applied-Upstream", "abc1234"]]);
+	put(s.vault, LIB_PATH, LIB);
+	assert.deepEqual(s.check(s.record()), [], "retired and unlisted: history, not an orphan");
+	put(s.vault, LIB_PATH, FIXED);
+	const listed = s.record(s.withPatches([name]));
+	assert.match(s.check(listed).join("\n"), /marked Applied-Upstream but still listed/);
+});
+
+test("check: missing files and symlinks fail; schema 1 is unverifiable; schema 2 must migrate", (t) => {
 	const s = setup(t);
 	const r = s.record();
 	rmSync(path.join(s.vault, ".claude", "logo.bin"));
-	assert.deepEqual(checkRecord(s.vault, r), [{ file: ".claude/logo.bin", problem: "missing" }]);
+	assert.deepEqual(s.check(r), ["missing"]);
 	put(s.vault, ".claude/logo.bin", BIN);
-	const lie = (patch: object): VendorRecord => ({ ...r, files: { ...r.files, ".claude/scripts/lib.ts": { ...r.files[".claude/scripts/lib.ts"]!, ...patch } } });
-	assert.match(checkRecord(s.vault, lie({ modified: true, change: "x" }))[0]!.problem, /modified is true, but its hashes say false/);
-	assert.match(checkRecord(s.vault, lie({ change: "x" }))[0]!.problem, /change line on an unmodified file/);
-	put(s.vault, ".claude/scripts/lib.ts", LIB + "//x\n");
-	const modified = s.record(undefined, { ".claude/scripts/lib.ts": "x." });
-	const { change: _, ...noChange } = modified.files[".claude/scripts/lib.ts"]!;
-	const problems = checkRecord(s.vault, { ...modified, files: { ...modified.files, ".claude/scripts/lib.ts": noChange } });
-	assert.match(problems[0]!.problem, /modified without a change line/);
-});
-
-test("check: a vendored file replaced by a symlink fails", (t) => {
-	const s = setup(t);
-	const r = s.record();
+	assert.match(s.check({ ...r, schemaVersion: 1 } as VendorRecord)[0]!, /unverifiable/);
+	assert.match(s.check({ ...r, schemaVersion: 2 } as VendorRecord)[0]!, /run migrate/);
 	rmSync(path.join(s.vault, ".claude", "scripts", "lib.ts"));
 	put(s.vault, "elsewhere/lib.ts", LIB);
 	try {
@@ -158,55 +228,112 @@ test("check: a vendored file replaced by a symlink fails", (t) => {
 		t.skip("this machine can't create symlinks");
 		return;
 	}
-	assert.match(checkRecord(s.vault, r)[0]!.problem, /symlink/);
+	assert.match(s.check(r)[0]!, /symlink/);
 });
 
-test("schema 1 is unverifiable, never a pass; schema 2 is a strict superset of it", (t) => {
+test("parseRecord: schema 3 has patches, never modified or change; patch names are NNNN-slug.patch", (t) => {
 	const s = setup(t);
-	// A schema-1 record shaped like wiki-mind's and ShardMind's.
-	const v1 = { schemaVersion: 1, commit: s.commit, copyright: "Someone", license: "MIT", package: "upstream", repository: "https://example.com/upstream", tag: "v1.0.0", version: "1.0.0", files: s.base.files };
-	const p = checkRecord(s.vault, parseRecord(v1));
-	assert.equal(p.length, 1);
-	assert.match(p[0]!.problem, /unverifiable.*run record/);
-	const v2 = s.record(undefined, undefined, parseRecord(v1));
-	for (const [k, v] of Object.entries(v1)) if (k !== "schemaVersion" && k !== "files") assert.deepEqual(v2[k], v, `keeps ${k}`);
-	for (const [file, e] of Object.entries(v1.files)) {
-		const { sha256, upstreamSha256, ...rest } = v2.files[file]!;
-		assert.deepEqual(rest, e, `${file} keeps every schema-1 field`);
-		assert.match(sha256!, /^[0-9a-f]{64}$/);
-		assert.match(upstreamSha256!, /^[0-9a-f]{64}$/);
-	}
-	assert.throws(() => parseRecord({ ...v2, files: { x: { upstream: "x", modified: false } } }), /sha256 must be/);
+	const r = s.record();
+	const lib = r.files[LIB_PATH]!;
+	assert.throws(() => parseRecord({ ...r, files: { [LIB_PATH]: { ...lib, modified: true } } }), /not modified or change/);
+	assert.throws(() => parseRecord({ ...r, files: { [LIB_PATH]: { ...lib, patches: ["fix.patch"] } } }), /patch file names/);
+	assert.throws(() => parseRecord({ ...r, files: { [LIB_PATH]: { ...lib, patches: ["0001-a.patch", "0001-a.patch"] } } }), /listed twice/);
+	assert.equal(parseRecord({ ...r, files: { [LIB_PATH]: { ...lib, patches: ["0001-fix-the-answer.patch"] } } }).schemaVersion, 3);
 });
 
-test("record keeps entries it isn't asked about only when they are already hashed", (t) => {
+/** A schema-2 record over the setup's vault: lib modified with a change line, logo unmodified. */
+function schema2(s: ReturnType<typeof setup>): VendorRecord {
+	put(s.vault, LIB_PATH, FIXED);
+	const h = (rel: string) => contentHash(readFileSync(path.join(s.vault, ...rel.split("/"))));
+	return parseRecord({
+		schemaVersion: 2,
+		repository: "https://example.com/upstream",
+		commit: s.commit,
+		license: "MIT",
+		files: {
+			[LIB_PATH]: { upstream: "src/lib.ts", modified: true, change: "the answer is 43 here.", sha256: h(LIB_PATH), upstreamSha256: contentHash(Buffer.from(LIB)) },
+			".claude/logo.bin": { upstream: "src/logo.bin", modified: false, sha256: h(".claude/logo.bin"), upstreamSha256: contentHash(BIN) },
+		},
+	});
+}
+
+test("migrate: each modified file becomes one patch, Description from change, Forwarded empty on purpose", (t) => {
 	const s = setup(t);
-	const v1 = { ...s.base, schemaVersion: 1, commit: s.commit };
-	assert.throws(() => s.record([".claude/scripts/lib.ts"], undefined, v1), /logo\.bin: in the record without hashes/);
-	const full = s.record();
-	const again = s.record([".claude/scripts/lib.ts"], undefined, full);
-	assert.deepEqual(again.files[".claude/logo.bin"], full.files[".claude/logo.bin"]);
+	const { record, patches } = migrate({ vault: s.vault, upstreamRoot: s.upstream, record: schema2(s), existing: ["0003-older.patch"], today: "2026-10-06" });
+	assert.equal(record.schemaVersion, 3);
+	assert.equal(patches.length, 1);
+	assert.equal(patches[0]!.name, "0004-lib.patch", "numbering continues after what's there");
+	assert.match(patches[0]!.text, /^Description: the answer is 43 here\.\nForwarded: \nLast-Update: 2026-10-06\n/);
+	assert.deepEqual(record.files[LIB_PATH]!.patches, ["0004-lib.patch"]);
+	assert.equal(record.files[".claude/logo.bin"]!.patches, undefined);
+	for (const e of Object.values(record.files)) assert.ok(!("modified" in e) && !("change" in e));
+	// check fails on the empty Forwarded until it is filled.
+	put(s.patchDir, patches[0]!.name, patches[0]!.text);
+	assert.match(s.check(record).join("\n"), /0004-lib\.patch: Forwarded is empty/);
+	put(s.patchDir, patches[0]!.name, patches[0]!.text.replace("Forwarded: \n", "Forwarded: https://github.com/o/r/issues/9\n"));
+	assert.deepEqual(s.check(record), []);
 });
 
-test("cli: record from a clean checkout, then check; exit codes 0, 1 and 2", (t) => {
+test("migrate: refuses schema 1 and an upstream that isn't at the recorded commit", (t) => {
+	const s = setup(t);
+	const v2 = schema2(s);
+	assert.throws(() => migrate({ vault: s.vault, upstreamRoot: s.upstream, record: { ...v2, schemaVersion: 1 } as VendorRecord, existing: [], today: "x" }), /run record first/);
+	put(s.upstream, "src/lib.ts", "moved on\n");
+	assert.throws(() => migrate({ vault: s.vault, upstreamRoot: s.upstream, record: v2, existing: [], today: "x" }), /isn't at the recorded commit/);
+});
+
+test("slugOf: the file name, lowercased, dashes for anything else", () => {
+	assert.equal(slugOf(".claude/scripts/lib/session-start.ts"), "session-start");
+	assert.equal(slugOf("README.md"), "readme");
+	assert.equal(slugOf("x/Weird Name!!.ts"), "weird-name");
+});
+
+test("cli: record, check, migrate end to end; exit codes 0, 1 and 2", (t) => {
 	const s = setup(t);
 	const lines: string[] = [];
 	const log = (l: string) => lines.push(l);
-	put(s.vault, ".claude/VENDOR.json", formatRecord(parseRecord({ ...s.base, schemaVersion: 1, commit: s.commit })));
+	const rec = path.join(s.vault, ".claude", "VENDOR.json");
+	// A schema-2 record with a modified file must migrate before record.
+	writeFileSync(rec, formatRecord(schema2(s)));
+	assert.equal(main(["record", "--vault", s.vault, "--upstream", s.upstream], log), 1);
+	assert.match(lines.pop()!, /run migrate first/);
 	assert.equal(main(["check", "--vault", s.vault], log), 1);
-	assert.match(lines.pop()!, /unverifiable/);
-	assert.equal(main(["record", "--vault", s.vault, "--upstream", s.upstream], log), 0);
-	const written = readRecord(path.join(s.vault, ".claude", "VENDOR.json"));
-	assert.equal(written.schemaVersion, 2);
+	assert.match(lines.pop()!, /run migrate/);
+	assert.equal(main(["migrate", "--vault", s.vault, "--upstream", s.upstream], log, () => "2026-10-06"), 0);
+	assert.match(lines.join("\n"), /migrated .* with 1 patch/);
+	assert.equal(main(["check", "--vault", s.vault], log), 1, "Forwarded is still empty");
+	const patchFile = path.join(s.patchDir, "0001-lib.patch");
+	writeFileSync(patchFile, readFileSync(patchFile, "utf8").replace("Forwarded: \n", "Forwarded: not-needed: test fixture\n"));
 	assert.equal(main(["check", "--vault", s.vault], log), 0);
-	assert.match(lines.pop()!, /2 files match/);
-	put(s.vault, ".claude/scripts/lib.ts", "changed\n");
-	assert.equal(main(["check", "--vault", s.vault], log), 1);
-	assert.match(lines.pop()!, /lib\.ts: edited without a record/);
+	assert.match(lines.pop()!, /2 files are upstream plus patches \(1 patched\)/);
+	assert.equal(main(["record", "--vault", s.vault, "--upstream", s.upstream], log), 0, "re-record keeps the patched file");
+	assert.deepEqual(readRecord(rec).files[LIB_PATH]!.patches, ["0001-lib.patch"]);
 	assert.equal(main(["check", "--vault", s.vault, "--bogus"], log), 2);
 	assert.equal(main(["nope"], log), 2);
 	put(s.upstream, "src/lib.ts", "dirty\n");
-	assert.equal(main(["record", "--vault", s.vault, "--upstream", s.upstream], log), 1);
+	assert.equal(main(["migrate", "--vault", s.vault, "--upstream", s.upstream], log), 1);
 	assert.match(lines.pop()!, /uncommitted changes/);
-	assert.equal(readFileSync(path.join(s.vault, ".claude", "VENDOR.json"), "utf8"), formatRecord(written), "a refused record writes nothing");
+});
+
+test("check: a forged record fails either way, whether or not the patch still applies", (t) => {
+	const s = setup(t);
+	// A longer file, so an edit can sit far from the patch's hunk.
+	const long = Array.from({ length: 20 }, (_, i) => `export const v${i} = ${i}`).join("\n") + "\n";
+	const fixedLong = long.replace("v1 = 1", "v1 = 100");
+	put(s.upstream, "src/lib.ts", long);
+	git(s.upstream, "commit", "-qam", "long", "--no-gpg-sign");
+	const commit = git(s.upstream, "rev-parse", "HEAD");
+	put(s.vault, LIB_PATH, fixedLong);
+	put(s.patchDir, "0001-lib.patch", formatPatch({ header: [["Description", "d"], ["Forwarded", "https://x/1"]], files: [diffFile(LIB_PATH, long, fixedLong)!] }));
+	const r = buildRecord({ vault: s.vault, upstreamRoot: s.upstream, commit, base: s.withPatches(["0001-lib.patch"]) as never, paths: [LIB_PATH, ".claude/logo.bin"], patches: readPatchDir(s.patchDir) });
+	assert.deepEqual(checkRecord(s.vault, r, readPatchDir(s.patchDir)), []);
+	// A second edit far from the hunk, and sha256 forged to match: the patch still undoes cleanly, but not to upstream.
+	const sneaky = fixedLong.replace("v18 = 18", "v18 = -1");
+	put(s.vault, LIB_PATH, sneaky);
+	const forged = { ...r, files: { [LIB_PATH]: { ...r.files[LIB_PATH]!, sha256: contentHash(Buffer.from(sneaky)) } } } as VendorRecord;
+	assert.deepEqual(checkRecord(s.vault, forged, readPatchDir(s.patchDir)).map((p) => p.problem), ["its patches don't lead back to upstream"]);
+	// The same forgery on a file that lists no patch at all.
+	const bare = { ...r, files: { [LIB_PATH]: { upstream: "src/lib.ts", sha256: contentHash(Buffer.from(sneaky)), upstreamSha256: r.files[LIB_PATH]!.upstreamSha256 } } } as VendorRecord;
+	rmSync(path.join(s.patchDir, "0001-lib.patch"));
+	assert.deepEqual(checkRecord(s.vault, bare, readPatchDir(s.patchDir)).map((p) => p.problem), ["differs from upstream with no patch to explain it"]);
 });
