@@ -91,6 +91,8 @@ A vault runs [`core/scripts/vendor-guard.ts`](../scripts/vendor-guard.ts) as a P
 
 The guard is a prompt, not a boundary: it allows the edit on any internal error, and `check` in CI stays the guarantee.
 
+Where no record exists, the guard allows every edit and prints nothing. So a vault whose installs leave out the records and patches can ship the guard and its wiring: it guards the repo, and an installed vault, which its user owns, is never blocked.
+
 ## `patch new`
 
 Edit the vendored file, then make the edit a patch:
