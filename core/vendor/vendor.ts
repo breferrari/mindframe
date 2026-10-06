@@ -175,7 +175,7 @@ export type RecordInput = {
 	/** Vault paths to (re)record; each maps to upstream at the same path unless the base says otherwise. */
 	readonly paths: readonly string[];
 	/** One-line reasons for modified files, by vault path. */
-	readonly changes?: Readonly<Record<string, string>>;
+	readonly changes?: Readonly<Record<string, string>> | undefined;
 };
 
 /**
