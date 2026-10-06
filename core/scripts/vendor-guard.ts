@@ -36,8 +36,8 @@ const BEGIN_FILE = "windows.json";
 /** Where to read how to write an extension. */
 export const EXTENSIONS_HOW = "https://github.com/breferrari/mindframe/blob/main/docs/DESIGN.md#the-extension-contract";
 
-/** A vendored file: its path from the vault root, and the repository it comes from. */
-export type Vendored = { readonly rel: string; readonly repository: string };
+/** A vendored file, by its path from the vault root. */
+export type Vendored = { readonly rel: string };
 
 const posix = (p: string): string => p.replaceAll("\\", "/");
 // Windows paths compare without case: `C:/Vault/x` and `c:/vault/x` are one file.
@@ -78,28 +78,28 @@ export function vendoredAt(vaultRoot: string, filePath: string, platform: string
 			continue;
 		}
 		if (typeof record !== "object" || record === null) continue;
-		const { files, repository } = record as { files?: unknown; repository?: unknown };
+		const { files } = record as { files?: unknown };
 		if (typeof files !== "object" || files === null) continue;
 		const root = fold(posix(recordFile), platform) === fold(posix(defaultRecord), platform) ? vaultRoot : path.dirname(recordFile);
 		for (const key of Object.keys(files)) {
 			if (fold(posix(path.resolve(root, key)), platform) === target) {
-				return { rel: posix(path.relative(vaultRoot, path.resolve(root, key))), repository: typeof repository === "string" ? repository : "" };
+				return { rel: posix(path.relative(vaultRoot, path.resolve(root, key))) };
 			}
 		}
 	}
 	return null;
 }
 
-/** "https://github.com/o/mindframe.git" is "mindframe"; anything unnamed is "upstream". */
-export const repoName = (repository: string): string => repository.replace(/\/+$/, "").replace(/\.git$/, "").split("/").pop() || "upstream";
-
-/** The deny message. Three routes, in this order: an extension, a fix upstream, a local patch. */
+/**
+ * The deny message. Three routes, in this order: an extension, a fix
+ * upstream, a local patch. It names no upstream: a vault may not show its
+ * upstream's name at runtime.
+ */
 export function denyMessage(v: Vendored): string {
-	const name = repoName(v.repository);
 	return [
-		`${v.rel} is vendored from ${name}: an edit here is lost on update and fails vendor check. Pick a route:`,
+		`${v.rel} is vendored: an edit here is lost on update and fails vendor check. Pick a route:`,
 		`1. Customising behaviour? Add an extension in .claude/extensions/ instead, with no upstream change. How: ${EXTENSIONS_HOW}`,
-		`2. A bug in ${name}? Fix it upstream, or run \`vendor patch begin ${v.rel}\`, edit, then \`vendor patch new <slug> ${v.rel} --issue\`.`,
+		`2. A bug upstream? Fix it there, or run \`vendor patch begin ${v.rel}\`, edit, then \`vendor patch new <slug> ${v.rel} --issue\`.`,
 		`3. A deliberate local change? Run \`vendor patch begin ${v.rel}\`, edit, then \`vendor patch new <slug> ${v.rel} --not-needed "<reason>"\`.`,
 	].join("\n");
 }

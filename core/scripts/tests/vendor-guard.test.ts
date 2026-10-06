@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BEGIN_DIR, BEGIN_WINDOW_MS, beginEdits, decide, denyMessage, endEdits, EXTENSIONS_HOW, repoName } from "../vendor-guard.ts";
+import { BEGIN_DIR, BEGIN_WINDOW_MS, beginEdits, decide, denyMessage, endEdits, EXTENSIONS_HOW } from "../vendor-guard.ts";
 
 const GUARD = join(dirname(fileURLToPath(import.meta.url)), "..", "vendor-guard.ts");
 const NOW = 1_800_000_000_000;
@@ -34,12 +34,14 @@ function vault(t: TestContext): string {
 
 const edit = (filePath: string, tool = "Edit") => ({ tool_name: tool, tool_input: { file_path: filePath } });
 
-test("an edit to a file either record lists is denied, naming its upstream", (t) => {
+test("an edit to a file either record lists is denied, naming no upstream", (t) => {
 	const root = vault(t);
 	const a = decide(edit(join(root, ".claude", "scripts", "lib", "hook-io.ts")), root, NOW);
-	assert.match(a ?? "", /^\.claude\/scripts\/lib\/hook-io\.ts is vendored from mindframe:/);
+	assert.match(a ?? "", /^\.claude\/scripts\/lib\/hook-io\.ts is vendored:/);
 	const b = decide(edit(".claude/scripts/lint.ts", "Write"), root, NOW);
-	assert.match(b ?? "", /^\.claude\/scripts\/lint\.ts is vendored from obsidian-mind:/);
+	assert.match(b ?? "", /^\.claude\/scripts\/lint\.ts is vendored:/);
+	// A vault may not show its upstream's name at runtime: nothing from the records' repository reaches the message.
+	for (const m of [a, b]) assert.doesNotMatch(m ?? "", /obsidian-mind|github\.com\/o\//);
 	for (const tool of ["MultiEdit", "NotebookEdit"]) assert.notEqual(decide(edit(".claude/scripts/lint.ts", tool), root, NOW), null, tool);
 	assert.notEqual(decide({ tool_name: "NotebookEdit", tool_input: { notebook_path: ".claude/scripts/lint.ts" } }, root, NOW), null);
 });
@@ -83,26 +85,20 @@ test("vendor patch begin opens a 30-minute window for its files only, and patch 
 });
 
 test("the message names the three routes in order: an extension, a fix upstream, a local patch", () => {
-	const m = denyMessage({ rel: ".claude/scripts/lib/hook-io.ts", repository: "https://github.com/o/mindframe" });
+	const m = denyMessage({ rel: ".claude/scripts/lib/hook-io.ts" });
 	const at = (s: string) => {
 		const i = m.indexOf(s);
 		assert.ok(i >= 0, `names ${s}`);
 		return i;
 	};
 	const ext = at("Add an extension in .claude/extensions/");
-	const upstream = at("A bug in mindframe? Fix it upstream");
+	const upstream = at("A bug upstream? Fix it there");
 	const local = at('--not-needed "<reason>"');
 	assert.ok(ext < upstream && upstream < local, m);
 	assert.ok(m.includes(EXTENSIONS_HOW), "points at how to write an extension");
 	assert.ok(at("--issue") < local);
 	assert.ok(!m.includes("—"), "no em-dashes");
 	assert.ok(m.split("\n").length <= 4, "short");
-});
-
-test("repoName", () => {
-	assert.equal(repoName("https://github.com/o/mindframe.git"), "mindframe");
-	assert.equal(repoName("https://github.com/o/wiki-mind/"), "wiki-mind");
-	assert.equal(repoName(""), "upstream");
 });
 
 test("as a hook: denies with PreToolUse JSON, allows silently, and fails open", (t) => {
@@ -119,7 +115,7 @@ test("as a hook: denies with PreToolUse JSON, allows silently, and fails open", 
 	const out = JSON.parse(denied.stdout);
 	assert.equal(out.hookSpecificOutput.hookEventName, "PreToolUse");
 	assert.equal(out.hookSpecificOutput.permissionDecision, "deny");
-	assert.match(out.hookSpecificOutput.permissionDecisionReason, /vendored from obsidian-mind/);
+	assert.match(out.hookSpecificOutput.permissionDecisionReason, /^\.claude\/scripts\/lint\.ts is vendored:/);
 	for (const stdin of [JSON.stringify(edit("notes/a.md")), "not json", ""]) {
 		const r = hook(stdin);
 		assert.equal(r.status, 0, r.stderr);
