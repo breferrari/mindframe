@@ -5,8 +5,14 @@ This folder mirrors a vault's `.claude/scripts/`:
 | Here | In a vault | Holds |
 |------|------------|-------|
 | `core/` | `.claude/scripts/core/` | The extension registry (`registry.ts`), its API types (`types.ts`), the public entry point extensions import (`index.ts`), QMD's session-start work (`qmd-session.ts`), and their tests |
-| `lib/` | `.claude/scripts/lib/` | The libraries the core imports: `hook-io` (hook I/O and the output cap), `session-start` (the byte budget and its meter), `qmd`, `wikilinks`, `regex` |
-| `tests/` | `.claude/scripts/tests/` | The libraries' tests: `hook-io`, `regex`, `wikilinks` |
+| `lib/` | `.claude/scripts/lib/` | The core's libraries: `hook-io` (hook I/O and the output cap), `session-start` (the byte budget and its meter), `project-dir` (vault-root discovery), `om-mod` (the mod's flag protocol), `qmd`, `wikilinks`, `regex` |
+| `tests/` | `.claude/scripts/tests/` | The libraries' tests: `hook-io`, `project-dir`, `om-mod`, `regex`, `wikilinks` |
+
+**Two contracts every vault shares, and that don't change:**
+- `project-dir` finds the vault root by walking up from the project directory to the first folder holding `vault-manifest.json`, so a session started in a subfolder still finds its vault.
+- `om-mod` reads the `om_mod` field a mod passes to a settings hook: `standdown` (the mod delivers this event: print nothing), `deliver` (print the context for the mod's instruction file) and `report` (return the Stop report as data).
+
+The mod itself is still each vault's own; one template for every vault is [#47](https://github.com/breferrari/mindframe/issues/47).
 
 **Entry points start from `core/context.ts`.** `openVault(vaultRoot, event)` reads and parses `vault-manifest.json` once and loads the registry for that event, so no entry point parses the manifest itself. `readManifest` never throws: a missing or malformed manifest means no extensions and the default budgets. `context.ts` is for entry points; extensions import only from `index.ts`.
 

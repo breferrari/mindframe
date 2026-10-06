@@ -43,6 +43,18 @@
       "upstream": "lib/hook-io.ts",
       "upstreamSha256": "6eddaeb3e73c7d31af51264974c998b28433c9051fc21d4d4d6aefdad91f4822"
     },
+    "lib/om-mod.ts": {
+      "modified": false,
+      "sha256": "90221c42785ca6d1bc581f6255a1f786093bd7c612da9a3d724b90c526dbdca7",
+      "upstream": "lib/om-mod.ts",
+      "upstreamSha256": "90221c42785ca6d1bc581f6255a1f786093bd7c612da9a3d724b90c526dbdca7"
+    },
+    "lib/project-dir.ts": {
+      "modified": false,
+      "sha256": "fcd33c92325e685ac31754f32d6a9519509133ccc469094a82f0783930e09e38",
+      "upstream": "lib/project-dir.ts",
+      "upstreamSha256": "fcd33c92325e685ac31754f32d6a9519509133ccc469094a82f0783930e09e38"
+    },
     "lib/qmd.ts": {
       "modified": false,
       "sha256": "887487cc52b17e8494c248d65faaba6b2006e9844acfe67164c78fb06af86848",
@@ -72,6 +84,18 @@
       "sha256": "9b3f3cc1399b67116a8ebb08f12110117dc06300b251ef57c1061a212096f9c7",
       "upstream": "tests/hook-io.test.ts",
       "upstreamSha256": "9b3f3cc1399b67116a8ebb08f12110117dc06300b251ef57c1061a212096f9c7"
+    },
+    "tests/om-mod.test.ts": {
+      "modified": false,
+      "sha256": "ca15b12d08609ed8e698ffdda449afb6ee53de9bdc95e1457a5cfc7562cecd99",
+      "upstream": "tests/om-mod.test.ts",
+      "upstreamSha256": "ca15b12d08609ed8e698ffdda449afb6ee53de9bdc95e1457a5cfc7562cecd99"
+    },
+    "tests/project-dir.test.ts": {
+      "modified": false,
+      "sha256": "e738d5af8410a60c3f3f0965b1728ac903b0c5b1ef43456af13b1be545abda28",
+      "upstream": "tests/project-dir.test.ts",
+      "upstreamSha256": "e738d5af8410a60c3f3f0965b1728ac903b0c5b1ef43456af13b1be545abda28"
     },
     "tests/regex.test.ts": {
       "modified": false,
