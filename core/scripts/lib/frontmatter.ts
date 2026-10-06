@@ -200,9 +200,12 @@ export function validateContent(
 	if (!content.startsWith("---")) {
 		warnings.push("Missing YAML frontmatter");
 	} else {
-		const parts = content.split("---");
-		if (parts.length >= 3) {
-			const { keys, tags } = readFrontmatterKeys(parts[1] ?? "");
+		// The frontmatter ends at the first `---` line, as prose-width.ts reads
+		// it: a `---` inside a value doesn't end it.
+		const lines = content.split(/\r?\n/);
+		const close = lines.indexOf("---", 1);
+		if (close > 0) {
+			const { keys, tags } = readFrontmatterKeys(lines.slice(1, close).join("\n"));
 			for (const field of requiredFieldsFor(opts.required ?? {}, opts.relPath ?? null, tags)) {
 				if (keys.has(field)) continue;
 				warnings.push(
