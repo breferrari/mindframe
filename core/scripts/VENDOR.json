@@ -66,6 +66,24 @@
       "sha256": "876c6ed61fe0d2e38adcf5d4678643955037e7e1e4a03845e7a883e8a565754b",
       "upstream": "lib/wikilinks.ts",
       "upstreamSha256": "876c6ed61fe0d2e38adcf5d4678643955037e7e1e4a03845e7a883e8a565754b"
+    },
+    "tests/hook-io.test.ts": {
+      "modified": false,
+      "sha256": "9b3f3cc1399b67116a8ebb08f12110117dc06300b251ef57c1061a212096f9c7",
+      "upstream": "tests/hook-io.test.ts",
+      "upstreamSha256": "9b3f3cc1399b67116a8ebb08f12110117dc06300b251ef57c1061a212096f9c7"
+    },
+    "tests/regex.test.ts": {
+      "modified": false,
+      "sha256": "2a405bbcbd2ada4b3382d39a6c89efd9610852a67647423c0bae05bb2e9d8894",
+      "upstream": "tests/regex.test.ts",
+      "upstreamSha256": "2a405bbcbd2ada4b3382d39a6c89efd9610852a67647423c0bae05bb2e9d8894"
+    },
+    "tests/wikilinks.test.ts": {
+      "modified": false,
+      "sha256": "db63042a973a284e01722e2981d11f63cc43a8a32ddf2143bc5769f1639352ad",
+      "upstream": "tests/wikilinks.test.ts",
+      "upstreamSha256": "db63042a973a284e01722e2981d11f63cc43a8a32ddf2143bc5769f1639352ad"
     }
   },
   "license": "MIT",
