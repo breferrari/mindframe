@@ -6,9 +6,11 @@ A vault carries a copy of the core and its chosen extensions, and the copy is up
 node --experimental-strip-types core/vendor/cli.ts check   [--vault <dir>] [--record <path>]
 node --experimental-strip-types core/vendor/cli.ts record  --upstream <checkout> [--vault <dir>] [--record <path>] [--set <key>=<value>]... [<path>...]
 node --experimental-strip-types core/vendor/cli.ts migrate --upstream <checkout> [--vault <dir>] [--record <path>]
+node --experimental-strip-types core/vendor/cli.ts patch new <slug> <file>... --upstream <checkout> --description "<the change to make>" \n     (--forward <url> | --issue | --not-needed "<reason>")
+node --experimental-strip-types core/vendor/cli.ts patch upstream <NNNN-slug.patch> --upstream <checkout> [--pr] [--base <branch>]
 ```
 
-| Exit | `check` | `record`, `migrate` |
+| Exit | `check` | `record`, `migrate`, `patch` |
 |------|---------|---------------------|
 | 0 | every vendored file is upstream plus its patches, and every patch is forwarded | written |
 | 1 | one line per problem, or a record that can't be verified | refused: nothing written |
@@ -78,3 +80,30 @@ A Windows checkout with `core.autocrlf=true` has CRLF line ends in its working t
 ## `migrate`
 
 Converts a schema-2 record, from an upstream checkout at the record's commit. Each `modified` file becomes one patch: the diff from upstream to the vault's bytes, with the old `change` line as `Description` and `Forwarded` left empty. `check` fails until every `Forwarded` is filled, so each local change gets an upstream answer the day the vault migrates. Patch numbers continue after any already in the folder.
+
+## `patch new`
+
+Edit the vendored file, then make the edit a patch:
+
+```sh
+node --experimental-strip-types core/vendor/cli.ts patch new fix-meter-newline .claude/scripts/lib/hook-io.ts   --upstream <mindframe checkout at the record's commit> --description "Give the meter a trailing newline" --issue
+```
+
+- It needs exactly one upstream answer. `--forward <url>` takes an existing issue or PR. `--issue` files one with `gh`; the `Description` becomes the issue title, so write it as the change to make. `--not-needed "<reason>"` says why the change stays local.
+- Each file's change is measured from upstream plus the patches it already carries, so a new patch stacks on the old ones and holds only its own change.
+- Everything is checked before anything is filed upstream, and nothing is written if filing fails.
+- The patch gets the next number in `vendor-patches/`, and the record lists it and takes the file's new hash.
+- It refuses a file that isn't in the record, a binary file, an edit-free file, and an upstream checkout that isn't at the record's commit.
+
+## `patch upstream`
+
+```sh
+node --experimental-strip-types core/vendor/cli.ts patch upstream 0003-fix-meter-newline.patch --upstream <mindframe checkout> --pr
+```
+
+It applies the patch on a new branch, `vendor-patch/NNNN-slug`, in the upstream checkout and commits it with the `Description` as the message. With `--pr` it then:
+- pushes the branch;
+- opens a pull request titled `fix: <description>`; when `Forwarded` was an issue, the body closes it;
+- writes the PR's URL into `Forwarded`, keeping the issue as `Origin`.
+
+A patch that no longer applies to the checkout is refused before any branch is made.
