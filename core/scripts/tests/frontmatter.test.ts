@@ -265,6 +265,14 @@ describe("validateContent — frontmatter + wikilinks", () => {
 		// All three field checks should accept the alternate spacing.
 		assert.deepEqual(validateContent(c), []);
 	});
+
+	test("a value containing --- doesn't end the frontmatter", () => {
+		const c = "---\ndate: 2026-04-05\ndescription: before --- after\ntags: [x]\n---\nShort note.";
+		assert.deepEqual(validateContent(c), []);
+		assert.deepEqual(validateContent(c.replaceAll("\n", "\r\n")), []);
+		// Unclosed frontmatter is not checked for fields, as before.
+		assert.deepEqual(validateContent("---\ndate: 2026-04-05\n\nShort note.").filter((w) => w.startsWith("Missing")), []);
+	});
 });
 
 describe("isBlockedMemoryPath", () => {
