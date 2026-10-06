@@ -61,6 +61,22 @@ test("anything else is allowed: other files, other tools, a record path read fro
 	for (const bad of [null, "x", {}, { tool_name: "Edit" }, { tool_name: "Edit", tool_input: { file_path: 3 } }]) assert.equal(decide(bad, root, NOW), null);
 });
 
+test("a vault with no record allows every edit and prints nothing: the guard ships inert where records don't install", (t) => {
+	const root = vault(t);
+	rmSync(join(root, ".claude", "VENDOR.json"));
+	rmSync(join(root, ".claude", "scripts", "VENDOR.json"));
+	for (const p of [".claude/scripts/lint.ts", ".claude/scripts/lib/hook-io.ts", ".claude/settings.json"]) assert.equal(decide(edit(p), root, NOW), null, p);
+	const r = spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", GUARD], {
+		input: JSON.stringify(edit(".claude/scripts/lib/hook-io.ts")),
+		cwd: root,
+		encoding: "utf8",
+		env: { ...process.env, CLAUDE_PROJECT_DIR: root },
+	});
+	assert.equal(r.status, 0, r.stderr);
+	assert.equal(r.stdout, "");
+	assert.equal(r.stderr, "");
+});
+
 test("a broken record is skipped, not fatal", (t) => {
 	const root = vault(t);
 	writeFileSync(join(root, ".claude", "VENDOR.json"), "{ not json");
