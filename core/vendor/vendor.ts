@@ -1,42 +1,56 @@
 /**
- * The vendor record, VENDOR.json, and the offline drift check (DESIGN.md
- * rule 11).
+ * The vendor record, VENDOR.json, and the offline check (DESIGN.md rule 11).
  *
- * A vault keeps a copy of the core and its chosen extensions. VENDOR.json
- * records where the copy came from and, per file, two hashes: the bytes as
- * vendored (`sha256`) and upstream's bytes at the recorded commit
- * (`upstreamSha256`). `modified` is computed from the two and never typed
- * by hand, and a modified file carries a one-line `change`. The check then
- * needs no network: a vault file whose bytes differ from `sha256` was edited
- * without a record.
+ * A vault keeps a copy of the core and its chosen extensions, and the copy
+ * is upstream plus patches, nothing else. VENDOR.json records where the copy
+ * came from and, per file, the hash of the bytes as vendored (`sha256`), the
+ * hash of upstream's bytes at the recorded commit (`upstreamSha256`), and
+ * the patches that turn one into the other (`patches`, in apply order).
+ * A local change exists only as a patch in `vendor-patches/` beside the
+ * record, with a DEP-3 header saying what it does (`Description`) and where
+ * it went upstream (`Forwarded`: an issue or PR URL, or
+ * `not-needed: <reason>`).
  *
- * Schema 2 is a strict superset of schema 1 (the shape ShardMind's vendored
- * kits and wiki-mind use): every schema-1 field keeps its name and meaning,
- * and schema 2 adds only the two hashes per file. A schema-1 record has no
- * hashes, so the check reports it as unverifiable, never as passing.
+ * `check` needs no network and no pristine copy: it reads the vault's bytes,
+ * undoes each patch exactly, last first, and requires the result to hash to
+ * `upstreamSha256`.
+ *
+ * Schema 3 replaces schema 2's `modified` flag and one-line `change` with
+ * real patches; every other field keeps its name and meaning. `migrate`
+ * converts a schema-2 record. A schema-1 record has no hashes, so nothing it
+ * says can be checked.
  *
  * Text and binary. A Windows checkout with core.autocrlf=true has CRLF in
  * its working tree, and a raw hash would call every file edited. So a text
- * file is hashed with CRLF read as LF; a binary file is hashed raw. A file
- * is binary when its first 8 KB hold a NUL byte, the same test git uses.
+ * file is hashed with CRLF read as LF; a binary file is hashed raw, and
+ * can't carry patches. A file is binary when its first 8 KB hold a NUL
+ * byte, the same test git uses.
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { applyFile, diffFile, formatPatch, parsePatch, PatchError, type Patch } from "./patch.ts";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const DEFAULT_RECORD = ".claude/VENDOR.json";
+export const PATCH_DIR = "vendor-patches";
 
 /** How far into a file the binary test looks. */
 const BINARY_SNIFF = 8000;
 
+/** A patch file's name: four digits, then a slug. */
+export const PATCH_NAME = /^\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.patch$/;
+
 export type FileEntry = {
 	readonly upstream: string;
-	readonly modified: boolean;
-	readonly change?: string;
 	readonly sha256?: string;
 	readonly upstreamSha256?: string;
+	/** Schema 3: the patches on this file, in apply order. */
+	readonly patches?: readonly string[];
+	/** Schema 1 and 2 only. */
+	readonly modified?: boolean;
+	readonly change?: string;
 };
 
 export type VendorRecord = {
@@ -76,6 +90,8 @@ export function contentHash(bytes: Uint8Array): string {
 		.digest("hex");
 }
 
+const textHash = (text: string): string => createHash("sha256").update(text.replace(/\r\n/g, "\n"), "utf8").digest("hex");
+
 // ---- paths --------------------------------------------------------------------
 
 /** A relative POSIX path that stays inside its folder: no `..`, no root, no backslash. */
@@ -106,13 +122,18 @@ export function resolveInside(root: string, rel: string): string {
 	return at;
 }
 
+/** The patch folder for a record: `vendor-patches/` beside it. */
+export const patchDirFor = (recordFile: string): string => path.join(path.dirname(recordFile), PATCH_DIR);
+
 // ---- the record ---------------------------------------------------------------
 
-/** Checks a parsed VENDOR.json of schema 1 or 2; returns it typed. */
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/** Checks a parsed VENDOR.json of schema 1, 2 or 3; returns it typed. */
 export function parseRecord(raw: unknown): VendorRecord {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new VendorError("VENDOR.json must be an object");
 	const r = raw as Record<string, unknown>;
-	if (r.schemaVersion !== 1 && r.schemaVersion !== 2) throw new VendorError(`unknown schemaVersion ${String(r.schemaVersion)}`);
+	if (r.schemaVersion !== 1 && r.schemaVersion !== 2 && r.schemaVersion !== 3) throw new VendorError(`unknown schemaVersion ${String(r.schemaVersion)}`);
 	if (typeof r.repository !== "string" || r.repository === "") throw new VendorError("repository is required");
 	if (typeof r.commit !== "string" || !/^[0-9a-f]{40}$/.test(r.commit)) throw new VendorError("commit must be a full 40-character commit");
 	if (r.sourceRoot !== undefined && (typeof r.sourceRoot !== "string" || !isInsidePath(r.sourceRoot))) {
@@ -124,13 +145,23 @@ export function parseRecord(raw: unknown): VendorRecord {
 		const entry = e as Record<string, unknown>;
 		if (!entry || typeof entry !== "object") throw new VendorError(`${file}: entry must be an object`);
 		if (typeof entry.upstream !== "string" || !isInsidePath(entry.upstream)) throw new VendorError(`${file}: upstream must be a relative path`);
-		if (typeof entry.modified !== "boolean") throw new VendorError(`${file}: modified must be true or false`);
-		if (entry.change !== undefined && (typeof entry.change !== "string" || entry.change === "" || entry.change.includes("\n"))) {
-			throw new VendorError(`${file}: change must be one non-empty line`);
+		if (r.schemaVersion !== 3) {
+			if (typeof entry.modified !== "boolean") throw new VendorError(`${file}: modified must be true or false`);
+			if (entry.change !== undefined && (typeof entry.change !== "string" || entry.change === "" || entry.change.includes("\n"))) {
+				throw new VendorError(`${file}: change must be one non-empty line`);
+			}
+		} else {
+			if ("modified" in entry || "change" in entry) throw new VendorError(`${file}: schema 3 has patches, not modified or change`);
+			if (entry.patches !== undefined) {
+				if (!Array.isArray(entry.patches) || !entry.patches.every((p) => typeof p === "string" && PATCH_NAME.test(p))) {
+					throw new VendorError(`${file}: patches must be patch file names like 0001-fix-the-thing.patch`);
+				}
+				if (new Set(entry.patches).size !== entry.patches.length) throw new VendorError(`${file}: a patch is listed twice`);
+			}
 		}
-		if (r.schemaVersion === 2) {
+		if (r.schemaVersion !== 1) {
 			for (const k of ["sha256", "upstreamSha256"]) {
-				if (typeof entry[k] !== "string" || !/^[0-9a-f]{64}$/.test(entry[k] as string)) throw new VendorError(`${file}: ${k} must be a sha256 in hex`);
+				if (typeof entry[k] !== "string" || !HEX64.test(entry[k] as string)) throw new VendorError(`${file}: ${k} must be a sha256 in hex`);
 			}
 		}
 	}
@@ -162,6 +193,62 @@ export function readRecord(file: string): VendorRecord {
 	return parseRecord(raw);
 }
 
+// ---- patches ------------------------------------------------------------------
+
+/** A header field's value, or undefined. */
+export const headerOf = (p: Patch, key: string): string | undefined => p.header.find(([k]) => k === key)?.[1];
+
+/** `Forwarded` must say where the change went upstream, or why it doesn't go. */
+export function forwardedProblem(value: string | undefined): string | null {
+	if (value === undefined || value.trim() === "") return "Forwarded is empty: give the upstream issue or PR URL, or not-needed: <reason>";
+	if (/^https?:\/\/\S+$/.test(value.trim())) return null;
+	if (/^not-needed:\s*\S/.test(value.trim())) return null;
+	return `Forwarded is "${value}": give the upstream issue or PR URL, or not-needed: <reason>`;
+}
+
+export type PatchSet = ReadonlyMap<string, { readonly patch: Patch | null; readonly error: string | null }>;
+
+/** Every patch file in a folder, parsed; a file that won't parse carries its error. */
+export function readPatchDir(dir: string): PatchSet {
+	const out = new Map<string, { patch: Patch | null; error: string | null }>();
+	if (!existsSync(dir)) return out;
+	for (const name of readdirSync(dir).sort()) {
+		if (!name.endsWith(".patch")) continue;
+		try {
+			out.set(name, { patch: parsePatch(readFileSync(path.join(dir, name), "utf8")), error: null });
+		} catch (err) {
+			out.set(name, { patch: null, error: err instanceof Error ? err.message : String(err) });
+		}
+	}
+	return out;
+}
+
+/** The text a file's patches, undone last first, lead back to. Throws PatchError. */
+export function unpatch(file: string, text: string, names: readonly string[], patches: PatchSet): string {
+	let at = text;
+	for (const name of [...names].reverse()) {
+		const p = patches.get(name)?.patch;
+		if (!p) throw new PatchError(`${name} is missing or unreadable`);
+		const section = p.files.find((f) => f.path === file);
+		if (!section) throw new PatchError(`${name} has no change to ${file}`);
+		at = applyFile(at, section, true);
+	}
+	return at;
+}
+
+/** The text a file's patches, applied first to last, lead to. Throws PatchError. */
+export function repatch(file: string, text: string, names: readonly string[], patches: PatchSet): string {
+	let at = text;
+	for (const name of names) {
+		const p = patches.get(name)?.patch;
+		if (!p) throw new PatchError(`${name} is missing or unreadable`);
+		const section = p.files.find((f) => f.path === file);
+		if (!section) throw new PatchError(`${name} has no change to ${file}`);
+		at = applyFile(at, section);
+	}
+	return at;
+}
+
 // ---- record -------------------------------------------------------------------
 
 export type RecordInput = {
@@ -174,19 +261,21 @@ export type RecordInput = {
 	readonly base: Omit<VendorRecord, "schemaVersion" | "files" | "commit"> & { readonly files?: VendorRecord["files"] };
 	/** Vault paths to (re)record; each maps to upstream at the same path unless the base says otherwise. */
 	readonly paths: readonly string[];
-	/** One-line reasons for modified files, by vault path. */
-	readonly changes?: Readonly<Record<string, string>> | undefined;
+	/** The record's patch folder, for files that already carry patches. */
+	readonly patches?: PatchSet;
 };
 
 /**
- * A schema-2 record for `paths`, hashed from the vault and the upstream
- * checkout. Entries of the base that are not re-recorded keep their hashes
- * only if they already have them; a schema-1 entry left out is refused, so
- * the result is always fully verifiable.
+ * A schema-3 record for `paths`, hashed from the vault and the upstream
+ * checkout. A file that differs from upstream must already carry patches
+ * that take it exactly back to upstream; otherwise it is refused, because
+ * a local change is made with `vendor patch new`, never recorded bare.
+ * Entries not re-recorded keep their hashes only if they already have them.
  */
 export function buildRecord(input: RecordInput): VendorRecord {
 	const sourceRoot = typeof input.base.sourceRoot === "string" ? input.base.sourceRoot : "";
 	const prior = input.base.files ?? {};
+	const patchSet = input.patches ?? new Map();
 	const files: Record<string, FileEntry> = {};
 	const problems: string[] = [];
 
@@ -196,7 +285,8 @@ export function buildRecord(input: RecordInput): VendorRecord {
 			problems.push(`${file}: in the record without hashes; record it too`);
 			continue;
 		}
-		files[file] = entry;
+		const { modified: _m, change: _c, ...kept } = entry;
+		files[file] = kept;
 	}
 
 	for (const file of input.paths) {
@@ -218,17 +308,101 @@ export function buildRecord(input: RecordInput): VendorRecord {
 		}
 		const sha256 = contentHash(own);
 		const upstreamSha256 = contentHash(theirs);
-		const modified = sha256 !== upstreamSha256;
-		const change = input.changes?.[file] ?? prior[file]?.change;
-		if (modified && change === undefined) {
-			problems.push(`${file}: differs from upstream; give its change in one line`);
+		const names = prior[file]?.patches ?? [];
+		if (sha256 === upstreamSha256) {
+			if (names.length > 0) problems.push(`${file}: matches upstream, yet lists patches ${names.join(", ")}`);
+			else files[file] = { upstream, sha256, upstreamSha256 };
 			continue;
 		}
-		files[file] = { upstream, modified, sha256, upstreamSha256, ...(modified && change !== undefined ? { change } : {}) };
+		if (names.length === 0 || isBinary(own)) {
+			problems.push(`${file}: differs from upstream; make the change a patch with \`vendor patch new\``);
+			continue;
+		}
+		try {
+			if (textHash(unpatch(file, Buffer.from(own).toString("utf8"), names, patchSet)) !== upstreamSha256) {
+				problems.push(`${file}: its patches don't lead back to upstream`);
+				continue;
+			}
+		} catch (err) {
+			problems.push(`${file}: ${err instanceof Error ? err.message : String(err)}`);
+			continue;
+		}
+		files[file] = { upstream, sha256, upstreamSha256, patches: names };
 	}
 
 	if (problems.length) throw new VendorError(problems.join("\n"));
-	return { ...input.base, schemaVersion: SCHEMA_VERSION, commit: input.commit, files } as VendorRecord;
+	const { modified: _m, change: _c, ...base } = input.base as Record<string, unknown>;
+	return { ...base, schemaVersion: SCHEMA_VERSION, commit: input.commit, files } as VendorRecord;
+}
+
+// ---- migrate ------------------------------------------------------------------
+
+export type MigrateInput = {
+	readonly vault: string;
+	readonly upstreamRoot: string;
+	readonly record: VendorRecord;
+	/** Names already in the patch folder, so new numbers don't collide. */
+	readonly existing: readonly string[];
+	/** The Last-Update date, YYYY-MM-DD. */
+	readonly today: string;
+};
+
+/** A path as a patch slug: the file name without its extension, lowercased. */
+export function slugOf(file: string): string {
+	const base = path.posix.basename(file).replace(/\.[^.]+$/, "");
+	return base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "file";
+}
+
+/**
+ * Converts a schema-2 record to schema 3. Each `modified` file becomes one
+ * patch: the diff from upstream to the vault's bytes, with the old `change`
+ * line as its Description and Forwarded left empty. `check` fails until
+ * Forwarded is filled, so every local change gets an upstream answer on day
+ * one.
+ */
+export function migrate(input: MigrateInput): { record: VendorRecord; patches: Array<{ name: string; text: string }> } {
+	if (input.record.schemaVersion !== 2) throw new VendorError(`migrate converts schema 2; this record is schema ${input.record.schemaVersion}${input.record.schemaVersion === 1 ? " (run record first)" : ""}`);
+	const sourceRoot = typeof input.record.sourceRoot === "string" ? input.record.sourceRoot : "";
+	let next = Math.max(0, ...input.existing.map((n) => Number(n.slice(0, 4)))) + 1;
+	const files: Record<string, FileEntry> = {};
+	const patches: Array<{ name: string; text: string }> = [];
+	const problems: string[] = [];
+	for (const [file, entry] of Object.entries(input.record.files).sort(([a], [b]) => (a < b ? -1 : 1))) {
+		const { modified, change, ...rest } = entry;
+		if (!modified) {
+			files[file] = rest;
+			continue;
+		}
+		const own = readFileSync(resolveInside(input.vault, file));
+		const up = sourceRoot === "" ? entry.upstream : `${sourceRoot}/${entry.upstream}`;
+		const theirs = readFileSync(resolveInside(input.upstreamRoot, up));
+		if (contentHash(theirs) !== entry.upstreamSha256) {
+			problems.push(`${file}: the upstream checkout isn't at the recorded commit (its hash differs)`);
+			continue;
+		}
+		if (isBinary(own) || isBinary(theirs)) {
+			problems.push(`${file}: a binary file can't carry a patch; vendor it unmodified or keep it out of the record`);
+			continue;
+		}
+		const diff = diffFile(file, Buffer.from(theirs).toString("utf8"), Buffer.from(own).toString("utf8"));
+		if (diff === null) {
+			files[file] = rest;
+			continue;
+		}
+		const name = `${String(next++).padStart(4, "0")}-${slugOf(file)}.patch`;
+		const text = formatPatch({
+			header: [
+				["Description", change ?? `local change to ${file}`],
+				["Forwarded", ""],
+				["Last-Update", input.today],
+			],
+			files: [diff],
+		});
+		patches.push({ name, text });
+		files[file] = { ...rest, patches: [name] };
+	}
+	if (problems.length) throw new VendorError(problems.join("\n"));
+	return { record: { ...input.record, schemaVersion: SCHEMA_VERSION, files } as VendorRecord, patches };
 }
 
 // ---- check --------------------------------------------------------------------
@@ -236,16 +410,20 @@ export function buildRecord(input: RecordInput): VendorRecord {
 export type Problem = { readonly file: string | null; readonly problem: string };
 
 /**
- * Every way the vault's vendored files disagree with their record, offline.
- * Empty means the copy is exactly what the record says.
+ * Every way the vault's vendored files disagree with their record and
+ * patches, offline. Empty means the copy is exactly upstream plus the
+ * recorded patches, and every patch says where it went upstream.
  */
-export function checkRecord(vault: string, record: VendorRecord): Problem[] {
-	if (record.schemaVersion !== SCHEMA_VERSION) {
-		return [{ file: null, problem: `unverifiable: schema ${record.schemaVersion} has no hashes; run record` }];
-	}
+export function checkRecord(vault: string, record: VendorRecord, patches: PatchSet = new Map()): Problem[] {
+	if (record.schemaVersion === 1) return [{ file: null, problem: "unverifiable: schema 1 has no hashes; run record" }];
+	if (record.schemaVersion === 2) return [{ file: null, problem: "schema 2 records local changes as a flag, not a patch; run migrate" }];
 	const out: Problem[] = [];
+	const used = new Set<string>();
+
 	for (const file of Object.keys(record.files).sort()) {
 		const e = record.files[file]!;
+		const names = e.patches ?? [];
+		for (const n of names) used.add(n);
 		let bytes: Uint8Array;
 		try {
 			const at = resolveInside(vault, file);
@@ -258,10 +436,45 @@ export function checkRecord(vault: string, record: VendorRecord): Problem[] {
 			out.push({ file, problem: err instanceof VendorError ? err.message.slice(file.length + 2) : "cannot be read" });
 			continue;
 		}
-		if (contentHash(bytes) !== e.sha256) out.push({ file, problem: "edited without a record (bytes differ from sha256)" });
-		if (e.modified !== (e.sha256 !== e.upstreamSha256)) out.push({ file, problem: `modified is ${e.modified}, but its hashes say ${!e.modified}` });
-		if (e.modified && e.change === undefined) out.push({ file, problem: "modified without a change line" });
-		if (!e.modified && e.change !== undefined) out.push({ file, problem: "a change line on an unmodified file" });
+		if (contentHash(bytes) !== e.sha256) {
+			out.push({ file, problem: "edited without a patch (bytes differ from sha256)" });
+			continue;
+		}
+		if (names.length === 0) {
+			if (e.sha256 !== e.upstreamSha256) out.push({ file, problem: "differs from upstream with no patch to explain it" });
+			continue;
+		}
+		if (isBinary(bytes)) {
+			out.push({ file, problem: "a binary file can't carry patches" });
+			continue;
+		}
+		try {
+			const back = unpatch(file, Buffer.from(bytes).toString("utf8"), names, patches);
+			if (textHash(back) !== e.upstreamSha256) out.push({ file, problem: "its patches don't lead back to upstream" });
+		} catch (err) {
+			out.push({ file, problem: err instanceof Error ? err.message : String(err) });
+		}
 	}
+
+	for (const [name, { patch, error }] of patches) {
+		if (error !== null || patch === null) {
+			out.push({ file: null, problem: `${name}: ${error}` });
+			continue;
+		}
+		const retired = headerOf(patch, "Applied-Upstream") !== undefined;
+		if (!PATCH_NAME.test(name)) out.push({ file: null, problem: `${name}: name it NNNN-slug.patch` });
+		if (retired) {
+			if (used.has(name)) out.push({ file: null, problem: `${name}: marked Applied-Upstream but still listed in the record` });
+			continue;
+		}
+		if (!used.has(name)) out.push({ file: null, problem: `${name}: in ${PATCH_DIR}/ but no file lists it (an orphan)` });
+		if (!headerOf(patch, "Description")?.trim()) out.push({ file: null, problem: `${name}: Description is missing` });
+		const fwd = forwardedProblem(headerOf(patch, "Forwarded"));
+		if (fwd) out.push({ file: null, problem: `${name}: ${fwd}` });
+		for (const f of patch.files) {
+			if (!(record.files[f.path]?.patches ?? []).includes(name)) out.push({ file: null, problem: `${name}: changes ${f.path}, which doesn't list it` });
+		}
+	}
+	for (const name of used) if (!patches.has(name)) out.push({ file: null, problem: `${name}: listed in the record but not in ${PATCH_DIR}/` });
 	return out;
 }

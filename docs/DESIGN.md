@@ -66,12 +66,23 @@ Every rule above is checked in real Claude Code sessions by the test bed, not on
 
 ## Vendoring
 
-### 11. The drift check: vendored bytes match the recorded commit
+### 11. A vendored file is upstream plus patches, and every patch goes upstream
 
-A vault vendors the core and its chosen extensions, with a `VENDOR.json` recording the repository, the commit, and every vendored path. For each path the record stores two hashes: one of the bytes as vendored and one of upstream's bytes at the recorded commit. `modified` is computed from them, never typed by hand. The drift check works like a lockfile check. For each recorded path it hashes the vault's file and fails when that hash differs from the recorded one. It also fails when a modified file has no one-line `change` saying what and why, and when a recorded file is missing or replaced by a symlink. A record without hashes can't be verified, so it fails too; it never passes by default.
+A vault vendors the core and its chosen extensions, with a `VENDOR.json` recording the repository, the commit, and every vendored path. For each path the record stores the hash of the bytes as vendored, the hash of upstream's bytes at the recorded commit, and the patches that turn one into the other. A vendored file is never edited in place: a local change exists only as a patch in `vendor-patches/` beside the record, written by the tool, one logical fix per patch.
 
-Text files are hashed with CRLF read as LF, so a Windows checkout that converts line ends doesn't read as an edit. Binary files, those with a NUL byte in their first 8,000 bytes, are hashed raw.
+Each patch carries a short header: `Description`, which says what it changes, and `Forwarded`, which says where the change went upstream, as an issue or PR URL, or `not-needed: <reason>`. A patch can't be made without one of the three: `vendor patch new` files the upstream issue or takes the URL or the reason as it writes the patch.
 
-A vault runs it in CI and can run it at session start. The tool and the record format are in [`core/vendor/`](../core/vendor/README.md).
+The check is offline and needs no copy of upstream. For each vendored file it reads the vault's bytes, undoes each patch exactly, last first, with no fuzz, and requires the result to hash to the recorded upstream hash. It fails on:
+- an edit without a patch;
+- patches that don't lead back to upstream;
+- a patch file that is missing, or that nothing lists;
+- a patch without `Description`, or with a `Forwarded` that is neither a URL nor `not-needed: <reason>`;
+- a recorded file that is missing or replaced by a symlink.
 
-**Why:** rule 2 keeps vendored and vault code apart by convention. The drift check enforces the convention. Without it, a quick fix inside a vendored file would ship, work, and then disappear without warning at the next vendor update. Storing hashes means the check runs offline and needs no access to the upstream repo.
+A record without hashes can't be verified, so it fails too; it never passes by default. A record from before patches existed fails until `vendor migrate` turns each changed file into a patch, whose `Forwarded` has to be filled before the check passes. There is no pending state and no date: whether a patch passes depends on its text alone.
+
+Text is read with CRLF as LF, so a Windows checkout that converts line ends neither reads as an edit nor breaks a patch. Binary files, those with a NUL byte in their first 8,000 bytes, are hashed raw and can't carry patches.
+
+A vault runs the check in CI, where it is the guarantee; a write hook that stops edits to vendored files is only a prompt. The tool and the record format are in [`core/vendor/`](../core/vendor/README.md).
+
+**Why:** rule 2 keeps vendored and vault code apart by convention, and this rule enforces it. A change made downstream, by a person or by an agent mid-task, is the fix the upstream never gets: it ships, works, and disappears at the next update, or it lives on as a private fork of shared code. Making every local change a patch keeps it visible and re-appliable. Requiring an upstream answer before the check passes means a fix can't stay downstream by default. Checking by undoing the patches needs no network, no git, and no copy of upstream in the vault.
