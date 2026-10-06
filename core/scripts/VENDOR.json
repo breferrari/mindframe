@@ -37,6 +37,12 @@
       "upstream": "core/types.ts",
       "upstreamSha256": "3416b8cf8fb7f1913ece0b16685eb3b7d4e1ceee89d40f821e1f5996ac01beb2"
     },
+    "lib/frontmatter.ts": {
+      "modified": false,
+      "sha256": "cbfca1040a6866a83c4b6ac17519bd69f3ca050efbbf2ab6054e4b0d689570b8",
+      "upstream": "lib/frontmatter.ts",
+      "upstreamSha256": "cbfca1040a6866a83c4b6ac17519bd69f3ca050efbbf2ab6054e4b0d689570b8"
+    },
     "lib/hook-io.ts": {
       "modified": false,
       "sha256": "6eddaeb3e73c7d31af51264974c998b28433c9051fc21d4d4d6aefdad91f4822",
@@ -54,6 +60,12 @@
       "sha256": "fcd33c92325e685ac31754f32d6a9519509133ccc469094a82f0783930e09e38",
       "upstream": "lib/project-dir.ts",
       "upstreamSha256": "fcd33c92325e685ac31754f32d6a9519509133ccc469094a82f0783930e09e38"
+    },
+    "lib/prose-width.ts": {
+      "modified": false,
+      "sha256": "2d0fa9c392ed77ece98b10d4fe0634139570b66f6425aa95e3aacf64450e99ed",
+      "upstream": "lib/prose-width.ts",
+      "upstreamSha256": "2d0fa9c392ed77ece98b10d4fe0634139570b66f6425aa95e3aacf64450e99ed"
     },
     "lib/qmd.ts": {
       "modified": false,
@@ -79,6 +91,12 @@
       "upstream": "lib/wikilinks.ts",
       "upstreamSha256": "876c6ed61fe0d2e38adcf5d4678643955037e7e1e4a03845e7a883e8a565754b"
     },
+    "tests/frontmatter.test.ts": {
+      "modified": false,
+      "sha256": "7f36d89088f5e0e7df4fdb20e09bb58c34cbfc5b33feaa8ddf5e97275e0c3aa3",
+      "upstream": "tests/frontmatter.test.ts",
+      "upstreamSha256": "7f36d89088f5e0e7df4fdb20e09bb58c34cbfc5b33feaa8ddf5e97275e0c3aa3"
+    },
     "tests/hook-io.test.ts": {
       "modified": false,
       "sha256": "9b3f3cc1399b67116a8ebb08f12110117dc06300b251ef57c1061a212096f9c7",
@@ -96,6 +114,12 @@
       "sha256": "e738d5af8410a60c3f3f0965b1728ac903b0c5b1ef43456af13b1be545abda28",
       "upstream": "tests/project-dir.test.ts",
       "upstreamSha256": "e738d5af8410a60c3f3f0965b1728ac903b0c5b1ef43456af13b1be545abda28"
+    },
+    "tests/prose-width.test.ts": {
+      "modified": false,
+      "sha256": "7627ad4666aa52e32099e5f20bbeed7f734dc10f5b1d9a5797d3bee2237957be",
+      "upstream": "tests/prose-width.test.ts",
+      "upstreamSha256": "7627ad4666aa52e32099e5f20bbeed7f734dc10f5b1d9a5797d3bee2237957be"
     },
     "tests/regex.test.ts": {
       "modified": false,

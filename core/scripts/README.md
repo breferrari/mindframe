@@ -5,8 +5,8 @@ This folder mirrors a vault's `.claude/scripts/`:
 | Here | In a vault | Holds |
 |------|------------|-------|
 | `core/` | `.claude/scripts/core/` | The extension registry (`registry.ts`), its API types (`types.ts`), the public entry point extensions import (`index.ts`), QMD's session-start work (`qmd-session.ts`), and their tests |
-| `lib/` | `.claude/scripts/lib/` | The core's libraries: `hook-io` (hook I/O and the output cap), `session-start` (the byte budget and its meter), `project-dir` (vault-root discovery), `om-mod` (the mod's flag protocol), `qmd`, `wikilinks`, `regex` |
-| `tests/` | `.claude/scripts/tests/` | The libraries' tests: `hook-io`, `project-dir`, `om-mod`, `regex`, `wikilinks` |
+| `lib/` | `.claude/scripts/lib/` | The core's libraries: `hook-io` (hook I/O and the output cap), `session-start` (the byte budget and its meter), `project-dir` (vault-root discovery), `om-mod` (the mod's flag protocol), `frontmatter` (write validation: required fields, `shouldSkipFile`), `prose-width` (the no-hard-wrap rule), `qmd`, `wikilinks`, `regex` |
+| `tests/` | `.claude/scripts/tests/` | The libraries' tests: `hook-io`, `project-dir`, `om-mod`, `frontmatter`, `prose-width`, `regex`, `wikilinks`. One frontmatter case is skipped: it checks a vault's own Work Note template against its manifest, which only obsidian-mind ships |
 
 **Two contracts every vault shares, and that don't change:**
 - `project-dir` finds the vault root by walking up from the project directory to the first folder holding `vault-manifest.json`, so a session started in a subfolder still finds its vault.
