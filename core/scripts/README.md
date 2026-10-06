@@ -8,6 +8,8 @@ This folder mirrors a vault's `.claude/scripts/`:
 | `lib/` | `.claude/scripts/lib/` | The core's libraries: `hook-io` (hook I/O and the output cap), `session-start` (the byte budget and its meter), `project-dir` (vault-root discovery), `om-mod` (the mod's flag protocol), `frontmatter` (write validation: required fields, `shouldSkipFile`), `prose-width` (the no-hard-wrap rule), `qmd`, `wikilinks`, `regex` |
 | `tests/` | `.claude/scripts/tests/` | The libraries' tests: `hook-io`, `project-dir`, `om-mod`, `frontmatter`, `prose-width`, `regex`, `wikilinks`. One frontmatter case is skipped: it checks a vault's own Work Note template against its manifest, which only obsidian-mind ships |
 
+**`vendor-guard.ts` is the one hook entry point here.** It denies edits to vendored files and names the routes instead: an extension, a fix upstream, or a local patch (see [the vendor README](../vendor/README.md#the-write-guard-and-patch-begin)). A vault wires it as a PreToolUse hook on `Edit|Write|MultiEdit|NotebookEdit`, with the same walk up to `vault-manifest.json` its other hook commands use.
+
 **Two contracts every vault shares, and that don't change:**
 - `project-dir` finds the vault root by walking up from the project directory to the first folder holding `vault-manifest.json`, so a session started in a subfolder still finds its vault.
 - `om-mod` reads the `om_mod` field a mod passes to a settings hook: `standdown` (the mod delivers this event: print nothing), `deliver` (print the context for the mod's instruction file) and `report` (return the Stop report as data).
