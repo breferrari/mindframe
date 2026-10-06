@@ -271,19 +271,53 @@ export function reverseFile(f: FilePatch): FilePatch {
 	};
 }
 
+/** Where a hunk's old lines (context and removals) sit in `lines` at `start`, exactly. */
+function fitsAt(lines: readonly string[], h: Hunk, start: number): boolean {
+	let i = start;
+	for (const l of h.lines) {
+		if (l[0] === "+") continue;
+		if (lines[i] !== l.slice(1)) return false;
+		i++;
+	}
+	return true;
+}
+
 /**
  * Applies one file's hunks to `text`, exactly: each hunk's context and
- * removed lines must sit where its header says, shifted only by what the
- * hunks before it added or removed. Throws PatchError otherwise.
+ * removed lines must match, with no fuzz. Without `offset`, they must also
+ * sit where the hunk's header says (shifted only by the hunks before it):
+ * that is how `check` undoes a vault's own patches. With `offset`, a hunk
+ * whose lines moved is found at the nearest place they match exactly, after
+ * the hunk before it, as git does: that is how `update` carries a patch to a
+ * new upstream whose lines shifted. Throws PatchError when a hunk doesn't
+ * match.
  */
-export function applyFile(text: string, f: FilePatch, reverse = false): string {
+export function applyFile(text: string, f: FilePatch, reverse = false, opts: { readonly offset?: boolean } = {}): string {
 	const patch = reverse ? reverseFile(f) : f;
 	const src = toLines(text);
 	const out: string[] = [];
 	let at = 0;
 	let eol = src.eol;
+	let shift = 0;
 	for (const [n, h] of patch.hunks.entries()) {
-		const start = h.oldLines === 0 ? h.oldStart : h.oldStart - 1;
+		const expected = (h.oldLines === 0 ? h.oldStart : h.oldStart - 1) + shift;
+		let start = expected;
+		if (opts.offset && !(start >= at && fitsAt(src.lines, h, start))) {
+			let found = -1;
+			for (let d = 1; d <= src.lines.length + h.oldLines; d++) {
+				if (expected - d >= at && fitsAt(src.lines, h, expected - d)) {
+					found = expected - d;
+					break;
+				}
+				if (expected + d <= src.lines.length && fitsAt(src.lines, h, expected + d)) {
+					found = expected + d;
+					break;
+				}
+			}
+			if (found < 0) throw new PatchError(`${f.path}: hunk ${n + 1} matches nowhere`);
+			start = found;
+			shift += found - expected;
+		}
 		if (start < at) throw new PatchError(`${f.path}: hunk ${n + 1} overlaps the one before`);
 		out.push(...src.lines.slice(at, start));
 		let i = start;

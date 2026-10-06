@@ -8,12 +8,13 @@ node --experimental-strip-types core/vendor/cli.ts record  --upstream <checkout>
 node --experimental-strip-types core/vendor/cli.ts migrate --upstream <checkout> [--vault <dir>] [--record <path>]
 node --experimental-strip-types core/vendor/cli.ts patch new <slug> <file>... --upstream <checkout> --description "<the change to make>" \n     (--forward <url> | --issue | --not-needed "<reason>")
 node --experimental-strip-types core/vendor/cli.ts patch upstream <NNNN-slug.patch> --upstream <checkout> [--pr] [--base <branch>]
+node --experimental-strip-types core/vendor/cli.ts update  --upstream <checkout> [--vault <dir>] [--record <path>] [--resolved <file>]...
 ```
 
-| Exit | `check` | `record`, `migrate`, `patch` |
+| Exit | `check` | `record`, `migrate`, `patch`, `update` |
 |------|---------|---------------------|
 | 0 | every vendored file is upstream plus its patches, and every patch is forwarded | written |
-| 1 | one line per problem, or a record that can't be verified | refused: nothing written |
+| 1 | one line per problem, or a record that can't be verified | refused: nothing written (`update` with a conflict writes only the markers) |
 | 2 | usage error | usage error |
 
 ## The record (schema 3)
@@ -91,6 +92,7 @@ node --experimental-strip-types core/vendor/cli.ts patch new fix-meter-newline .
 
 - It needs exactly one upstream answer. `--forward <url>` takes an existing issue or PR. `--issue` files one with `gh`; the `Description` becomes the issue title, so write it as the change to make. `--not-needed "<reason>"` says why the change stays local.
 - Each file's change is measured from upstream plus the patches it already carries, so a new patch stacks on the old ones and holds only its own change.
+- The `Description` must read as the change to make: one starting with "The " or "It ", or ending with a full stop, is refused. Before anything goes to `gh`, the issue body and the diff are scanned for local absolute paths and session artifacts, and a hit is refused with the offending line.
 - Everything is checked before anything is filed upstream, and nothing is written if filing fails.
 - The patch gets the next number in `vendor-patches/`, and the record lists it and takes the file's new hash.
 - It refuses a file that isn't in the record, a binary file, an edit-free file, and an upstream checkout that isn't at the record's commit.
@@ -107,3 +109,17 @@ It applies the patch on a new branch, `vendor-patch/NNNN-slug`, in the upstream 
 - writes the PR's URL into `Forwarded`, keeping the issue as `Origin`.
 
 A patch that no longer applies to the checkout is refused before any branch is made.
+
+## `update`
+
+```sh
+node --experimental-strip-types core/vendor/cli.ts update --upstream <mindframe checkout at the new commit>
+```
+
+It moves the copy to the checkout's commit, file by file:
+- an unpatched file takes the new upstream as it is, and a binary file is copied raw;
+- a patch that still applies is kept and re-anchored. Its lines may have moved, but its context must match exactly; there is no fuzz;
+- a patch whose change upstream already has retires: it gains `Applied-Upstream: <commit>` and leaves the record, but stays in `vendor-patches/` as history;
+- otherwise the old upstream, the vault and the new upstream are merged three ways. A clean merge folds into the patch. A conflict writes markers into that file and nothing else, and exits 1 with the record still at the old commit. Resolve the markers, then run `update` again with `--resolved <file>`, and the result folds into the patch.
+
+It refuses an edit without a patch, a file that's gone upstream, a file whose patches don't lead back to its upstream, and a schema 1 or 2 record (run `migrate` first). Folding a merge into a patch would empty any later patch on the same file, so that case is refused too: combine those patches into one with `patch new`, then update.
