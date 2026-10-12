@@ -4,6 +4,7 @@
  * system, or invoking the Obsidian CLI.
  */
 
+import { frontmatterBlock } from "./frontmatter-block.ts";
 import { manifestOf, type ManifestObject } from "./manifest.ts";
 import { basename, join, resolve } from "node:path";
 
@@ -459,20 +460,6 @@ export const MACHINERY_DIRS: readonly string[] = [
 ];
 
 /**
- * Find the closing `---` delimiter of a YAML frontmatter block. The input
- * is assumed to start with `---` (caller checks). Returns the index of the
- * newline before the closing delimiter, or -1 if the block is unterminated.
- *
- * Matches only a full delimiter line (`\n---\n`, `\n---\r\n`, or `\n---` at
- * EOF) so body content like `---foo` after a newline is not treated as the
- * terminator.
- */
-function findFrontmatterEnd(content: string): number {
-	const m = content.slice(3).match(/\n---(?:\r?\n|$)/);
-	return m && m.index !== undefined ? m.index + 3 : -1;
-}
-
-/**
  * Extract a string value for `field` from YAML frontmatter at the top of
  * a markdown document. Supports quoted ("..."), single-quoted ('...'),
  * and bare values on the same line as the key. Returns null when the
@@ -486,10 +473,9 @@ export function extractFrontmatterField(
 	content: string,
 	field: string,
 ): string | null {
-	if (!content.startsWith("---")) return null;
-	const end = findFrontmatterEnd(content);
-	if (end === -1) return null;
-	const fm = content.slice(3, end);
+	const block = frontmatterBlock(content);
+	if (block === null) return null;
+	const fm = `\n${block.yaml}`;
 	const re = new RegExp(
 		`^${escapeRegex(field)}:[ \\t]*(.*?)[ \\t]*\\r?$`,
 		"m",
@@ -513,12 +499,8 @@ export function extractFrontmatterField(
  * Handles both LF and CRLF delimiters.
  */
 export function stripFrontmatter(content: string): string {
-	if (!content.startsWith("---")) return content;
-	const end = findFrontmatterEnd(content);
-	if (end === -1) return content;
-	const rest = content.slice(end);
-	const m = rest.match(/^\n---(\r?\n|$)/);
-	return m ? rest.slice(m[0].length) : rest;
+	const block = frontmatterBlock(content);
+	return block === null ? content : content.slice(block.body);
 }
 
 /**

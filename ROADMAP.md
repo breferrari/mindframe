@@ -36,7 +36,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#78](https://github.com/breferrari/mindframe/issues/78) | Let vendor update bring in files the updated ones need | ✅ |
 | [#79](https://github.com/breferrari/mindframe/issues/79) | Retry the atomic write's rename on Windows, and hide and uniquify its temp file | ✅ |
 | [#80](https://github.com/breferrari/mindframe/issues/80) | Export line regions and wikilink offsets to extensions | ✅ |
-| [#82](https://github.com/breferrari/mindframe/issues/82) | Read frontmatter by one rule everywhere in the core, as Obsidian does | ⬜ |
+| [#82](https://github.com/breferrari/mindframe/issues/82) | Read frontmatter by one rule everywhere in the core, as Obsidian does | ✅ |
 | [#85](https://github.com/breferrari/mindframe/issues/85) | Export the vault-root walk-up to extensions | ✅ |
 | [#89](https://github.com/breferrari/mindframe/issues/89) | Absorb obsidian-mind #333 into the core: the instruction files library and its comments | ✅ |
 | [#91](https://github.com/breferrari/mindframe/issues/91) | Match a retired instruction file the way the agent loads it: any case where the filesystem ignores case, exact case on Linux | ⬜ |

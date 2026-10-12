@@ -273,8 +273,8 @@ describe("validateContent — frontmatter + wikilinks", () => {
 		// A CRLF frontmatter is found, not skipped: a key it really lacks is still reported.
 		const noTags = "---\r\ndate: 2026-04-05\r\ndescription: before --- after\r\n---\r\nShort note.";
 		assert.deepEqual(validateContent(noTags), ["Missing `tags` in frontmatter"]);
-		// Unclosed frontmatter is not checked for fields, as before.
-		assert.deepEqual(validateContent("---\ndate: 2026-04-05\n\nShort note.").filter((w) => w.startsWith("Missing")), []);
+		// Unclosed frontmatter is no frontmatter (#82): it is reported missing, and its keys aren't read.
+		assert.deepEqual(validateContent("---\ndate: 2026-04-05\n\nShort note.").filter((w) => w.startsWith("Missing")), ["Missing YAML frontmatter"]);
 	});
 });
 

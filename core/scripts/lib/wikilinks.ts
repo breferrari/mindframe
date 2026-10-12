@@ -24,6 +24,7 @@
  *    case-insensitive basename or alias.
  */
 
+import { frontmatterBlock, frontmatterLines } from "./frontmatter-block.ts";
 import { fenceStep, type OpenFence } from "./fences.ts";
 
 const ASSET_EXTENSIONS = new Set([
@@ -97,9 +98,8 @@ export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
  */
 export function lineRegions(lines: readonly string[]): LineRegion[] {
 	const bare = lines.map((l) => l.replace(/\r$/, ""));
-	// stripFrontmatter's rule, restated for lines. The core holds several
-	// copies of the frontmatter rule, and they drift; #82 makes them one.
-	const close = bare[0]?.startsWith("---") ? bare.indexOf("---", 1) : -1;
+	// The core's one frontmatter rule (lib/frontmatter-block.ts, #82).
+	const close = frontmatterLines(bare)?.close ?? -1;
 	let open: OpenFence = null;
 	return bare.map((line, i): LineRegion => {
 		if (i <= close) return "frontmatter";
@@ -243,7 +243,8 @@ function splitInlineList(inner: string): string[] {
  * whole check, not one link.
  */
 export function extractAliases(content: string): string[] {
-	if (!content.startsWith("---")) return [];
+	const block = frontmatterBlock(content);
+	if (block === null) return [];
 	// CRLF first, and before anything indexes or matches. Obsidian-on-Windows
 	// rewrites LF to CRLF on edit (the reason .gitattributes normalizes), and
 	// `.` does not match CR — it is a line terminator — while `$` without `m`
@@ -251,10 +252,9 @@ export function extractAliases(content: string): string[] {
 	// ONE of every CRLF note, and `break` read that as an empty list, so the
 	// file's whole alias set went missing with nothing to distinguish it from
 	// a note that declares none.
-	const text = content.replace(/\r\n/g, "\n");
-	const end = text.indexOf("\n---", 3);
-	if (end === -1) return [];
-	const fm = text.slice(3, end);
+	// frontmatterBlock already drops each line's \r; the leading newline keeps the
+	// line indexes below as they were.
+	const fm = `\n${block.yaml}`;
 	const lines = fm.split("\n");
 	const idx = lines.findIndex((l) => /^aliases:\s*(\[.*\])?\s*$/.test(l.trim()) || /^aliases:\s*\[/.test(l.trim()));
 	if (idx === -1) return [];

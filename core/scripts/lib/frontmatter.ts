@@ -3,19 +3,18 @@
  * frontmatter fields, and wikilink presence on non-trivial notes.
  */
 
+import { frontmatterBlock } from "./frontmatter-block.ts";
 import { basename, posix } from "node:path";
 import { readFileSync } from "node:fs";
+import { INSTRUCTION_FILE, isRetiredInstructionFile } from "./instruction-files.ts";
 import { hardWrappedParagraphs } from "./prose-width.ts";
+import { stripCodeRegions } from "./wikilinks.ts";
 
-const ROOT_FILES: ReadonlySet<string> = new Set([
-	"README.md",
-	"CHANGELOG.md",
-	"CONTRIBUTING.md",
-	"ARCHITECTURE.md",
-	"CLAUDE.md",
-	"AGENTS.md",
-	"GEMINI.md",
-]);
+const ROOT_FILES: ReadonlySet<string> = new Set(["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "ARCHITECTURE.md"]);
+
+/** An instruction file, current or retired, matched as an agent loads it (lib/instruction-files.ts): not a note. */
+const isInstructionFile = (base: string): boolean =>
+	base.toLowerCase() === INSTRUCTION_FILE.toLowerCase() || isRetiredInstructionFile(base);
 
 const SKIP_PATH_SEGMENTS: readonly string[] = [
 	".claude/",
@@ -30,7 +29,7 @@ const SKIP_PATH_SEGMENTS: readonly string[] = [
 /**
  * Return true if the path is an auto-memory file in ~/.claude/ that should
  * be flagged (#81). Only MEMORY.md (the auto-loaded index) is allowed there
- * — all durable knowledge goes to brain/ topic notes per .claude/rules/memory.md.
+ * — all durable knowledge goes to brain/ topic notes, by the vault's memory rule.
  *
  * The path is lexically normalized first (separators unified, `.`/`..`
  * segments collapsed) so a path can't dodge the check by spelling the
@@ -64,7 +63,7 @@ export function shouldSkipFile(filePath: string): boolean {
 	const normalized = filePath.replaceAll("\\", "/");
 	const base = basename(normalized);
 
-	if (ROOT_FILES.has(base)) return true;
+	if (ROOT_FILES.has(base) || isInstructionFile(base)) return true;
 
 	if (base.startsWith("README.") && base.endsWith(".md")) return true;
 
@@ -83,9 +82,9 @@ const DEFAULT_GLOBAL: readonly string[] = ["date", "description", "tags"];
 
 /**
  * Which note type a vault path is, by folder. The folder→type map is
- * vault-specific; a future extension point. It mirrors the placement table
- * in AGENTS.md and /om-vault-audit's per-type rules, which are keyed by
- * folder too. Tags cannot carry this: 1:1 notes are tagged `work-note`, yet
+ * vault-specific; a future extension point. It mirrors obsidian-mind's
+ * placement table in its AGENTS.md and its /om-vault-audit per-type rules,
+ * which are keyed by folder too. Tags cannot carry this: 1:1 notes are tagged `work-note`, yet
  * do not need a work note's `status`.
  */
 const NOTE_TYPE_BY_FOLDER: readonly (readonly [string, string])[] = [
@@ -197,17 +196,14 @@ export function validateContent(
 ): string[] {
 	const warnings: string[] = [];
 
-	if (!content.startsWith("---")) {
+	// Where frontmatter is, by the core's one rule (lib/frontmatter-block.ts), so
+	// every reader agrees: a `---` inside a value doesn't end the block.
+	const block = frontmatterBlock(content);
+	if (block === null) {
 		warnings.push("Missing YAML frontmatter");
 	} else {
-		// The block ends at the next line that is exactly `---`, not at the next
-		// `---` anywhere: a value holding one (`before --- after`) used to end the
-		// block there and report every later key missing. The same rule as
-		// prose-width.ts, so both readers agree on where frontmatter ends.
-		const lines = content.split(/\r?\n/);
-		const close = lines.indexOf("---", 1);
-		if (close > 0) {
-			const { keys, tags } = readFrontmatterKeys(lines.slice(1, close).join("\n"));
+		{
+			const { keys, tags } = readFrontmatterKeys(block.yaml);
 			for (const field of requiredFieldsFor(opts.required ?? {}, opts.relPath ?? null, tags)) {
 				if (keys.has(field)) continue;
 				warnings.push(
@@ -218,7 +214,8 @@ export function validateContent(
 		}
 	}
 
-	if (content.length > 300 && !content.includes("[[")) {
+	// A link shown in code is no edge, so it doesn't count (#82).
+	if (content.length > 300 && !stripCodeRegions(content).includes("[[")) {
 		warnings.push(
 			"No [[wikilinks]] found — every note must link to at least one other note (vault convention)",
 		);
@@ -250,7 +247,8 @@ export function validateContent(
  * the same decision validateContent's prose comes from.
  */
 export function countTicketIdWikilinks(content: string): number {
-	return content.match(/\[\[[A-Z]{2,10}-\d+(\\\||&#124;|\||\]\])/g)?.length ?? 0;
+	// A ticket link shown in code is an example, not a link (#82).
+	return stripCodeRegions(content).match(/\[\[[A-Z]{2,10}-\d+(\\\||&#124;|\||\]\])/g)?.length ?? 0;
 }
 
 /**
