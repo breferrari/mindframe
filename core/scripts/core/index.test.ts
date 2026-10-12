@@ -32,8 +32,14 @@ describe("writeFileAtomic, through index.ts", () => {
 		const target = join(dir, "note.md");
 		mkdirSync(target);
 		writeFileSync(join(target, "keep"), "x");
-		assert.throws(() => writeFileAtomic(target, "text"));
+		assert.throws(() => writeFileAtomic(target, "text"), (err: NodeJS.ErrnoException) => err.syscall === "rename");
 		assert.deepEqual(readdirSync(dir), ["note.md"]);
 		assert.deepEqual(readdirSync(target), ["keep"]);
+	});
+
+	test("a write that fails before any temp file exists throws its own error, not the cleanup's", () => {
+		const target = join(dir, "missing", "note.md");
+		assert.throws(() => writeFileAtomic(target, "text"), (err: NodeJS.ErrnoException) => err.code === "ENOENT" && err.syscall === "open");
+		assert.deepEqual(readdirSync(dir), []);
 	});
 });
