@@ -10,8 +10,13 @@
  *   line scanner can't see the list. A backtick opener's info string may
  *   not hold a backtick: "``` x ```" is inline code (CommonMark).
  * - It closes only on a line that is a run of the same character, at least
- *   as long as the opening run, with nothing after it but whitespace
- *   (CommonMark). A "```js" line or a shorter run inside it is content.
+ *   as long as the opening run, with nothing after it but whitespace, and
+ *   indented no more than three spaces deeper than its opener (CommonMark).
+ *   A "```js" line, a shorter run, or a deeper-indented run inside it is
+ *   content.
+ * - A fence inside a blockquote or callout is read past the `>` markers, so
+ *   a callout's code block is code to every scanner. A quoted run doesn't
+ *   close a fence opened outside the quote.
  * - A fence that never closes runs to the end of the note.
  *
  * The one case this gets wrong: at top level, a line of "    ```" is
@@ -20,23 +25,41 @@
  * in a review of the links a note yields.
  */
 
-/** The fence a scan is inside: its character and the length of its opening run. null outside one. */
-export type OpenFence = { readonly char: "`" | "~"; readonly length: number } | null;
+/**
+ * The fence a scan is inside: its character, the length of its opening run,
+ * how far its opener was indented, and whether it opened inside a quote or
+ * callout. null outside one.
+ */
+export type OpenFence = {
+	readonly char: "`" | "~";
+	readonly length: number;
+	readonly indent: number;
+	readonly quoted: boolean;
+} | null;
 
 // [^]* rather than .*: a CRLF line split on \n keeps its \r, and . doesn't match it.
 const OPENER = /^(`{3,}|~{3,})([^]*)$/;
 const CLOSER = /^(`{3,}|~{3,})$/;
+/** A blockquote or callout's markers, nested or not: `> `, `>>`, `> > `. */
+const QUOTE = /^(?:[ \t]*>[ \t]?)+/;
+
+const indentOf = (text: string): number => text.length - text.trimStart().length;
 
 /** One line of the scan: whether it belongs to a fence, and the fence open after it. */
 export function fenceStep(line: string, open: OpenFence): { fenced: boolean; open: OpenFence } {
 	if (open !== null) {
-		const run = CLOSER.exec(line.trim())?.[1];
-		const closes = run !== undefined && run[0] === open.char && run.length >= open.length;
+		// Only a fence opened inside a quote reads past the quote's markers.
+		const text = open.quoted ? line.replace(QUOTE, "") : line;
+		const run = CLOSER.exec(text.trim())?.[1];
+		const closes =
+			run !== undefined && run[0] === open.char && run.length >= open.length && indentOf(text) <= open.indent + 3;
 		return { fenced: true, open: closes ? null : open };
 	}
-	const [, run, info = ""] = OPENER.exec(line.trimStart()) ?? [];
+	const quoted = QUOTE.test(line);
+	const text = quoted ? line.replace(QUOTE, "") : line;
+	const [, run, info = ""] = OPENER.exec(text.trimStart()) ?? [];
 	if (run === undefined) return { fenced: false, open: null };
 	const char = run.startsWith("`") ? "`" : "~";
 	if (char === "`" && info.includes("`")) return { fenced: false, open: null };
-	return { fenced: true, open: { char, length: run.length } };
+	return { fenced: true, open: { char, length: run.length, indent: indentOf(text), quoted } };
 }

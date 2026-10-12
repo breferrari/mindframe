@@ -84,7 +84,19 @@ describe("every scanner follows it", () => {
 		assert.deepEqual(hardWrappedParagraphs(note.join("\n")), []);
 	});
 
-	test("prose-width: a list-nested fence indented four spaces is not prose either", () => {
-		assert.deepEqual(hardWrappedParagraphs(["- item", "    " + ticks(3), "    a paragraph", "    wrapped here.", "    " + ticks(3)].join("\n")), []);
+	test("a run indented four or more deeper than its opener is content, not a close", () => {
+		const doc = [ticks(3) + "md", "Example:", "    " + ticks(3), "    [[leak]]", "    " + ticks(3), ticks(3), "[[after]]"];
+		assert.deepEqual(extractWikilinkTargets(doc.join("\n")), ["after"]);
+	});
+
+	test("a fence inside a callout or quote is a fence to every scanner", () => {
+		const doc = ["> [!note]", "> " + ticks(3), "> [[example]]", "> wrapped", "> here.", "> " + ticks(3), "[[after]]"];
+		assert.deepEqual(extractWikilinkTargets(doc.join("\n")), ["after"]);
+		assert.deepEqual(lineRegions(doc), ["body", "fence", "fence", "fence", "fence", "fence", "body"]);
+		assert.deepEqual(hardWrappedParagraphs(doc.join("\n")), []);
+	});
+
+	test("a quoted run doesn't close a fence opened outside the quote", () => {
+		assert.deepEqual(extractWikilinkTargets([ticks(3), "> " + ticks(3), "[[inside]]", ticks(3), "[[after]]"].join("\n")), ["after"]);
 	});
 });
