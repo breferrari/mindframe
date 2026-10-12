@@ -3,16 +3,19 @@
  * An extension imports only from here, so a helper that is not exported is
  * not available to it, however much of the core uses it.
  */
-import { after, describe, test } from "node:test";
+import { afterEach, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeFileAtomic } from "./index.ts";
 
 describe("writeFileAtomic, through index.ts", () => {
-	const dir = mkdtempSync(join(tmpdir(), "core-index-"));
-	after(() => rmSync(dir, { recursive: true, force: true }));
+	let dir = "";
+	beforeEach(() => {
+		dir = mkdtempSync(join(tmpdir(), "core-index-"));
+	});
+	afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 	test("writes the whole text, replacing what was there, and leaves no temp file", () => {
 		const target = join(dir, "note.md");
@@ -23,9 +26,14 @@ describe("writeFileAtomic, through index.ts", () => {
 		assert.deepEqual(readdirSync(dir), ["note.md"]);
 	});
 
-	test("a write that cannot happen throws and leaves nothing behind", () => {
-		const empty = mkdtempSync(join(dir, "empty-"));
-		assert.throws(() => writeFileAtomic(join(empty, "missing", "note.md"), "x"));
-		assert.deepEqual(readdirSync(empty), []);
+	test("a rename that fails after the temp file is written throws and removes the temp file", () => {
+		// A non-empty folder where the note should go: the temp file is
+		// written, then the rename over the folder fails.
+		const target = join(dir, "note.md");
+		mkdirSync(target);
+		writeFileSync(join(target, "keep"), "x");
+		assert.throws(() => writeFileAtomic(target, "text"));
+		assert.deepEqual(readdirSync(dir), ["note.md"]);
+		assert.deepEqual(readdirSync(target), ["keep"]);
 	});
 });
