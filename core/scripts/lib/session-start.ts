@@ -477,7 +477,7 @@ export function extractFrontmatterField(
 	if (block === null) return null;
 	const fm = `\n${block.yaml}`;
 	const re = new RegExp(
-		`^${escapeRegex(field)}:[ \\t]*(.*?)[ \\t]*\\r?$`,
+		`^${escapeRegex(field)}:[ \\t]*(.*?)[ \\t]*$`,
 		"m",
 	);
 	const m = fm.match(re);

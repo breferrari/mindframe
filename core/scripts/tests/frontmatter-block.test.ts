@@ -24,7 +24,7 @@ type Fixture = {
 const FM = "title: T\naliases: [A]\nverbatim: true";
 const FIXTURES: readonly Fixture[] = [
 	{ name: "plain", content: `---\n${FM}\n---\nBody line.\n`, expect: { yaml: FM, body: "Body line.\n" } },
-	{ name: "a BOM before the opener", content: `﻿---\n${FM}\n---\nBody line.\n`, expect: { yaml: FM, body: "Body line.\n" } },
+	{ name: "a BOM before the opener", content: `\uFEFF---\n${FM}\n---\nBody line.\n`, expect: { yaml: FM, body: "Body line.\n" } },
 	{ name: "a first line of ----", content: `----\n${FM}\n---\nBody line.\n`, expect: null },
 	{ name: "a first line of ---x", content: `---x\n${FM}\n---\nBody line.\n`, expect: null },
 	{ name: "CRLF", content: `---\r\n${FM.replaceAll("\n", "\r\n")}\r\n---\r\nBody line.\r\n`, expect: { yaml: FM, body: "Body line.\r\n" } },
@@ -77,9 +77,16 @@ describe("every reader agrees with the rule", () => {
 
 describe("frontmatter.ts's other readers (#82)", () => {
 	const tick = "`";
-	test("an instruction file, current or retired, in any case, is not a note", () => {
-		for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md", "claude.md", "Agents.MD"]) assert.equal(shouldSkipFile(`/v/${name}`), true, name);
-		assert.equal(shouldSkipFile("/v/notes/Claude notes.md"), false);
+	test("an instruction file, current or retired, is not a note; a note merely named like one is", () => {
+		for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]) assert.equal(shouldSkipFile(`/v/${name}`), true, name);
+		for (const path of ["/v/people/Claude.md", "/v/topics/Gemini.md", "/v/x/agents.md", "/v/notes/Claude notes.md"]) assert.equal(shouldSkipFile(path), false, path);
+	});
+
+	test("a fence-looking line inside a yaml value doesn't hide the body's links", () => {
+		const tick = "`";
+		const note = `---\ndescription: |\n  ${tick.repeat(3)}\n---\n${"Words. ".repeat(60)}\nSee [[Real Link]] and [[PROJ-12]].\n`;
+		assert.ok(!validateContent(note).some((w) => /No \[\[wikilinks\]\]/.test(w)), "the body's link is found");
+		assert.equal(countTicketIdWikilinks(note), 1);
 	});
 
 	test("a ticket link inside code is an example, not a link", () => {

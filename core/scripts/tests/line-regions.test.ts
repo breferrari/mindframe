@@ -31,7 +31,7 @@ describe("lineRegions", () => {
 	});
 
 	test("the opening line follows the core's one rule (#82): a BOM before --- opens, ---- doesn't", () => {
-		assert.deepEqual(lineRegions(["﻿---", "a: 1", "---", "x"]), ["frontmatter", "frontmatter", "frontmatter", "body"]);
+		assert.deepEqual(lineRegions(["\uFEFF---", "a: 1", "---", "x"]), ["frontmatter", "frontmatter", "frontmatter", "body"]);
 		assert.deepEqual(lineRegions(["----", "a: 1", "---", "x"]), ["body", "body", "body", "body"]);
 	});
 
@@ -113,7 +113,7 @@ describe("agreement with the whole-note readers", () => {
 		].join("\r\n"),
 		["----", "a: [[X]]", "---", "[[Y]]"].join("\n"),
 		["---", "a: [[X]]", "[[Y]]"].join("\n"),
-		["﻿---", "a: 1", "---", "[[Z]]"].join("\n"),
+		["\uFEFF---", "a: 1", "---", "[[Z]]"].join("\n"),
 	];
 
 	test("the frontmatter lines are the ones stripFrontmatter removes", () => {

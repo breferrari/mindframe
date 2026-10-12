@@ -86,10 +86,11 @@ export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
  * The region of each line of a note, for an extension that rewrites a note
  * line by line. Lines may keep a trailing \r (CRLF split on \n).
  *
- * - Frontmatter is what stripFrontmatter removes: a first line starting
- *   with `---`, to the first line after it that is exactly `---`. A `---`
- *   inside a value doesn't end it, and an unterminated block is no
- *   frontmatter at all.
+ * - Frontmatter is what lib/frontmatter-block.ts finds, the core's one rule
+ *   (#82): a first line of `---` (a BOM may precede it), to the first later
+ *   `---` line. A `---` inside a value or a `----` line doesn't end it, an
+ *   unterminated block is no frontmatter, and a first line of `----` or
+ *   `---x` opens nothing.
  * - Fences are the ones stripCodeRegions finds in the note without its
  *   frontmatter, so the links on body and heading lines are exactly
  *   extractWikilinkTargets(stripFrontmatter(note)).
@@ -245,13 +246,9 @@ function splitInlineList(inner: string): string[] {
 export function extractAliases(content: string): string[] {
 	const block = frontmatterBlock(content);
 	if (block === null) return [];
-	// CRLF first, and before anything indexes or matches. Obsidian-on-Windows
-	// rewrites LF to CRLF on edit (the reason .gitattributes normalizes), and
-	// `.` does not match CR — it is a line terminator — while `$` without `m`
-	// anchors past it. The block-list item pattern therefore failed on item
-	// ONE of every CRLF note, and `break` read that as an empty list, so the
-	// file's whole alias set went missing with nothing to distinguish it from
-	// a note that declares none.
+	// frontmatterBlock reads CRLF notes as LF (it drops each line's \r), which
+	// matters: Obsidian-on-Windows rewrites LF to CRLF on edit, and `.` doesn't
+	// match CR, so a CRLF block list used to read as empty.
 	// frontmatterBlock already drops each line's \r; the leading newline keeps the
 	// line indexes below as they were.
 	const fm = `\n${block.yaml}`;

@@ -6,15 +6,12 @@
 import { frontmatterBlock } from "./frontmatter-block.ts";
 import { basename, posix } from "node:path";
 import { readFileSync } from "node:fs";
-import { INSTRUCTION_FILE, isRetiredInstructionFile } from "./instruction-files.ts";
+import { INSTRUCTION_FILE, RETIRED_INSTRUCTION_FILES } from "./instruction-files.ts";
 import { hardWrappedParagraphs } from "./prose-width.ts";
 import { stripCodeRegions } from "./wikilinks.ts";
 
-const ROOT_FILES: ReadonlySet<string> = new Set(["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "ARCHITECTURE.md"]);
-
-/** An instruction file, current or retired, matched as an agent loads it (lib/instruction-files.ts): not a note. */
-const isInstructionFile = (base: string): boolean =>
-	base.toLowerCase() === INSTRUCTION_FILE.toLowerCase() || isRetiredInstructionFile(base);
+/** Files that are not notes: the docs, and the instruction files (lib/instruction-files.ts). Matched exactly; #91 decides case. */
+const ROOT_FILES: ReadonlySet<string> = new Set(["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "ARCHITECTURE.md", INSTRUCTION_FILE, ...RETIRED_INSTRUCTION_FILES]);
 
 const SKIP_PATH_SEGMENTS: readonly string[] = [
 	".claude/",
@@ -63,7 +60,7 @@ export function shouldSkipFile(filePath: string): boolean {
 	const normalized = filePath.replaceAll("\\", "/");
 	const base = basename(normalized);
 
-	if (ROOT_FILES.has(base) || isInstructionFile(base)) return true;
+	if (ROOT_FILES.has(base)) return true;
 
 	if (base.startsWith("README.") && base.endsWith(".md")) return true;
 
@@ -202,20 +199,18 @@ export function validateContent(
 	if (block === null) {
 		warnings.push("Missing YAML frontmatter");
 	} else {
-		{
-			const { keys, tags } = readFrontmatterKeys(block.yaml);
-			for (const field of requiredFieldsFor(opts.required ?? {}, opts.relPath ?? null, tags)) {
-				if (keys.has(field)) continue;
-				warnings.push(
-					FIELD_MESSAGES[field] ??
-						`Missing \`${field}\` in frontmatter (required by vault-manifest.json frontmatter_required)`,
-				);
-			}
+		const { keys, tags } = readFrontmatterKeys(block.yaml);
+		for (const field of requiredFieldsFor(opts.required ?? {}, opts.relPath ?? null, tags)) {
+			if (keys.has(field)) continue;
+			warnings.push(
+				FIELD_MESSAGES[field] ??
+					`Missing \`${field}\` in frontmatter (required by vault-manifest.json frontmatter_required)`,
+			);
 		}
 	}
 
 	// A link shown in code is no edge, so it doesn't count (#82).
-	if (content.length > 300 && !stripCodeRegions(content).includes("[[")) {
+	if (content.length > 300 && !linkText(content).includes("[[")) {
 		warnings.push(
 			"No [[wikilinks]] found — every note must link to at least one other note (vault convention)",
 		);
@@ -240,6 +235,17 @@ export function validateContent(
 }
 
 /**
+ * The text a link counts in: the frontmatter as it is, and the body with its
+ * code removed. Code is read in the body only, because a fence-looking line
+ * inside a yaml value would otherwise open a fence the closing `---` can't end,
+ * and hide the whole body.
+ */
+function linkText(content: string): string {
+	const block = frontmatterBlock(content);
+	return block === null ? stripCodeRegions(content) : `${block.yaml}\n${stripCodeRegions(content.slice(block.body))}`;
+}
+
+/**
  * Count [[PROJ-12345]]-shaped wikilinks — ticket IDs are not notes, and
  * these phantom edges are what a broken-link gate later trips on (#108).
  * Matches the bare form and the table-escaped-pipe forms. Exported so
@@ -248,7 +254,7 @@ export function validateContent(
  */
 export function countTicketIdWikilinks(content: string): number {
 	// A ticket link shown in code is an example, not a link (#82).
-	return stripCodeRegions(content).match(/\[\[[A-Z]{2,10}-\d+(\\\||&#124;|\||\]\])/g)?.length ?? 0;
+	return linkText(content).match(/\[\[[A-Z]{2,10}-\d+(\\\||&#124;|\||\]\])/g)?.length ?? 0;
 }
 
 /**
