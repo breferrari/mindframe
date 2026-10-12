@@ -40,6 +40,18 @@ export { writeFileAtomic } from "../lib/atomic-write.ts";
 /** The vault root, walked up from the agent's project folder or a fallback (documented on the function). */
 export { resolveProjectDir } from "../lib/project-dir.ts";
 
+/** The vault's instruction files: AGENTS.md, the retired CLAUDE.md and GEMINI.md, and AGENTS.md's measured size caps. */
+export {
+	AGENTS_MD_FLAG_BYTES,
+	AGENTS_MD_MAX_BYTES,
+	CLAUDE_MD,
+	GEMINI_MD,
+	GEMINI_SETTINGS,
+	INSTRUCTION_FILE,
+	RETIRED_INSTRUCTION_FILES,
+	isRetiredInstructionFile,
+} from "../lib/instruction-files.ts";
+
 /** A note line by line: each line's region (frontmatter, fence, heading, body), and each wikilink's target and offsets on a line. */
 export { lineRegions, wikilinkSpans } from "../lib/wikilinks.ts";
 export type { LineRegion, WikilinkSpan } from "../lib/wikilinks.ts";

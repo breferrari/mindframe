@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import * as lib from "../lib/project-dir.ts";
+import * as core from "./index.ts";
 import { resolveProjectDir, writeFileAtomic } from "./index.ts";
 
 describe("writeFileAtomic, through index.ts", () => {
@@ -63,5 +64,23 @@ describe("resolveProjectDir, through index.ts", () => {
 		assert.equal(resolveProjectDir(nested, {}), root);
 		const fromCwd = relative(process.cwd(), nested);
 		assert.equal(resolveProjectDir(fromCwd, {}), root);
+	});
+});
+
+describe("instruction files, through index.ts", () => {
+	test("AGENTS.md is the instruction file; CLAUDE.md and GEMINI.md are retired", () => {
+		assert.equal(core.INSTRUCTION_FILE, "AGENTS.md");
+		assert.deepEqual([...core.RETIRED_INSTRUCTION_FILES], [core.CLAUDE_MD, core.GEMINI_MD]);
+		assert.deepEqual([core.CLAUDE_MD, core.GEMINI_MD, core.GEMINI_SETTINGS], ["CLAUDE.md", "GEMINI.md", ".gemini/settings.json"]);
+	});
+
+	test("the size caps: the template stays under the flag, which stays under what Antigravity was seen to read", () => {
+		assert.ok(core.AGENTS_MD_MAX_BYTES < core.AGENTS_MD_FLAG_BYTES);
+		assert.ok(core.AGENTS_MD_FLAG_BYTES < 23_860);
+	});
+
+	test("a retired file is recognised in any case, as Windows and macOS resolve it, and nothing else is", () => {
+		for (const name of ["CLAUDE.md", "claude.md", "Gemini.MD"]) assert.equal(core.isRetiredInstructionFile(name), true, name);
+		for (const name of ["AGENTS.md", "CLAUDE.md.bak", "notes/CLAUDE.md", "README.md"]) assert.equal(core.isRetiredInstructionFile(name), false, name);
 	});
 });

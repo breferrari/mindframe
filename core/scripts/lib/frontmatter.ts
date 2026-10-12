@@ -30,7 +30,7 @@ const SKIP_PATH_SEGMENTS: readonly string[] = [
 /**
  * Return true if the path is an auto-memory file in ~/.claude/ that should
  * be flagged (#81). Only MEMORY.md (the auto-loaded index) is allowed there
- * — all durable knowledge goes to brain/ topic notes per CLAUDE.md.
+ * — all durable knowledge goes to brain/ topic notes per .claude/rules/memory.md.
  *
  * The path is lexically normalized first (separators unified, `.`/`..`
  * segments collapsed) so a path can't dodge the check by spelling the
@@ -84,7 +84,7 @@ const DEFAULT_GLOBAL: readonly string[] = ["date", "description", "tags"];
 /**
  * Which note type a vault path is, by folder. The folder→type map is
  * vault-specific; a future extension point. It mirrors the placement table
- * in CLAUDE.md and /om-vault-audit's per-type rules, which are keyed by
+ * in AGENTS.md and /om-vault-audit's per-type rules, which are keyed by
  * folder too. Tags cannot carry this: 1:1 notes are tagged `work-note`, yet
  * do not need a work note's `status`.
  */
@@ -200,8 +200,10 @@ export function validateContent(
 	if (!content.startsWith("---")) {
 		warnings.push("Missing YAML frontmatter");
 	} else {
-		// The frontmatter ends at the first `---` line, as prose-width.ts reads
-		// it: a `---` inside a value doesn't end it.
+		// The block ends at the next line that is exactly `---`, not at the next
+		// `---` anywhere: a value holding one (`before --- after`) used to end the
+		// block there and report every later key missing. The same rule as
+		// prose-width.ts, so both readers agree on where frontmatter ends.
 		const lines = content.split(/\r?\n/);
 		const close = lines.indexOf("---", 1);
 		if (close > 0) {
