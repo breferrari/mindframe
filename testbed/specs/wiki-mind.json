@@ -204,7 +204,7 @@
           ],
           "turn": "any",
           "shown": {
-            "re": "^wiki-mind: vault check: ",
+            "re": "^([^:\\n]+\\+)?wiki-mind(\\+[^:\\n]+)?: vault check: ",
             "flags": "m"
           }
         },
