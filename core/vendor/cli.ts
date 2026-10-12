@@ -38,7 +38,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { nearestVaultRoot } from "../scripts/lib/project-dir.ts";
-import { beginEdits, endEdits, ownerOf, vendoredAt } from "../scripts/vendor-guard.ts";
+import { beginEdits, endEdits, ownersOf, vendoredAt } from "../scripts/vendor-guard.ts";
 import { applyFile, formatPatch } from "./patch.ts";
 import {
 	DEFAULT_RECORD,
@@ -102,6 +102,19 @@ const lastLine = (out: string): string => out.split("\n").pop()!.trim();
 
 /** "Give the meter a newline." as a PR title: "fix: give the meter a newline". */
 export const prTitle = (description: string): string => `fix: ${description.charAt(0).toLowerCase()}${description.slice(1).replace(/\.$/, "")}`;
+
+/**
+ * Which other record owns a path in this record's frame. Records are found
+ * under the vault the record sits in: the folder holding its `.claude`, else
+ * the nearest vault-manifest.json, else `vault`.
+ */
+function ownerLookup(vault: string, recordFile: string): (file: string) => string | null {
+	const parts = path.resolve(recordFile).split(path.sep);
+	const at = parts.lastIndexOf(".claude");
+	const root = at > 0 ? parts.slice(0, at).join(path.sep) : (nearestVaultRoot(vault) ?? vault);
+	const owner = ownersOf(root, recordFile);
+	return (file) => owner(path.resolve(vault, file));
+}
 
 export function main(
 	argv: readonly string[],
@@ -189,7 +202,7 @@ export function main(
 			const upstreamRoot = path.resolve(values.upstream);
 			const commit = cleanHead(run, upstreamRoot);
 			const record = readRecord(recordFile);
-			const plan = planUpdate({ vault, upstreamRoot, commit, record, patches: readPatchDir(patchDir), resolved: values.resolved ?? [], ownerOf: (file) => ownerOf(nearestVaultRoot(vault) ?? vault, path.resolve(vault, file), recordFile) });
+			const plan = planUpdate({ vault, upstreamRoot, commit, record, patches: readPatchDir(patchDir), resolved: values.resolved ?? [], ownerOf: ownerLookup(vault, recordFile) });
 			// Every target resolves before the first write, so a refusal writes nothing.
 			const writes = plan.files.map((f) => ({ target: resolveInside(vault, f.file), bytes: f.bytes }));
 			for (const w of writes) {

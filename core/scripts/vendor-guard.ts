@@ -99,18 +99,19 @@ export function vendoredAt(vaultRoot: string, filePath: string, platform: string
 }
 
 /**
- * The record, other than `except`, that lists `filePath` (absolute, or from the
- * vault root), as a path from the vault root; null when none does. Compared as
- * vendoredAt compares: without case on Windows.
+ * A lookup of the record, other than `except`, that lists a path (absolute, or
+ * from the vault root), as a path from the vault root; null when none does. The
+ * records are read once. Compared as vendoredAt compares: without case on Windows.
  */
-export function ownerOf(vaultRoot: string, filePath: string, except: string, platform: string = process.platform): string | null {
-	const target = fold(posix(path.resolve(vaultRoot, filePath)), platform);
+export function ownersOf(vaultRoot: string, except: string, platform: string = process.platform): (filePath: string) => string | null {
 	const skip = fold(posix(path.resolve(except)), platform);
+	const owners = new Map<string, string>();
 	for (const { recordFile, file } of listed(vaultRoot, platform)) {
 		if (fold(posix(path.resolve(recordFile)), platform) === skip) continue;
-		if (fold(posix(file), platform) === target) return posix(path.relative(vaultRoot, recordFile));
+		const key = fold(posix(file), platform);
+		if (!owners.has(key)) owners.set(key, posix(path.relative(vaultRoot, recordFile)));
 	}
-	return null;
+	return (filePath) => owners.get(fold(posix(path.resolve(vaultRoot, filePath)), platform)) ?? null;
 }
 
 /**

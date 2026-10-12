@@ -551,34 +551,84 @@ export type UpdatePlan = {
 	readonly added: ReadonlyArray<{ readonly file: string; readonly importedBy: string }>;
 };
 
-/** The import specifiers in a module's source: `import … from`, `export … from`, `import "…"` and `import("…")`. */
-const SPECIFIERS = [/\bfrom\s*["']([^"'\r\n]+)["']/g, /\bimport\s*["']([^"'\r\n]+)["']/g, /\bimport\s*\(\s*["']([^"'\r\n]+)["']\s*\)/g];
-
 /**
- * The relative import specifiers in a module's source, comments left out.
- * Package and node: specifiers are the vault's concern, and a specifier names
- * its file, extension included, as the core's own imports do.
+ * The relative import specifiers in a module's source: `import … from`,
+ * `export … from`, `import "…"`, `import("…")` (a template with no `${}` too)
+ * and `require("…")`. A small lexer skips comments, and reads a string as a
+ * specifier only where code puts one, so import-like text inside a string or a
+ * comment is not an import. Package and node: specifiers are the vault's
+ * concern, and a specifier names its file, extension included, as the core's
+ * own imports do.
  */
 export function importsOf(source: string): string[] {
-	const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
 	const found = new Set<string>();
-	for (const re of SPECIFIERS) for (const m of code.matchAll(re)) if (m[1]?.startsWith("./") || m[1]?.startsWith("../")) found.add(m[1]);
+	let code = ""; // the code read so far, strings and comments left out
+	for (let i = 0; i < source.length; ) {
+		const ch = source[i]!;
+		const two = source.slice(i, i + 2);
+		if (two === "//") {
+			const end = source.indexOf("\n", i);
+			i = end === -1 ? source.length : end;
+			continue;
+		}
+		if (two === "/*") {
+			const end = source.indexOf("*/", i + 2);
+			i = end === -1 ? source.length : end + 2;
+			code += " ";
+			continue;
+		}
+		if (ch === '"' || ch === "'" || ch === "`") {
+			let j = i + 1;
+			let text = "";
+			let plain = true; // a template with no ${…}
+			while (j < source.length && source[j] !== ch) {
+				if (source[j] === "\\") {
+					text += source[j + 1] ?? "";
+					j += 2;
+					continue;
+				}
+				if (ch === "`" && source.slice(j, j + 2) === "${") plain = false;
+				if (ch !== "`" && source[j] === "\n") break;
+				text += source[j];
+				j++;
+			}
+			const before = code.trimEnd();
+			const placed = /(?:\bfrom|\bimport)$/.test(before) || /\b(?:import|require)\s*\($/.test(before);
+			if (placed && plain && (text.startsWith("./") || text.startsWith("../"))) found.add(text);
+			code += " _ ";
+			i = j + 1;
+			continue;
+		}
+		code += ch;
+		i++;
+	}
 	return [...found];
 }
 
-const MODULE_FILE = /\.(?:[cm]?[jt]s)$/;
+const MODULE_FILE = /\.(?:[cm]?[jt]sx?)$/;
 
 /** An upstream path, relative to the record's root, as a path in the upstream checkout. */
 const withSourceRoot = (record: VendorRecord, up: string): string =>
 	typeof record.sourceRoot === "string" && record.sourceRoot !== "" ? `${record.sourceRoot}/${up}` : up;
 
+const readOrNull = (file: string): Uint8Array | null => {
+	try {
+		return readFileSync(file);
+	} catch {
+		return null;
+	}
+};
+
 /**
- * The files the update's files import that the record lacks, followed
+ * The files the update's files newly import that the record lacks, followed
  * transitively and added to `files` and `entries`, unpatched at the new commit:
- * the update can't work without them (#78). A target another record owns, one
- * upstream lacks, or one already in the vault that differs from upstream is a
- * problem, so the update writes nothing. An import outside the record's root
- * is the vault's own.
+ * the update can't work without them (#78). An import is new when the file's new
+ * upstream has it and the vault's copy doesn't, so an import an older commit or
+ * a vault patch made is the vault's business, as before. A target's vault path
+ * follows the record's own mapping (the importer's vault path is its upstream
+ * path under a prefix). A target another record owns, one upstream lacks, or one
+ * already in the vault that differs from upstream is a problem, named once, and
+ * the update writes nothing. An import outside the record's root is the vault's.
  */
 function closeImports(
 	input: UpdateInput,
@@ -588,15 +638,28 @@ function closeImports(
 ): Array<{ file: string; importedBy: string }> {
 	const { record } = input;
 	const short = input.commit.slice(0, 7);
+	const text = (b: Uint8Array | null) => (b === null ? "" : Buffer.from(b).toString("utf8"));
+	const recordedUpstream = new Set(Object.values(record.files).map((e) => e.upstream));
+	const seen = new Set<string>();
 	const added: Array<{ file: string; importedBy: string }> = [];
-	const queue = files.map((f) => ({ file: f.file, upstream: entries[f.file]?.upstream ?? record.files[f.file]?.upstream ?? f.file, bytes: f.bytes }));
+	const queue: Array<{ file: string; upstream: string; fresh: string; was: string }> = [];
+	for (const f of files) {
+		if (!MODULE_FILE.test(f.file)) continue;
+		const upstream = record.files[f.file]?.upstream ?? f.file;
+		const fresh = text(readOrNull(resolveInside(input.upstreamRoot, withSourceRoot(record, upstream))));
+		queue.push({ file: f.file, upstream, fresh, was: text(readOrNull(resolveInside(input.vault, f.file))) });
+	}
 	for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-		if (!MODULE_FILE.test(next.file)) continue;
-		for (const spec of importsOf(Buffer.from(next.bytes).toString("utf8"))) {
+		const had = new Set(importsOf(next.was));
+		const prefix = next.file.endsWith(next.upstream) ? next.file.slice(0, next.file.length - next.upstream.length) : `${path.posix.dirname(next.file)}/`;
+		for (const spec of importsOf(next.fresh)) {
+			if (had.has(spec)) continue;
 			const upstream = path.posix.normalize(path.posix.join(path.posix.dirname(next.upstream), spec));
 			if (upstream === ".." || upstream.startsWith("../")) continue;
-			const file = path.posix.normalize(path.posix.join(path.posix.dirname(next.file), spec));
-			if (record.files[file] !== undefined || entries[file] !== undefined) continue;
+			if (recordedUpstream.has(upstream)) continue;
+			const file = next.file.endsWith(next.upstream) ? `${prefix}${upstream}` : path.posix.normalize(path.posix.join(path.posix.dirname(next.file), spec));
+			if (record.files[file] !== undefined || entries[file] !== undefined || seen.has(file)) continue;
+			seen.add(file);
 			const owner = input.ownerOf?.(file);
 			if (owner) {
 				problems.push(`${file} is owned by ${owner}, and ${next.file} now imports it; take it off that record, or update that record instead`);
@@ -609,22 +672,21 @@ function closeImports(
 				problems.push(`${file}, which ${next.file} now imports: ${(e as Error).message}`);
 				continue;
 			}
-			let bytes: Uint8Array;
-			try {
-				bytes = readFileSync(resolveInside(input.upstreamRoot, withSourceRoot(record, upstream)));
-			} catch {
+			const bytes = readOrNull(resolveInside(input.upstreamRoot, withSourceRoot(record, upstream)));
+			if (bytes === null) {
 				problems.push(`${next.file} imports ${file}, which upstream doesn't have at ${short}`);
 				continue;
 			}
 			const hash = contentHash(bytes);
-			if (existsSync(target) && contentHash(readFileSync(target)) !== hash) {
+			const present = readOrNull(target);
+			if (present !== null && contentHash(present) !== hash) {
 				problems.push(`${file} is in the vault, unrecorded, and differs from upstream; ${next.file} now imports it. Move it aside, or record it, then update`);
 				continue;
 			}
 			entries[file] = { upstream, sha256: hash, upstreamSha256: hash };
 			files.push({ file, bytes });
 			added.push({ file, importedBy: next.file });
-			queue.push({ file, upstream, bytes });
+			if (MODULE_FILE.test(file)) queue.push({ file, upstream, fresh: text(bytes), was: "" });
 		}
 	}
 	return added;
@@ -784,7 +846,8 @@ export function planUpdate(input: UpdateInput): UpdatePlan {
 		const done = carry(merged.text);
 		if (!("stuck" in done)) settle(done, text(done.at));
 	}
-	const added = problems.length === 0 && conflicts.length === 0 ? closeImports(input, files, entries, problems) : [];
+	// Run even when other problems were found, so every refusal is named at once.
+	const added = conflicts.length === 0 ? closeImports(input, files, entries, problems) : [];
 
 	if (problems.length) throw new VendorError(problems.join("\n"));
 
