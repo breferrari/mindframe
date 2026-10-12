@@ -13,9 +13,9 @@
  */
 
 /** The hook events an extension can serve. `pre-tool` and `mcp` are slots: declared, not dispatched yet. */
-export type HookEvent = "session-start" | "stop" | "prompt" | "write" | "pre-tool" | "mcp";
+export type HookEvent = "session-start" | "stop" | "prompt" | "write" | "pre-compact" | "pre-tool" | "mcp";
 
-export const HOOK_EVENTS: readonly HookEvent[] = ["session-start", "stop", "prompt", "write", "pre-tool", "mcp"];
+export const HOOK_EVENTS: readonly HookEvent[] = ["session-start", "stop", "prompt", "write", "pre-compact", "pre-tool", "mcp"];
 
 /**
  * One entry of `extensions` in vault-manifest.json. Nothing is discovered by
@@ -118,6 +118,29 @@ export type Validator = Item & {
 	readonly validate: (target: WriteTarget, ctx: HookContext) => MaybePromise<readonly string[]>;
 };
 
+/** What set an effect off: a file just written, a compaction about to run, or Stop. */
+export type EffectTrigger =
+	| { readonly event: "write"; readonly target: WriteTarget }
+	| { readonly event: "pre-compact" }
+	| { readonly event: "stop" };
+
+/** The events an effect can run on. */
+export const EFFECT_EVENTS: readonly EffectTrigger["event"][] = ["write", "pre-compact", "stop"];
+
+/**
+ * A call made for its side effect alone, such as refreshing a search index.
+ * It returns nothing, so it never adds to the hook's output; a failure is
+ * reported like any other. At the time limit the hook stops waiting, but the
+ * effect's work goes on in the hook's own process, which either keeps the
+ * hook alive or dies with it. Work that must outlast the limit goes to a
+ * detached process the effect starts itself.
+ */
+export type Effect = Item & {
+	/** The events it runs on. The extension's declaration must list them too. */
+	readonly on: readonly EffectTrigger["event"][];
+	readonly run: (trigger: EffectTrigger, ctx: HookContext) => MaybePromise<void>;
+};
+
 /**
  * A vault's extension. Every point is optional. `preToolGuards` and
  * `mcpTools` are slots: the registry records them but does not dispatch
@@ -131,12 +154,13 @@ export type Extension = {
 	readonly checklist?: readonly ChecklistItem[];
 	readonly signals?: readonly Signal[];
 	readonly validators?: readonly Validator[];
+	readonly effects?: readonly Effect[];
 	readonly preToolGuards?: readonly unknown[];
 	readonly mcpTools?: readonly unknown[];
 };
 
 /** Where a failure happened: loading, or one of the dispatched points. */
-export type Point = "load" | "section" | "detector" | "checklist" | "signal" | "validator";
+export type Point = "load" | "section" | "detector" | "checklist" | "signal" | "validator" | "effect";
 
 /** An extension, or one of its items, that threw, timed out or failed to load. It was skipped. */
 export type Failure = {

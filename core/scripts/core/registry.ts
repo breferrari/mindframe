@@ -19,7 +19,8 @@
  * 5. Each call runs in its own try with its own time limit, and fails open:
  *    a throw or a timeout is recorded, the item is skipped, and the hook
  *    carries on and reports it. `VAULT_EXTENSIONS=off` turns every extension
- *    off, for debugging.
+ *    off, for debugging. Effects (write, pre-compact, Stop) are calls like
+ *    any other, made for their side effect: they return nothing.
  * 6. The core owns the output budget. Extensions return sections; the entry
  *    point assembles them and applyInjectionBudget gives up the highest
  *    priority number first.
@@ -41,6 +42,8 @@ import type {
 	ChecklistItem,
 	Declaration,
 	Detector,
+	Effect,
+	EffectTrigger,
 	Extension,
 	Failure,
 	Finding,
@@ -52,13 +55,16 @@ import type {
 	Validator,
 	WriteTarget,
 } from "./types.ts";
-import { HOOK_EVENTS } from "./types.ts";
+import { EFFECT_EVENTS, HOOK_EVENTS } from "./types.ts";
 
 /** The manifest key that declares a vault's extensions. */
 export const EXTENSIONS_KEY = "extensions";
 
 /** The environment variable that turns every extension off. */
 export const KILL_SWITCH = "VAULT_EXTENSIONS";
+
+/** The effect events as a message names them. */
+const EFFECT_EVENTS_TEXT = "write, pre-compact or stop";
 
 /** The per-call time limit when a declaration sets none. */
 export const DEFAULT_TIMEOUT_MS = 1_000;
@@ -134,7 +140,7 @@ export function parseDeclarations(
 	return { result, failures };
 }
 
-const LIST_FIELDS = ["sections", "detectors", "checklist", "signals", "validators", "preToolGuards", "mcpTools"] as const;
+const LIST_FIELDS = ["sections", "detectors", "checklist", "signals", "validators", "effects", "preToolGuards", "mcpTools"] as const;
 
 function asExtension(value: unknown): Extension | null {
 	if (typeof value !== "object" || value === null) return null;
@@ -188,6 +194,8 @@ export async function loadRegistry(
 
 type Entry<T> = {
 	readonly ext: string;
+	/** The events the extension's declaration lists. */
+	readonly events: readonly HookEvent[];
 	readonly item: T;
 	readonly priority: number;
 	readonly timeoutMs: number;
@@ -237,6 +245,7 @@ function ordered<T extends { readonly id: string; readonly priority?: number }>(
 			if (off.has(id)) continue;
 			entries.push({
 				ext: extension.id,
+				events: declaration.events,
 				item,
 				priority: (priority as number | undefined) ?? declaration.priority ?? Number.POSITIVE_INFINITY,
 				timeoutMs: declaration.timeoutMs ?? DEFAULT_TIMEOUT_MS,
@@ -420,12 +429,54 @@ export async function runValidators(registry: Registry, target: WriteTarget, ctx
 	return { result: runs.flatMap(({ value }) => value), failures };
 }
 
-/** The slots an extension filled that the registry does not dispatch yet. */
+/**
+ * Run every effect set off by `trigger`, concurrently, and report each one
+ * that fails in run order. An effect is a failure, and does not run, when its
+ * `on` is empty, is not a list of the effect events, or names an event its
+ * declaration does not list (it would be skipped in silence there). One that
+ * returns anything but undefined is a failure too, so nothing reaches the
+ * output through an effect.
+ */
+export async function runEffects(registry: Registry, trigger: EffectTrigger, ctx: HookContext): Promise<Dispatch<null>> {
+	const failures: Failure[] = [];
+	const entries = ordered<Effect>(registry, trigger.event, "effect", (e) => e.effects, failures);
+	// `on` is checked inside the call, so its failure is reported in run order like any other.
+	const calls = entries.map((entry) => ({
+		...entry,
+		item: {
+			id: entry.item.id,
+			call: () => {
+				const on: unknown = entry.item.on;
+				if (!Array.isArray(on) || on.length === 0 || !on.every((event) => EFFECT_EVENTS.includes(event))) {
+					throw new Error(`\`on\` must list some of ${EFFECT_EVENTS_TEXT}`);
+				}
+				const undeclared = [...new Set(on.filter((event) => !entry.events.includes(event)))];
+				if (undeclared.length > 0) throw new Error(`\`on\` lists ${undeclared.join(", ")}, which the declaration's \`events\` do not`);
+				return on.includes(trigger.event) ? entry.item.run(trigger, ctx) : undefined;
+			},
+		},
+	}));
+	await each(calls, failures, "effect", (item) => item.call(), (v): v is undefined => v === undefined, "nothing");
+	return { result: null, failures };
+}
+
+/** The slots an extension filled that the registry does not dispatch yet, and effects no declared event can run. */
 export function undispatched(registry: Registry): string[] {
 	const out: string[] = [];
-	for (const { extension } of registry.loaded) {
-		if ((extension.preToolGuards?.length ?? 0) > 0) out.push(`${extension.id}: pre-tool guards`);
-		if ((extension.mcpTools?.length ?? 0) > 0) out.push(`${extension.id}: MCP tools`);
+	// Reading a list runs extension code (a getter); a throw here is the dispatchers' to report, not this list's.
+	const filled = (pick: () => readonly unknown[] | undefined) => {
+		try {
+			return (pick()?.length ?? 0) > 0;
+		} catch {
+			return false;
+		}
+	};
+	for (const { declaration, extension } of registry.loaded) {
+		if (filled(() => extension.preToolGuards)) out.push(`${extension.id}: pre-tool guards`);
+		if (filled(() => extension.mcpTools)) out.push(`${extension.id}: MCP tools`);
+		if (filled(() => extension.effects) && !declaration.events.some((event) => EFFECT_EVENTS.includes(event as EffectTrigger["event"]))) {
+			out.push(`${extension.id}: effects, with no ${EFFECT_EVENTS_TEXT} in its events`);
+		}
 	}
 	return out;
 }

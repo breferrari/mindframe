@@ -11,6 +11,8 @@
 export type {
 	Declaration,
 	Detector,
+	Effect,
+	EffectTrigger,
 	Extension,
 	Failure,
 	Finding,
