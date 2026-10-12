@@ -128,6 +128,7 @@ describe("VAULT_QMD_REFRESH=off: no detached refresh (#94, as obsidian-mind #338
 			const result = qmdSessionStart(VAULT, MANIFEST, undefined, deps);
 			assert.deepEqual(calls.detached, [], "nothing detached");
 			assert.equal(result.refresh, null);
+			assert.ok(calls.sync.some((c) => c.endsWith("--index my-wiki status")), "the ABI probe still runs");
 			assert.equal(result.notes.length, 1, "the version note still shows");
 		}
 	});
@@ -141,9 +142,9 @@ describe("VAULT_QMD_REFRESH=off: no detached refresh (#94, as obsidian-mind #338
 		}
 	});
 
-	test("VAULT_QMD=off still turns all of it off", () => {
-		const { deps, calls } = fakeDeps({ env: { [QMD_SWITCH]: "off", [REFRESH_SWITCH]: "on" } });
+	test("with both off, VAULT_QMD=off wins: no probe and no note either", () => {
+		const { deps, calls } = fakeDeps({ env: { [QMD_SWITCH]: "off", [REFRESH_SWITCH]: "off" }, version: "qmd 1.0.0\n" });
 		assert.deepEqual(qmdSessionStart(VAULT, MANIFEST, undefined, deps), { notes: [], refresh: null });
-		assert.deepEqual(calls.sync, []);
+		assert.deepEqual(calls, { sync: [], detached: [] });
 	});
 });

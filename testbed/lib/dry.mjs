@@ -36,9 +36,10 @@ export const DRY_SCRIPTS = {
 export const DRY_SKIPPED = new Set(['answer', 'shown', 'judge', 'modEvent'])
 
 // The environment a bed's spawns get, dry or live: the user's environment,
-// then the run's qmd redirect, then the spec's and the scenario's own.
+// then the run's qmd redirect with session-start's detached refresh off, so
+// no qmd worker outlives a run (#94), then the spec's and the scenario's own.
 export function bedEnv({ base = process.env, stateDir, spec, scenario }) {
-  return { ...base, ...qmdEnv(stateDir), ...spec.session.env, ...scenario.env }
+  return { ...base, ...qmdEnv(stateDir), VAULT_QMD_REFRESH: 'off', ...spec.session.env, ...scenario.env }
 }
 
 // The file a turn asks to create, as "... create 'path' ...", if any.

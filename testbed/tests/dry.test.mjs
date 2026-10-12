@@ -105,6 +105,14 @@ test('bedEnv: the scenario beats the spec, which beats the redirect, which beats
   assert.equal(env.HOME, 'h')
 })
 
+test("bedEnv: no detached qmd refresh outlives a run, unless the spec asks for one (#94)", () => {
+  const plain = validateSpec(minimalSpec({}))
+  const env = bedEnv({ base: { VAULT_QMD_REFRESH: 'on' }, stateDir: 'st', spec: plain, scenario: plain.scenarios[0] })
+  assert.equal(env.VAULT_QMD_REFRESH, 'off', "it beats the user's own setting")
+  const asks = validateSpec(minimalSpec({ session: { env: { VAULT_QMD_REFRESH: 'on' } } }))
+  assert.equal(bedEnv({ base: {}, stateDir: 'st', spec: asks, scenario: asks.scenarios[0] }).VAULT_QMD_REFRESH, 'on', 'a spec may turn it back on')
+})
+
 test('cli: dry grades and exits like run', (t) => {
   const vault = vaultWithScripts(t)
   const dir = tmp(t)
