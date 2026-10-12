@@ -32,6 +32,11 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#63](https://github.com/breferrari/mindframe/issues/63) | Find frontmatter by its delimiter lines, not every `---` | ✅ |
 | [#67](https://github.com/breferrari/mindframe/issues/67) | Make the CRLF frontmatter test fail when CRLF isn't parsed | ✅ |
 | [#75](https://github.com/breferrari/mindframe/issues/75) | Export an atomic write to extensions from the core | ✅ |
+| [#77](https://github.com/breferrari/mindframe/issues/77) | Close a fence only on a run as long as its opening, as CommonMark does | ⬜ |
+| [#78](https://github.com/breferrari/mindframe/issues/78) | Let vendor update bring in files the updated ones need | ⬜ |
+| [#79](https://github.com/breferrari/mindframe/issues/79) | Retry the atomic write's rename on Windows, and hide and uniquify its temp file | ⬜ |
+| [#80](https://github.com/breferrari/mindframe/issues/80) | Export line regions and wikilink offsets to extensions | ✅ |
+| [#82](https://github.com/breferrari/mindframe/issues/82) | Read frontmatter by one rule everywhere in the core, as Obsidian does | ⬜ |
 
 ## Phase 3: first-party extensions
 
