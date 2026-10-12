@@ -92,7 +92,8 @@ export function hardWrappedParagraphs(content: string): number[] {
 			previousProse = false;
 		};
 
-		const step = fenceStep(line, fence);
+		// The raw line: fences.ts reads quote markers itself, by quote depth.
+		const step = fenceStep(raw, fence);
 		fence = step.open;
 		if (step.fenced) {
 			notProse();

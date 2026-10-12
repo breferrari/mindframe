@@ -100,3 +100,38 @@ describe("every scanner follows it", () => {
 		assert.deepEqual(extractWikilinkTargets([ticks(3), "> " + ticks(3), "[[inside]]", ticks(3), "[[after]]"].join("\n")), ["after"]);
 	});
 });
+
+describe("quotes and callouts: a fence lives inside the quote it opened in", () => {
+	test("the quote ending ends its fence: a line with fewer markers is read afresh", () => {
+		const blank = ["> " + ticks(3), "> code", "", "[[kept]]"];
+		assert.deepEqual(extractWikilinkTargets(blank.join("\n")), ["kept"]);
+		assert.deepEqual(lineRegions(blank), ["fence", "fence", "body", "body"]);
+		const reopened = ["> " + ticks(3), "> code", ticks(3), "[[in-a-new-fence]]", ticks(3), "[[after]]"];
+		assert.deepEqual(extractWikilinkTargets(reopened.join("\n")), ["after"]);
+	});
+
+	test("a run at another quote depth neither closes the fence nor leaks what follows", () => {
+		const doc = [">> " + ticks(3), ">> a", "> " + ticks(3), "> [[y]]", "> " + ticks(3), "[[after]]"];
+		assert.deepEqual(extractWikilinkTargets(doc.join("\n")), ["after"]);
+	});
+
+	test("prose-width reads quoted fences by the same rule", () => {
+		const doc = [ticks(3), "> " + ticks(3), "A paragraph", "wrapped here.", ticks(3)];
+		assert.deepEqual(hardWrappedParagraphs(doc.join("\n")), []);
+		assert.deepEqual(lineRegions(doc), ["fence", "fence", "fence", "fence", "fence"]);
+	});
+
+	test("a quote marker after four spaces is indented code, not a quoted fence", () => {
+		assert.deepEqual(extractWikilinkTargets(["    > " + ticks(3), "    > [[x]]"].join("\n")), ["x"]);
+	});
+});
+
+describe("indentation is counted in columns", () => {
+	test("a tab-indented run inside a fence is content: a tab stops at the next fourth column", () => {
+		assert.deepEqual(extractWikilinkTargets([ticks(3), "\t\t" + ticks(3), "[[x]]", ticks(3), "[[after]]"].join("\n")), ["after"]);
+	});
+
+	test("a top-level fence opened two spaces in is closed only within three columns of the margin", () => {
+		assert.deepEqual(extractWikilinkTargets(["  " + ticks(3), "x", "    " + ticks(3), "[[leak]]", ticks(3), "[[after]]"].join("\n")), ["after"]);
+	});
+});

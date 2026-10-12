@@ -14,9 +14,15 @@
  *   indented no more than three spaces deeper than its opener (CommonMark).
  *   A "```js" line, a shorter run, or a deeper-indented run inside it is
  *   content.
- * - A fence inside a blockquote or callout is read past the `>` markers, so
- *   a callout's code block is code to every scanner. A quoted run doesn't
- *   close a fence opened outside the quote.
+ * - A fence inside a blockquote or callout lives inside that quote: it is
+ *   read past exactly as many `>` markers as its opener had, and a line
+ *   with fewer ends the quote and the fence with it (code in a quote has no
+ *   lazy continuation), then is read afresh. A run at a deeper quote level
+ *   is content.
+ * - Indentation is counted in columns, a tab reaching the next multiple of
+ *   four. A closer may sit at most three columns in from the fence's
+ *   container: the margin for an opener indented under four columns, the
+ *   opener's own column for one indented four or more (a list-nested fence).
  * - A fence that never closes runs to the end of the note.
  *
  * The one case this gets wrong: at top level, a line of "    ```" is
@@ -27,39 +33,60 @@
 
 /**
  * The fence a scan is inside: its character, the length of its opening run,
- * how far its opener was indented, and whether it opened inside a quote or
- * callout. null outside one.
+ * how many quote markers its opener had, and the deepest column a closer may
+ * start at. null outside one.
  */
 export type OpenFence = {
 	readonly char: "`" | "~";
 	readonly length: number;
-	readonly indent: number;
-	readonly quoted: boolean;
+	readonly depth: number;
+	readonly closerColumn: number;
 } | null;
 
 // [^]* rather than .*: a CRLF line split on \n keeps its \r, and . doesn't match it.
 const OPENER = /^(`{3,}|~{3,})([^]*)$/;
 const CLOSER = /^(`{3,}|~{3,})$/;
-/** A blockquote or callout's markers, nested or not: `> `, `>>`, `> > `. */
-const QUOTE = /^(?:[ \t]*>[ \t]?)+/;
+/** One blockquote or callout marker: up to three spaces, `>`, and one optional space or tab. */
+const QUOTE_MARK = /^ {0,3}>[ \t]?/;
 
-const indentOf = (text: string): number => text.length - text.trimStart().length;
+/** The line's quote markers counted, up to `limit`, and what follows them. */
+function unquote(line: string, limit = Number.POSITIVE_INFINITY): { depth: number; rest: string } {
+	let depth = 0;
+	let rest = line;
+	for (let m = QUOTE_MARK.exec(rest); m !== null && depth < limit; m = QUOTE_MARK.exec(rest)) {
+		rest = rest.slice(m[0].length);
+		depth++;
+	}
+	return { depth, rest };
+}
+
+/** The column the text starts at, a tab reaching the next multiple of four. */
+function startColumn(text: string): number {
+	let column = 0;
+	for (const ch of text) {
+		if (ch === " ") column++;
+		else if (ch === "\t") column += 4 - (column % 4);
+		else break;
+	}
+	return column;
+}
 
 /** One line of the scan: whether it belongs to a fence, and the fence open after it. */
 export function fenceStep(line: string, open: OpenFence): { fenced: boolean; open: OpenFence } {
 	if (open !== null) {
-		// Only a fence opened inside a quote reads past the quote's markers.
-		const text = open.quoted ? line.replace(QUOTE, "") : line;
+		const all = unquote(line);
+		// Fewer markers: the quote holding the fence has ended, and the fence with it.
+		if (all.depth < open.depth) return fenceStep(line, null);
+		const text = unquote(line, open.depth).rest;
 		const run = CLOSER.exec(text.trim())?.[1];
-		const closes =
-			run !== undefined && run[0] === open.char && run.length >= open.length && indentOf(text) <= open.indent + 3;
+		const closes = run !== undefined && run[0] === open.char && run.length >= open.length && startColumn(text) <= open.closerColumn;
 		return { fenced: true, open: closes ? null : open };
 	}
-	const quoted = QUOTE.test(line);
-	const text = quoted ? line.replace(QUOTE, "") : line;
-	const [, run, info = ""] = OPENER.exec(text.trimStart()) ?? [];
+	const { depth, rest } = unquote(line);
+	const [, run, info = ""] = OPENER.exec(rest.trimStart()) ?? [];
 	if (run === undefined) return { fenced: false, open: null };
 	const char = run.startsWith("`") ? "`" : "~";
 	if (char === "`" && info.includes("`")) return { fenced: false, open: null };
-	return { fenced: true, open: { char, length: run.length, indent: indentOf(text), quoted } };
+	const column = startColumn(rest);
+	return { fenced: true, open: { char, length: run.length, depth, closerColumn: (column >= 4 ? column : 0) + 3 } };
 }
