@@ -19,10 +19,11 @@ import {
 	matchSignals,
 	parseDeclarations,
 	runDetectors,
+	runEffects,
 	runValidators,
 	undispatched,
 } from "./registry.ts";
-import type { Declaration, Extension, HookContext, HookEvent, Section } from "./types.ts";
+import type { Declaration, Effect, EffectTrigger, Extension, HookContext, HookEvent, Section } from "./types.ts";
 
 const ALL: readonly HookEvent[] = ["session-start", "stop", "prompt", "write"];
 const ctx: HookContext = { vaultRoot: "/vault", manifest: null, now: 0 };
@@ -65,9 +66,10 @@ describe("rule 3: declarations are validated before anything runs", () => {
 				{ module: "x.ts", events: ["stop"] },
 				{ id: "ok", module: "x.ts", events: ["stop"] },
 				{ id: "ok", module: "y.ts", events: ["stop"] },
+				{ id: "compact", module: "z.ts", events: ["pre-compact"] },
 			],
 		});
-		assert.deepEqual(result.map((d) => d.id), ["ok"]);
+		assert.deepEqual(result.map((d) => d.id), ["ok", "compact"]);
 		assert.equal(failures.length, 10);
 		assert.ok(failures.every((f) => f.point === "load"));
 	});
@@ -349,5 +351,128 @@ describe("rule 7: slots are recorded, not dispatched", () => {
 	test("pre-tool guards and MCP tools are listed as undispatched", () => {
 		const registry = fromLoaded([declared({ id: "a", preToolGuards: [{}], mcpTools: [{}] })]);
 		assert.deepEqual(undispatched(registry), ["a: pre-tool guards", "a: MCP tools"]);
+	});
+});
+
+describe("rule 5: effects run for their side effect alone", () => {
+	const write: EffectTrigger = { event: "write", target: { relPath: "notes/a.md", content: "body" } };
+	const all: readonly HookEvent[] = ["write", "pre-compact", "stop"];
+	const effect = (id: string, on: Effect["on"], run: Effect["run"]): Effect => ({ id, on, run });
+
+	test("an effect runs for the events in its `on` and its declaration, and no other", async () => {
+		const ran: string[] = [];
+		const ext: Extension = {
+			id: "a",
+			effects: [
+				effect("w", ["write"], (t) => { ran.push(`w:${t.event}`); }),
+				effect("pc", ["pre-compact", "stop"], (t) => { ran.push(`pc:${t.event}`); }),
+			],
+		};
+		const registry = fromLoaded([declared(ext, { events: ["write", "pre-compact"] })]);
+		for (const trigger of [write, { event: "pre-compact" }, { event: "stop" }] as const) {
+			const { failures } = await runEffects(registry, trigger, ctx);
+			assert.deepEqual(failures, []);
+		}
+		assert.deepEqual(ran, ["w:write", "pc:pre-compact"]);
+	});
+
+	test("a write effect receives the target, a backslash path passed through as given", async () => {
+		const seen: EffectTrigger[] = [];
+		const ext: Extension = { id: "a", effects: [effect("w", ["write"], (t) => { seen.push(t); })] };
+		const trigger: EffectTrigger = { event: "write", target: { relPath: "notes\a.md", content: "c" } };
+		await runEffects(fromLoaded([declared(ext, { events: all })]), trigger, ctx);
+		assert.deepEqual(seen, [trigger]);
+	});
+
+	test("a throw, a synchronous throw, a rejection and a timeout are reported, and the other effects still run", async () => {
+		let ran = false;
+		const ext: Extension = {
+			id: "a",
+			effects: [
+				effect("throws", ["stop"], () => { throw new Error("boom"); }),
+				effect("sync-throw", ["stop"], (() => { throw new Error("before the promise"); }) as Effect["run"]),
+				effect("rejects", ["stop"], () => Promise.reject(new Error("no"))),
+				effect("hangs", ["stop"], () => new Promise<void>(() => {})),
+				effect("ok", ["stop"], () => { ran = true; }),
+			],
+		};
+		const { failures } = await runEffects(fromLoaded([declared(ext, { events: all, timeoutMs: 100 })]), { event: "stop" }, ctx);
+		assert.equal(ran, true);
+		assert.deepEqual(failures.map((f) => [f.point, f.item]), [["effect", "hangs"], ["effect", "rejects"], ["effect", "sync-throw"], ["effect", "throws"]]);
+		assert.match(failures.find((f) => f.item === "hangs")?.message ?? "", /timed out after 100 ms/);
+		assert.match(formatFailures(failures)[0] ?? "", /extension a, effect hangs: skipped/);
+	});
+
+	test("one effect timing out does not hold another's report past its own limit", async () => {
+		const ext = (id: string, run: Effect["run"]): Extension => ({ id, effects: [effect(id, ["stop"], run)] });
+		const registry = fromLoaded([
+			declared(ext("slow", () => new Promise<void>(() => {})), { events: all, timeoutMs: 300 }),
+			declared(ext("quick", () => new Promise<void>(() => {})), { events: all, timeoutMs: 300 }),
+		]);
+		const started = Date.now();
+		const { failures } = await runEffects(registry, { event: "stop" }, ctx);
+		assert.ok(Date.now() - started < 600, "effects run concurrently: the limits do not add up");
+		assert.equal(failures.length, 2);
+	});
+
+	test("an effect that returns a value, now or later, is a failure", async () => {
+		const ext: Extension = {
+			id: "a",
+			effects: [
+				effect("value", ["stop"], (() => "output") as unknown as Effect["run"]),
+				effect("later", ["stop"], (() => Promise.resolve(1)) as unknown as Effect["run"]),
+				effect("void", ["stop"], async () => {}),
+			],
+		};
+		const { failures } = await runEffects(fromLoaded([declared(ext, { events: all })]), { event: "stop" }, ctx);
+		assert.deepEqual(failures.map((f) => f.item), ["later", "value"]);
+		assert.match(failures[0]?.message ?? "", /returned number, not nothing/);
+	});
+
+	test("an `on` that is not a list of write, pre-compact and stop is a failure", async () => {
+		let ran = 0;
+		const run = () => { ran++; };
+		const ext: Extension = {
+			id: "a",
+			effects: [
+				{ id: "string", on: "stop", run } as unknown as Effect,
+				{ id: "unknown", on: ["stop", "prompt"], run } as unknown as Effect,
+				{ id: "missing", run } as unknown as Effect,
+				effect("ok", ["stop"], run),
+			],
+		};
+		const { failures } = await runEffects(fromLoaded([declared(ext, { events: all })]), { event: "stop" }, ctx);
+		assert.equal(ran, 1);
+		assert.deepEqual(failures.map((f) => f.item).sort(), ["missing", "string", "unknown"]);
+	});
+
+	test("a getter that throws on `effects` is a failure, not a crash", async () => {
+		const ext = { id: "a", get effects(): Effect[] { throw new Error("getter"); } } as Extension;
+		const { failures } = await runEffects(fromLoaded([declared(ext, { events: all })]), { event: "stop" }, ctx);
+		assert.deepEqual(failures.map((f) => [f.point, f.message]), [["effect", "getter"]]);
+	});
+
+	test("an effect id in `disable` does not run", async () => {
+		const ran: string[] = [];
+		const ext: Extension = { id: "a", effects: [effect("off", ["stop"], () => { ran.push("off"); }), effect("on", ["stop"], () => { ran.push("on"); })] };
+		await runEffects(fromLoaded([declared(ext, { events: all, disable: ["off"] })]), { event: "stop" }, ctx);
+		assert.deepEqual(ran, ["on"]);
+	});
+
+	test(`pre-compact loads only its own extensions, and the kill switch (${KILL_SWITCH}=off) runs no effect`, async () => {
+		const root = mkdtempSync(join(tmpdir(), "registry-effects-"));
+		after(() => rmSync(root, { recursive: true, force: true }));
+		const marker = join(root, "ran.txt");
+		writeFileSync(join(root, "fx.mjs"), `import { writeFileSync } from "node:fs";
+export default { id: "fx", effects: [{ id: "e", on: ["pre-compact"], run: () => { writeFileSync(${JSON.stringify(marker)}, "x"); } }] };
+`);
+		const manifest = { extensions: [{ id: "fx", module: "fx.mjs", events: ["pre-compact"] }] };
+		assert.deepEqual((await loadRegistry(root, manifest, "stop", {})).loaded, []);
+		const off = await loadRegistry(root, manifest, "pre-compact", { [KILL_SWITCH]: "off" });
+		await runEffects(off, { event: "pre-compact" }, ctx);
+		assert.equal(existsSync(marker), false);
+		const on = await loadRegistry(root, manifest, "pre-compact", {});
+		assert.deepEqual((await runEffects(on, { event: "pre-compact" }, ctx)).failures, []);
+		assert.equal(existsSync(marker), true);
 	});
 });

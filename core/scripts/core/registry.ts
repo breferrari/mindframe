@@ -41,6 +41,8 @@ import type {
 	ChecklistItem,
 	Declaration,
 	Detector,
+	Effect,
+	EffectTrigger,
 	Extension,
 	Failure,
 	Finding,
@@ -52,7 +54,7 @@ import type {
 	Validator,
 	WriteTarget,
 } from "./types.ts";
-import { HOOK_EVENTS } from "./types.ts";
+import { EFFECT_EVENTS, HOOK_EVENTS } from "./types.ts";
 
 /** The manifest key that declares a vault's extensions. */
 export const EXTENSIONS_KEY = "extensions";
@@ -134,7 +136,7 @@ export function parseDeclarations(
 	return { result, failures };
 }
 
-const LIST_FIELDS = ["sections", "detectors", "checklist", "signals", "validators", "preToolGuards", "mcpTools"] as const;
+const LIST_FIELDS = ["sections", "detectors", "checklist", "signals", "validators", "effects", "preToolGuards", "mcpTools"] as const;
 
 function asExtension(value: unknown): Extension | null {
 	if (typeof value !== "object" || value === null) return null;
@@ -418,6 +420,24 @@ export async function runValidators(registry: Registry, target: WriteTarget, ctx
 		"a list of strings",
 	);
 	return { result: runs.flatMap(({ value }) => value), failures };
+}
+
+/**
+ * Run every effect set off by `trigger`, concurrently, and report each one
+ * that fails in run order. An effect whose `on` is not a list of the effect
+ * events is a failure; one that returns anything but undefined is too, so
+ * nothing reaches the output through an effect.
+ */
+export async function runEffects(registry: Registry, trigger: EffectTrigger, ctx: HookContext): Promise<Dispatch<null>> {
+	const failures: Failure[] = [];
+	const entries = ordered<Effect>(registry, trigger.event, "effect", (e) => e.effects, failures).filter(({ ext, item }) => {
+		const on: unknown = item.on;
+		if (Array.isArray(on) && on.every((e) => EFFECT_EVENTS.includes(e))) return on.includes(trigger.event);
+		failures.push({ extension: ext, point: "effect", item: item.id, message: `\`on\` must list some of ${EFFECT_EVENTS.join(", ")}` });
+		return false;
+	});
+	await each(entries, failures, "effect", (item) => item.run(trigger, ctx), (v): v is undefined => v === undefined, "nothing");
+	return { result: null, failures };
 }
 
 /** The slots an extension filled that the registry does not dispatch yet. */

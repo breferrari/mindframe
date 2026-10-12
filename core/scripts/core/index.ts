@@ -11,6 +11,8 @@
 export type {
 	Declaration,
 	Detector,
+	Effect,
+	EffectTrigger,
 	Extension,
 	Failure,
 	Finding,
@@ -24,7 +26,7 @@ export type {
 	Validator,
 	WriteTarget,
 } from "./types.ts";
-export { HOOK_EVENTS } from "./types.ts";
+export { EFFECT_EVENTS, HOOK_EVENTS } from "./types.ts";
 
 /** Frontmatter helpers: one-line field values, and the body without its frontmatter. */
 export { extractFrontmatterField, stripFrontmatter } from "../lib/session-start.ts";
