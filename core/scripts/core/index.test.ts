@@ -9,6 +9,8 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import * as lib from "../lib/project-dir.ts";
+import * as instructionFiles from "../lib/instruction-files.ts";
+import * as core from "./index.ts";
 import { resolveProjectDir, writeFileAtomic } from "./index.ts";
 
 describe("writeFileAtomic, through index.ts", () => {
@@ -63,5 +65,28 @@ describe("resolveProjectDir, through index.ts", () => {
 		assert.equal(resolveProjectDir(nested, {}), root);
 		const fromCwd = relative(process.cwd(), nested);
 		assert.equal(resolveProjectDir(fromCwd, {}), root);
+	});
+});
+
+describe("instruction files, through index.ts", () => {
+	test("AGENTS.md is the instruction file; CLAUDE.md and GEMINI.md are retired", () => {
+		assert.equal(core.INSTRUCTION_FILE, "AGENTS.md");
+		assert.deepEqual([...core.RETIRED_INSTRUCTION_FILES], ["CLAUDE.md", "GEMINI.md"]);
+		assert.equal(core.RETIRED_INSTRUCTION_FILES, instructionFiles.RETIRED_INSTRUCTION_FILES, "the export is the list the check reads");
+		assert.ok(Object.isFrozen(instructionFiles.RETIRED_INSTRUCTION_FILES), "no extension can change the shared list");
+		assert.throws(() => (instructionFiles.RETIRED_INSTRUCTION_FILES as string[]).push("README.md"));
+		assert.equal(core.isRetiredInstructionFile("README.md"), false);
+	});
+
+	test("the size caps: the template stays under the flag, which stays under what Antigravity was seen to read", () => {
+		assert.ok(core.AGENTS_MD_MAX_BYTES < core.AGENTS_MD_FLAG_BYTES);
+		// The last byte Antigravity 1.3.0 was seen to read (obsidian-mind #321, recorded in lib/instruction-files.ts).
+		const ANTIGRAVITY_LAST_READ_BYTE = 23_860;
+		assert.ok(core.AGENTS_MD_FLAG_BYTES < ANTIGRAVITY_LAST_READ_BYTE);
+	});
+
+	test("a retired file is recognised in any case, as Windows and macOS resolve it, and nothing else is", () => {
+		for (const name of ["CLAUDE.md", "claude.md", "Gemini.MD"]) assert.equal(core.isRetiredInstructionFile(name), true, name);
+		for (const name of ["AGENTS.md", "CLAUDE.md.bak", "notes/CLAUDE.md", "README.md"]) assert.equal(core.isRetiredInstructionFile(name), false, name);
 	});
 });
