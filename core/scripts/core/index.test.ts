@@ -24,7 +24,8 @@ describe("writeFileAtomic, through index.ts", () => {
 	});
 
 	test("a write that cannot happen throws and leaves nothing behind", () => {
-		assert.throws(() => writeFileAtomic(join(dir, "missing", "note.md"), "x"));
-		assert.deepEqual(readdirSync(dir), ["note.md"]);
+		const empty = mkdtempSync(join(dir, "empty-"));
+		assert.throws(() => writeFileAtomic(join(empty, "missing", "note.md"), "x"));
+		assert.deepEqual(readdirSync(empty), []);
 	});
 });
