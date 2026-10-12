@@ -7,7 +7,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { manifestOf } from "../lib/session-start.ts";
-import { EMPTY_STORE_BYTES, QMD_SWITCH, qmdSessionStart, qmdSessionStartWith, type QmdDeps } from "./qmd-session.ts";
+import { EMPTY_STORE_BYTES, QMD_SWITCH, qmdSessionStart, qmdSessionStartOf, type QmdDeps } from "./qmd-session.ts";
 
 const MANIFEST = JSON.stringify({ template: "wiki-mind", qmd_index: "", qmd_min_version: "2.0.0" });
 const VAULT = join("/", "vaults", "My Wiki");
@@ -103,13 +103,13 @@ describe("QMD's session-start work", () => {
 });
 
 describe("the parsed-manifest form (#52)", () => {
-	test("qmdSessionStartWith on the parsed manifest does what qmdSessionStart does on its text", () => {
+	test("qmdSessionStartOf on the parsed manifest does what qmdSessionStart does on its text", () => {
 		for (const source of [MANIFEST, JSON.stringify({ qmd_index: "pinned", qmd_min_version: "9.0.0" }), "not json", null]) {
 			for (const opts of [{}, { version: "qmd 1.0.0\n" }, { storeBytes: 10 }, { status: { status: 1, stderr: "NODE_MODULE_VERSION 127" } }]) {
 				const fromText = fakeDeps(opts);
 				const fromObject = fakeDeps(opts);
 				const a = qmdSessionStart(VAULT, source, undefined, fromText.deps);
-				const b = qmdSessionStartWith(VAULT, manifestOf(source), undefined, fromObject.deps);
+				const b = qmdSessionStartOf(VAULT, manifestOf(source), undefined, fromObject.deps);
 				assert.deepEqual(b, a, String(source));
 				assert.deepEqual(fromObject.calls, fromText.calls, String(source));
 			}

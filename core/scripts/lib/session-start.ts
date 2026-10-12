@@ -4,6 +4,8 @@
  * system, or invoking the Obsidian CLI.
  */
 
+import { manifestOf, type ManifestObject } from "./manifest.ts";
+export { manifestOf, type ManifestObject };
 import { basename, join, resolve } from "node:path";
 
 import { HOOK_OUTPUT_MAX_CHARS } from "./hook-io.ts";
@@ -247,25 +249,6 @@ export function shouldCollapseDir(
 /** The one-line stand-in for a collapsed directory. Shape predates the threshold. */
 export function formatCollapsedDir(posixPath: string, noteCount: number): string {
 	return `./${posixPath}/ — ${noteCount} notes (listing collapsed — Glob or QMD on demand)`;
-}
-
-/**
- * A parsed `vault-manifest.json`: the object, or null when the manifest is
- * absent, malformed, or not an object. The same shape core/context.ts's
- * readManifest returns, so an entry point that has opened the vault passes
- * its manifest to the `…Of` readers below and parses nothing again (#52).
- */
-export type ManifestObject = Readonly<Record<string, unknown>> | null;
-
-/** The manifest source parsed: the one place the readers below parse it. */
-export function manifestOf(manifestJson: string | null): ManifestObject {
-	if (manifestJson === null) return null;
-	try {
-		const parsed: unknown = JSON.parse(manifestJson);
-		return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
-	} catch {
-		return null; // malformed manifest → treat as missing
-	}
 }
 
 function positiveIntFieldOf(manifest: ManifestObject, field: string): number | null {

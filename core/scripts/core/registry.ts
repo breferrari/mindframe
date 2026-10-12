@@ -37,6 +37,7 @@
 
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { manifestOf } from "../lib/manifest.ts";
 import type { BudgetSection } from "../lib/session-start.ts";
 import type {
 	ChecklistItem,
@@ -488,13 +489,5 @@ export function formatFailures(failures: readonly Failure[]): string[] {
 	);
 }
 
-/** The parsed manifest, or null when absent or malformed. */
-export function parseManifest(manifestJson: string | null): Readonly<Record<string, unknown>> | null {
-	if (manifestJson === null) return null;
-	try {
-		const parsed: unknown = JSON.parse(manifestJson);
-		return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
-	} catch {
-		return null;
-	}
-}
+/** The parsed manifest, or null when absent or malformed: lib/manifest.ts's manifestOf, the one place it is parsed (#52). Kept by this name for vaults that call it. */
+export const parseManifest = manifestOf;

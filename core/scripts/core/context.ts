@@ -11,10 +11,11 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadRegistry, parseManifest, type Registry } from "./registry.ts";
+import { manifestOf, type ManifestObject } from "../lib/manifest.ts";
+import { loadRegistry, type Registry } from "./registry.ts";
 import type { HookContext, HookEvent } from "./types.ts";
 
-export type Manifest = Readonly<Record<string, unknown>> | null;
+export type Manifest = ManifestObject;
 
 /** The vault's manifest, parsed; null when there is none or it can't be read. */
 export function readManifest(vaultRoot: string): Manifest {
@@ -24,7 +25,7 @@ export function readManifest(vaultRoot: string): Manifest {
 	} catch {
 		/* no manifest: no extensions, default budgets */
 	}
-	return parseManifest(json);
+	return manifestOf(json);
 }
 
 /**

@@ -90,11 +90,11 @@ export function qmdSessionStart(
 	bootstrapScript = ".scripts/qmd-bootstrap.ts",
 	deps: QmdDeps = realDeps,
 ): QmdSessionResult {
-	return qmdSessionStartWith(vaultRoot, manifestOf(manifestJson), bootstrapScript, deps);
+	return qmdSessionStartOf(vaultRoot, manifestOf(manifestJson), bootstrapScript, deps);
 }
 
 /** qmdSessionStart on the parsed manifest, as openVault returns it (#52). */
-export function qmdSessionStartWith(
+export function qmdSessionStartOf(
 	vaultRoot: string,
 	manifest: ManifestObject,
 	bootstrapScript = ".scripts/qmd-bootstrap.ts",

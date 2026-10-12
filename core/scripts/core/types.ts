@@ -12,6 +12,8 @@
  * `git mv`.
  */
 
+import type { ManifestObject } from "../lib/manifest.ts";
+
 /** The hook events an extension can serve. `pre-tool` and `mcp` are slots: declared, not dispatched yet. */
 export type HookEvent = "session-start" | "stop" | "prompt" | "write" | "pre-compact" | "pre-tool" | "mcp";
 
@@ -41,8 +43,8 @@ export type Declaration = {
 export type HookContext = {
 	/** Absolute path of the vault root. */
 	readonly vaultRoot: string;
-	/** The parsed `vault-manifest.json`, or null when absent or malformed. */
-	readonly manifest: Readonly<Record<string, unknown>> | null;
+	/** The parsed `vault-manifest.json`, frozen, or null when absent or malformed. */
+	readonly manifest: ManifestObject;
 	/** Milliseconds since the epoch, fixed for the whole hook run. */
 	readonly now: number;
 };
