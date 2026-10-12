@@ -11,7 +11,6 @@ import {
 	injectionBudgetOf,
 	instructionBudgetOf,
 	listingCollapseThresholdOf,
-	manifestOf,
 	parseInfraRootFilenames,
 	parseInjectionBudget,
 	parseInstructionBudget,
@@ -22,8 +21,8 @@ import {
 	qmdMinVersionOf,
 	resolveQmdIndex,
 	resolveQmdIndexOf,
-	type ManifestObject,
 } from "../lib/session-start.ts";
+import { manifestOf, parseManifestJson, type ManifestObject } from "../lib/manifest.ts";
 
 const FULL = JSON.stringify({
 	eager_layer_budget_bytes: 4000,
@@ -120,5 +119,21 @@ describe("each reader holds its rule, pinned to values (not only to its string f
 			manifest["eager_layer_budget_bytes"] = 1e9;
 		});
 		assert.equal(injectionBudgetOf(manifest), 4000);
+	});
+});
+
+describe("the parse itself", () => {
+	test("a manifest nested deeper than the stack is parsed and frozen, never thrown", () => {
+		const deep = `{"a":${"[".repeat(200_000)}${"]".repeat(200_000)}}`;
+		const m = manifestOf(deep);
+		assert.ok(m !== null && Object.isFrozen(m));
+	});
+
+	test("parseManifestJson (registry.parseManifest for vaults) stays unfrozen, so a vault may fill it in", () => {
+		const m = parseManifestJson('{"extensions":[]}');
+		assert.ok(m !== null && !Object.isFrozen(m));
+		m["extra"] = 1;
+		(m["extensions"] as unknown[]).push({});
+		assert.equal(m["extra"], 1);
 	});
 });

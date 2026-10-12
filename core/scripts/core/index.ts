@@ -27,6 +27,8 @@ export type {
 	Validator,
 	WriteTarget,
 } from "./types.ts";
+/** The parsed manifest an extension receives as `ctx.manifest`: frozen, or null. */
+export type { ManifestObject } from "../lib/manifest.ts";
 export { HOOK_EVENTS } from "./types.ts";
 
 /** Frontmatter helpers: one-line field values, and the body without its frontmatter. */

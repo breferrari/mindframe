@@ -7,28 +7,39 @@
 /** A parsed manifest: the object, or null when it is absent, malformed, or not an object. */
 export type ManifestObject = Readonly<Record<string, unknown>> | null;
 
-/** `value`, and everything inside it, frozen. */
+/**
+ * The manifest source parsed, unfrozen: the object, or null when it is absent,
+ * malformed, or not an object. registry.ts's parseManifest, kept for vaults
+ * that call it and may fill the result in.
+ */
+export function parseManifestJson(manifestJson: string | null): Record<string, unknown> | null {
+	if (manifestJson === null) return null;
+	try {
+		const parsed: unknown = JSON.parse(manifestJson);
+		return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+	} catch {
+		return null; // malformed manifest → treat as missing
+	}
+}
+
+/** `value` and everything inside it frozen, without recursion, so no depth of nesting overflows the stack. */
 function deepFreeze<T>(value: T): T {
-	if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-		Object.freeze(value);
-		for (const inner of Object.values(value as object)) deepFreeze(inner);
+	const pending: unknown[] = [value];
+	for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+		if (next === null || typeof next !== "object") continue;
+		Object.freeze(next);
+		for (const inner of Object.values(next as object)) if (inner !== null && typeof inner === "object") pending.push(inner);
 	}
 	return value;
 }
 
 /**
- * The manifest source parsed, and deep-frozen: extensions receive this object,
- * and the core reads its budget from it afterwards, so no extension may change
+ * The manifest source parsed and deep-frozen: the object extensions receive,
+ * which the core reads its budget from afterwards, so no extension may change
  * what the core reads (DESIGN.md rules 7 and 8). Null when the manifest is
- * absent, malformed, or not an object.
+ * absent, malformed, or not an object. Never throws, however deep the nesting.
  */
 export function manifestOf(manifestJson: string | null): ManifestObject {
-	if (manifestJson === null) return null;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(manifestJson);
-	} catch {
-		return null; // malformed manifest → treat as missing
-	}
-	return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? deepFreeze(parsed as Record<string, unknown>) : null;
+	const parsed = parseManifestJson(manifestJson);
+	return parsed === null ? null : deepFreeze(parsed);
 }

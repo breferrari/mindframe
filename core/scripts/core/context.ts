@@ -15,6 +15,7 @@ import { manifestOf, type ManifestObject } from "../lib/manifest.ts";
 import { loadRegistry, type Registry } from "./registry.ts";
 import type { HookContext, HookEvent } from "./types.ts";
 
+/** The name openVault has always returned; the same type as ManifestObject. */
 export type Manifest = ManifestObject;
 
 /** The vault's manifest, parsed; null when there is none or it can't be read. */

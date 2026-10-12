@@ -6,7 +6,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { manifestOf } from "../lib/session-start.ts";
+import { manifestOf } from "../lib/manifest.ts";
 import { EMPTY_STORE_BYTES, QMD_SWITCH, qmdSessionStart, qmdSessionStartOf, type QmdDeps } from "./qmd-session.ts";
 
 const MANIFEST = JSON.stringify({ template: "wiki-mind", qmd_index: "", qmd_min_version: "2.0.0" });

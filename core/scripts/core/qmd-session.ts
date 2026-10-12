@@ -24,15 +24,14 @@ import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from "node:child_proce
 import { statSync as nodeStatSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { buildQmdCommand, qmdVersionAtLeast, resolveQmdEntry } from "../lib/qmd.ts";
+import { manifestOf, type ManifestObject } from "../lib/manifest.ts";
 import {
 	isQmdNativeAbiMismatch,
-	manifestOf,
 	qmdArgsWithIndex,
 	qmdMinVersionOf,
 	qmdPackageRootFromEntry,
 	resolveIndexStorePath,
 	resolveQmdIndexOf,
-	type ManifestObject,
 } from "../lib/session-start.ts";
 
 /** A store below this size holds no indexed notes: bootstrap rather than update. */

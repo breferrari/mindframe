@@ -5,7 +5,6 @@
  */
 
 import { manifestOf, type ManifestObject } from "./manifest.ts";
-export { manifestOf, type ManifestObject };
 import { basename, join, resolve } from "node:path";
 
 import { HOOK_OUTPUT_MAX_CHARS } from "./hook-io.ts";
