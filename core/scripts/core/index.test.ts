@@ -57,6 +57,7 @@ describe("resolveProjectDir, through index.ts", () => {
 		const nested = join(root, "notes", "deep");
 		assert.equal(resolveProjectDir(nested, {}), root);
 		assert.equal(resolveProjectDir("unused", { CLAUDE_PROJECT_DIR: nested }), root);
+		assert.equal(resolveProjectDir("unused", { CLAUDE_PROJECT_DIR: "", GEMINI_PROJECT_DIR: nested }), root, "an empty variable counts as unset");
 	});
 
 	test("outside any vault, the named folder itself", () => {
