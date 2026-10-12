@@ -1,6 +1,6 @@
 /**
- * A QMD that isn't there: the side effects of session.ts, recorded, for the
- * extension's tests. Nothing here runs QMD or touches a QMD store.
+ * Test-only. A QMD that isn't there: the side effects of session.ts,
+ * recorded, for the extension's tests. Nothing here runs QMD or touches a QMD store.
  */
 import { join } from "node:path";
 import { EMPTY_STORE_BYTES, type QmdDeps } from "./session.ts";

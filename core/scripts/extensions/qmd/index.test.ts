@@ -12,7 +12,7 @@ import type { HookContext } from "../../core/index.ts";
 import { QMD_DECLARATION } from "../../core/context.ts";
 import { SELF_HEAL_HEADER, VERSION_HEADER, extension, qmdExtension } from "./index.ts";
 import { QMD_SWITCH, type QmdDeps } from "./session.ts";
-import { VAULT, fakeDeps, type Calls } from "./fakes.ts";
+import { VAULT, fakeDeps, type Calls } from "./test-fakes.ts";
 
 const counts = (calls: Calls) => ({ sync: calls.sync.length, detached: calls.detached.length });
 

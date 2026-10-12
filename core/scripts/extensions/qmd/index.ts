@@ -15,14 +15,14 @@ import { SELF_HEAL_HEADER, VERSION_HEADER, qmdSessionStartOf, realDeps, type Qmd
 export { SELF_HEAL_HEADER, VERSION_HEADER };
 
 /** The extension over `deps`, so tests never run a real QMD. */
-export function qmdExtension(deps: QmdDeps = realDeps, bootstrapScript?: string): Extension {
+export function qmdExtension(deps: QmdDeps = realDeps): Extension {
 	// One run per hook: the context is fixed for a hook run, and both sections get the same one.
 	const runs = new WeakMap<HookContext, { readonly result: QmdSessionResult } | { readonly error: unknown }>();
 	const run = (ctx: HookContext): QmdSessionResult => {
 		let outcome = runs.get(ctx);
 		if (outcome === undefined) {
 			try {
-				outcome = { result: qmdSessionStartOf(ctx.vaultRoot, ctx.manifest, bootstrapScript, deps) };
+				outcome = { result: qmdSessionStartOf(ctx.vaultRoot, ctx.manifest, undefined, deps) };
 			} catch (error) {
 				outcome = { error };
 			}

@@ -26,7 +26,7 @@ A vault vendors this folder by copying it onto its `.claude/scripts/`, byte for 
 **QMD is an extension now (#70).** The core no longer runs QMD's session-start work: the qmd extension does, for a vault that declares it. To take the change on a `vendor update`, a vault:
 1. deletes `core/qmd-session.ts` and `core/qmd-session.test.ts`, and their two entries under `files` in its record, by hand: `vendor update` refuses them as gone upstream until then, and `vendor record` only adds or re-records paths;
 2. runs `vendor update`, which brings in the extension's two libraries, because the core's re-exports import them;
-3. copies `extensions/qmd/index.ts`, `session.ts` and their tests from mindframe at the same commit, and records them with `vendor record` and those paths;
+3. copies `extensions/qmd/index.ts`, `session.ts`, their tests and `test-fakes.ts` from mindframe at the same commit, and records them with `vendor record` and those paths;
 4. adds `QMD_DECLARATION` (in `core/context.ts`) to `extensions` in `vault-manifest.json`:
    `{ "id": "qmd", "module": ".claude/scripts/extensions/qmd/index.ts", "events": ["session-start"], "timeoutMs": 30000 }`;
 5. removes its session-start entry point's `qmdSessionStart` call, and passes `migrationNotes(manifest)` to the meter.

@@ -7,7 +7,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { manifestOf } from "../../lib/manifest.ts";
 import { EMPTY_STORE_BYTES, QMD_SWITCH, REFRESH_SWITCH, qmdSessionStartOf, type QmdDeps } from "./session.ts";
-import { VAULT, fakeDeps } from "./fakes.ts";
+import { VAULT, fakeDeps } from "./test-fakes.ts";
 
 /** The manifest's text, parsed the way openVault parses it, then the work. */
 const qmdSessionStart = (vaultRoot: string, json: string | null, script: string | undefined, deps: QmdDeps) =>
