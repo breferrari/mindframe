@@ -414,8 +414,7 @@ export const nextNumber = (existing: readonly string[]): string => String(Math.m
 
 /** A file's upstream path inside an upstream checkout. */
 export const upstreamPathOf = (record: VendorRecord, file: string): string => {
-	const up = record.files[file]?.upstream ?? file;
-	return typeof record.sourceRoot === "string" && record.sourceRoot !== "" ? `${record.sourceRoot}/${up}` : up;
+	return withSourceRoot(record, record.files[file]?.upstream ?? file);
 };
 
 export type NewPatchInput = {
@@ -535,6 +534,10 @@ export type UpdateInput = {
 	readonly patches: PatchSet;
 	/** Files whose conflict markers have been resolved by hand; their vault bytes are taken as the result. */
 	readonly resolved?: readonly string[];
+	/** The other record that owns a path in this record's frame, if any. */
+	readonly ownerOf?: (file: string) => string | null;
+	/** A file's text at the record's current commit, by its path in the upstream checkout; null when it had none. */
+	readonly oldUpstream?: (upstreamPath: string) => string | null;
 };
 
 export type UpdatePlan = {
@@ -546,7 +549,175 @@ export type UpdatePlan = {
 	readonly patchFiles: ReadonlyArray<{ readonly name: string; readonly text: string }>;
 	readonly retired: readonly string[];
 	readonly conflicts: readonly string[];
+	/** Files the update brought in because an updated file imports them. */
+	readonly added: ReadonlyArray<{ readonly file: string; readonly importedBy: string }>;
 };
+
+/**
+ * The relative import specifiers in a module's source: `import … from`,
+ * `export … from`, `import "…"`, `import("…")` (a template with no `${}` too)
+ * and `require("…")`. A small lexer skips comments, and reads a string as a
+ * specifier only where code puts one, so import-like text inside a string or a
+ * comment is not an import. Package and node: specifiers are the vault's
+ * concern, and a specifier names its file, extension included, as the core's
+ * own imports do.
+ */
+export function importsOf(source: string): string[] {
+	const found = new Set<string>();
+	// The last stretch of code read, strings and comments left out: enough to see
+	// what precedes a string or a slash, and linear however long the file.
+	let code = "";
+	const read = (more: string) => {
+		code = (code + more).slice(-64);
+	};
+	for (let i = 0; i < source.length; ) {
+		const ch = source[i]!;
+		const two = source.slice(i, i + 2);
+		if (two === "//") {
+			const end = source.indexOf("\n", i);
+			i = end === -1 ? source.length : end;
+			continue;
+		}
+		if (two === "/*") {
+			const end = source.indexOf("*/", i + 2);
+			i = end === -1 ? source.length : end + 2;
+			read(" ");
+			continue;
+		}
+		// A slash where a value starts opens a regex literal: skip to its closing
+		// slash, past escapes and character classes.
+		if (ch === "/" && /(?:^|[(,=:[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bin|\bof)\s*$/.test(code)) {
+			let j = i + 1;
+			let inClass = false;
+			while (j < source.length && source[j] !== "\n") {
+				if (source[j] === "\\") j += 2;
+				else if (source[j] === "[") (inClass = true), j++;
+				else if (source[j] === "]") (inClass = false), j++;
+				else if (source[j] === "/" && !inClass) break;
+				else j++;
+			}
+			i = j + 1;
+			read(" _ ");
+			continue;
+		}
+		if (ch === '"' || ch === "'" || ch === "`") {
+			let j = i + 1;
+			let text = "";
+			let plain = true; // a template with no ${…}
+			while (j < source.length && source[j] !== ch) {
+				if (source[j] === "\\") {
+					text += source[j + 1] ?? "";
+					j += 2;
+					continue;
+				}
+				if (ch === "`" && source.slice(j, j + 2) === "${") plain = false;
+				if (ch !== "`" && source[j] === "\n") break;
+				text += source[j];
+				j++;
+			}
+			const before = code.trimEnd();
+			const placed = /(?:\bfrom|\bimport)$/.test(before) || /\b(?:import|require)\s*\($/.test(before);
+			if (placed && plain && (text.startsWith("./") || text.startsWith("../"))) found.add(text);
+			read(" _ ");
+			i = j + 1;
+			continue;
+		}
+		read(ch);
+		i++;
+	}
+	return [...found];
+}
+
+const MODULE_FILE = /\.(?:[cm]?[jt]sx?)$/;
+
+/** An upstream path, relative to the record's root, as a path in the upstream checkout. */
+const withSourceRoot = (record: VendorRecord, up: string): string =>
+	typeof record.sourceRoot === "string" && record.sourceRoot !== "" ? `${record.sourceRoot}/${up}` : up;
+
+const readOrNull = (file: string): Uint8Array | null => {
+	try {
+		return readFileSync(file);
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * The files the update's files newly import that the record lacks, followed
+ * transitively and added to `files` and `entries`, unpatched at the new commit:
+ * the update can't work without them (#78). An import is new when the file's new
+ * upstream has it and its old upstream didn't, so an import an older commit
+ * made, or one a vault patch adds or removes, is the vault's business, as
+ * before. A target lands where the import resolves at runtime, beside its
+ * importer. A target another record owns, one upstream lacks, or one already in
+ * the vault that differs from upstream or isn't a file is a problem, named once,
+ * and the update writes nothing. An import outside the record's root is the
+ * vault's.
+ */
+function closeImports(
+	input: UpdateInput,
+	files: Array<{ file: string; bytes: Uint8Array }>,
+	entries: Record<string, FileEntry>,
+	problems: string[],
+): Array<{ file: string; importedBy: string }> {
+	const { record } = input;
+	const short = input.commit.slice(0, 7);
+	const text = (b: Uint8Array | null) => (b === null ? "" : Buffer.from(b).toString("utf8"));
+	const seen = new Set<string>();
+	const added: Array<{ file: string; importedBy: string }> = [];
+	const queue: Array<{ file: string; upstream: string; fresh: string; was: string }> = [];
+	for (const f of files) {
+		if (!MODULE_FILE.test(f.file)) continue;
+		const upstream = record.files[f.file]?.upstream ?? f.file;
+		const fresh = text(readOrNull(resolveInside(input.upstreamRoot, withSourceRoot(record, upstream))));
+		// The old upstream from the upstream repo; failing that, the vault's copy.
+		const was = input.oldUpstream?.(withSourceRoot(record, upstream)) ?? text(readOrNull(resolveInside(input.vault, f.file)));
+		queue.push({ file: f.file, upstream, fresh, was });
+	}
+	for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+		const had = new Set(importsOf(next.was));
+		for (const spec of importsOf(next.fresh)) {
+			if (had.has(spec)) continue;
+			const upstream = path.posix.normalize(path.posix.join(path.posix.dirname(next.upstream), spec));
+			if (upstream === ".." || upstream.startsWith("../")) continue;
+			const file = path.posix.normalize(path.posix.join(path.posix.dirname(next.file), spec));
+			if (record.files[file] !== undefined || entries[file] !== undefined || seen.has(file)) continue;
+			seen.add(file);
+			const owner = input.ownerOf?.(file);
+			if (owner) {
+				problems.push(`${file} is owned by ${owner}, and ${next.file} now imports it; take it off that record, or update that record instead`);
+				continue;
+			}
+			let target: string;
+			try {
+				target = resolveInside(input.vault, file);
+			} catch (e) {
+				problems.push(`${file}, which ${next.file} now imports: ${(e as Error).message}`);
+				continue;
+			}
+			const bytes = readOrNull(resolveInside(input.upstreamRoot, withSourceRoot(record, upstream)));
+			if (bytes === null) {
+				problems.push(`${next.file} imports ${file}, which upstream doesn't have at ${short}`);
+				continue;
+			}
+			const hash = contentHash(bytes);
+			if (existsSync(target) && !lstatSync(target).isFile()) {
+				problems.push(`${file} is in the vault and isn't a file; ${next.file} now imports it. Move it aside, then update`);
+				continue;
+			}
+			const present = existsSync(target) ? readFileSync(target) : null;
+			if (present !== null && contentHash(present) !== hash) {
+				problems.push(`${file} is in the vault, unrecorded, and differs from upstream; ${next.file} now imports it. Move it aside, or record it, then update`);
+				continue;
+			}
+			entries[file] = { upstream, sha256: hash, upstreamSha256: hash };
+			files.push({ file, bytes });
+			added.push({ file, importedBy: next.file });
+			if (MODULE_FILE.test(file)) queue.push({ file, upstream, fresh: text(bytes), was: "" });
+		}
+	}
+	return added;
+}
 
 /**
  * Moves a vault's vendored files to a new upstream commit, carrying its
@@ -702,10 +873,13 @@ export function planUpdate(input: UpdateInput): UpdatePlan {
 		const done = carry(merged.text);
 		if (!("stuck" in done)) settle(done, text(done.at));
 	}
+	// Run even when other problems were found, so every refusal is named at once.
+	const added = conflicts.length === 0 ? closeImports(input, files, entries, problems) : [];
+
 	if (problems.length) throw new VendorError(problems.join("\n"));
 
 	if (conflicts.length) {
-		return { record: null, files: files.filter((f) => conflicts.includes(f.file)), patchFiles: [], retired: [], conflicts };
+		return { record: null, files: files.filter((f) => conflicts.includes(f.file)), patchFiles: [], retired: [], conflicts, added: [] };
 	}
 
 	const patchFiles: Array<{ name: string; text: string }> = [];
@@ -721,7 +895,7 @@ export function planUpdate(input: UpdateInput): UpdatePlan {
 		}
 	}
 	const next = { ...record, commit: input.commit, files: entries } as VendorRecord;
-	return { record: next, files, patchFiles, retired, conflicts };
+	return { record: next, files, patchFiles, retired, conflicts, added };
 }
 
 // ---- check --------------------------------------------------------------------

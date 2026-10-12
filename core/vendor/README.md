@@ -133,4 +133,11 @@ It moves the copy to the checkout's commit, file by file:
 - a patch whose change upstream already has retires: it gains `Applied-Upstream: <commit>` and leaves the record, but stays in `vendor-patches/` as history;
 - otherwise the old upstream, the vault and the new upstream are merged three ways. A clean merge folds into the patch. A conflict writes markers into that file and nothing else, and exits 1 with the record still at the old commit. Resolve the markers, then run `update` again with `--resolved <file>`, and the result folds into the patch.
 
+A file an updated file newly imports comes along. `update` follows each updated file's relative imports, transitively: `import … from`, `export … from`, `import "…"` and `import("…")`. A target the record doesn't name, and upstream has, is written and recorded unpatched at the new commit, with a line saying so: `vendor: added <file> (imported by <importer>)`. #78 asked for update to offer to add such a file. It adds it and says so instead, because `update` isn't interactive and the importer can't run without the file. Three cases are still refused, so nothing is written:
+- a target another `VENDOR.json` in the vault owns: take it off that record, or update that record instead;
+- a target upstream doesn't have at the new commit;
+- a target already in the vault, unrecorded, that differs from upstream: move it aside, or record it.
+
+An import outside the record's root, or of a package, is the vault's own, and is left alone.
+
 It refuses an edit without a patch, a file that's gone upstream, a file whose patches don't lead back to its upstream, and a schema 1 or 2 record (run `migrate` first). Folding a merge into a patch would empty any later patch on the same file, so that case is refused too: combine those patches into one with `patch new`, then update.

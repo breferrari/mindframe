@@ -232,3 +232,231 @@ test("patch upstream --pr refuses a patch carrying a local path, before branchin
 	assert.equal(git(s.upstream, "rev-parse", "--abbrev-ref", "HEAD"), "main", "no branch made");
 	assert.equal(s.calls.length, 0);
 });
+
+// #78: files the updated ones import come along.
+function imports(t: TestContext) {
+	const s = setup(t);
+	/** Commits upstream files (paths under core/scripts) and returns the new commit. */
+	const commit = (files: Record<string, string>) => {
+		for (const [rel, text] of Object.entries(files)) put(s.upstream, `core/scripts/${rel}`, text);
+		git(s.upstream, "add", "-A");
+		git(s.upstream, "commit", "-q", "--no-gpg-sign", "-m", "next");
+		return git(s.upstream, "rev-parse", "HEAD");
+	};
+	const has = (rel: string) => existsSync(path.join(s.vault, ...rel.split("/")));
+	const record = () => readRecord(s.recFile);
+	return { ...s, commit, has, record };
+}
+
+test("update adds a file an updated file newly imports, recorded at the new commit, and says so", (t) => {
+	const s = imports(t);
+	const v2 = s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(s.has(".claude/scripts/util.ts"));
+	const entry = s.record().files[".claude/scripts/util.ts"];
+	assert.deepEqual(entry, { upstream: "util.ts", sha256: contentHash(Buffer.from("export const u = 1;\n")), upstreamSha256: contentHash(Buffer.from("export const u = 1;\n")) });
+	assert.equal(s.record().commit, v2);
+	assert.ok(s.lines.includes("vendor: added .claude/scripts/util.ts (imported by .claude/scripts/lib.ts)"), s.lines.join("\n"));
+});
+
+test("update follows imports transitively, and through export-from, side-effect and dynamic imports", (t) => {
+	const s = imports(t);
+	s.commit({
+		"lib.ts": 'export { a } from "./a.ts";\nimport "./b.ts";\nconst c = await import("./c.ts");\n' + LIB,
+		"a.ts": 'import { d } from "./deep/d.ts";\nexport const a = d;\n',
+		"b.ts": "globalThis.b = 1;\n",
+		"c.ts": "export const c = 1;\n",
+		"deep/d.ts": "export const d = 1;\n",
+	});
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	for (const rel of ["a.ts", "b.ts", "c.ts", "deep/d.ts"]) assert.ok(s.has(`.claude/scripts/${rel}`), rel);
+	assert.equal(s.record().files[".claude/scripts/deep/d.ts"]?.upstream, "deep/d.ts");
+	assert.ok(s.lines.includes("vendor: added .claude/scripts/deep/d.ts (imported by .claude/scripts/a.ts)"), s.lines.join("\n"));
+});
+
+test("an import outside the record's root, a package, or an already-recorded file is left alone", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": 'import { x } from "../vendor/x.ts";\nimport { readFileSync } from "node:fs";\nimport bin from "./logo.bin";\n' + LIB });
+	put(s.upstream, "core/vendor/x.ts", "export const x = 1;\n");
+	git(s.upstream, "add", "-A");
+	git(s.upstream, "commit", "-q", "--no-gpg-sign", "-m", "outside");
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.deepEqual(Object.keys(s.record().files).sort(), [LIB_PATH, BIN_PATH]);
+	assert.ok(!s.lines.some((l) => l.startsWith("vendor: added")), s.lines.join("\n"));
+});
+
+test("an import written with ./sub/.. or in a CRLF file resolves to the same file", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": 'import { u } from "./sub/../util.ts";\r\n' + LIB.replace(/\n/g, "\r\n"), "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(s.has(".claude/scripts/util.ts"));
+});
+
+test("a needed file another record owns is refused, and nothing is written", (t) => {
+	const s = imports(t);
+	const before = readFileSync(s.recFile, "utf8");
+	put(s.vault, ".claude/scripts/util.ts", "export const u = 0;\n");
+	const h = contentHash(Buffer.from("export const u = 0;\n"));
+	writeFileSync(
+		path.join(s.vault, ".claude", "scripts", "VENDOR.json"),
+		formatRecord(parseRecord({ schemaVersion: 3, repository: "https://github.com/o/other", commit: "a".repeat(40), license: "MIT", files: { "util.ts": { upstream: "util.ts", sha256: h, upstreamSha256: h } } })),
+	);
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 1);
+	assert.match(s.lines.join("\n"), /\.claude\/scripts\/util\.ts is owned by \.claude\/scripts\/VENDOR\.json/);
+	assert.equal(readFileSync(s.recFile, "utf8"), before, "the record is untouched");
+	assert.equal(s.vaultLib(), LIB, "the importer is not updated");
+	assert.equal(readFileSync(path.join(s.vault, ".claude", "scripts", "util.ts"), "utf8"), "export const u = 0;\n");
+});
+
+test("an import upstream doesn't have is refused, and nothing is written", (t) => {
+	const s = imports(t);
+	const before = readFileSync(s.recFile, "utf8");
+	s.commit({ "lib.ts": 'import { g } from "./ghost.ts";\n' + LIB });
+	assert.equal(s.cli("update", ...s.at()), 1);
+	assert.match(s.lines.join("\n"), /\.claude\/scripts\/lib\.ts imports \.claude\/scripts\/ghost\.ts, which upstream doesn't have/);
+	assert.equal(readFileSync(s.recFile, "utf8"), before);
+	assert.equal(s.vaultLib(), LIB);
+});
+
+test("a needed file already in the vault, unrecorded, is refused when it differs from upstream and recorded when it matches", (t) => {
+	const s = imports(t);
+	put(s.vault, ".claude/scripts/util.ts", "export const u = 0; // the vault's own\n");
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 1);
+	assert.match(s.lines.join("\n"), /\.claude\/scripts\/util\.ts is in the vault, unrecorded, and differs from upstream/);
+	assert.equal(readFileSync(path.join(s.vault, ".claude", "scripts", "util.ts"), "utf8"), "export const u = 0; // the vault's own\n");
+	put(s.vault, ".claude/scripts/util.ts", "export const u = 1;\n");
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.equal(s.record().files[".claude/scripts/util.ts"]?.upstream, "util.ts");
+});
+
+test("an import cycle is followed once, and both files come along", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": 'import { a } from "./a.ts";\n' + LIB, "a.ts": 'import { b } from "./b.ts";\nexport const a = 1;\n', "b.ts": 'import { a } from "./a.ts";\nexport const b = a;\n' });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(s.has(".claude/scripts/a.ts") && s.has(".claude/scripts/b.ts"));
+	assert.equal(s.lines.filter((l) => l.startsWith("vendor: added")).length, 2);
+});
+
+test("a refusal after an add writes nothing: not the importer, not the file it could add", (t) => {
+	const s = imports(t);
+	const before = readFileSync(s.recFile, "utf8");
+	s.commit({ "lib.ts": 'import { a } from "./a.ts";\nimport { g } from "./ghost.ts";\n' + LIB, "a.ts": "export const a = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 1);
+	assert.equal(s.has(".claude/scripts/a.ts"), false);
+	assert.equal(s.vaultLib(), LIB);
+	assert.equal(readFileSync(s.recFile, "utf8"), before);
+});
+
+test("a record of an older schema, or one check can't verify, still owns the files it names", (t) => {
+	const s = imports(t);
+	put(s.vault, ".claude/scripts/util.ts", "export const u = 0;\n");
+	writeFileSync(path.join(s.vault, ".claude", "scripts", "VENDOR.json"), JSON.stringify({ schemaVersion: 1, files: { "util.ts": { sha256: "x" } } }));
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 1);
+	assert.match(s.lines.join("\n"), /\.claude\/scripts\/util\.ts is owned by \.claude\/scripts\/VENDOR\.json/);
+	assert.equal(readFileSync(path.join(s.vault, ".claude", "scripts", "util.ts"), "utf8"), "export const u = 0;\n");
+});
+
+test("an import in a comment is not an import", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": '// import { x } from "./ghost.ts";\n/* see "./ghost2.ts": import "./ghost2.ts" */\n' + LIB });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(!s.lines.some((l) => l.startsWith("vendor: added")));
+});
+
+test("only a new import comes along: one a vault patch made, or an older commit had, is the vault's own", (t) => {
+	const s = imports(t);
+	// A patch imports the vault's own helper, which upstream never had.
+	put(s.vault, ".claude/scripts/mine.ts", "export const m = 1;\n");
+	s.makePatch("use-mine", "export const v0 = 0", 'import { m } from "./mine.ts";\nexport const v0 = m');
+	s.commit({ "lib.ts": LIB.replace("export const v19 = 19", "export const v19 = 190") });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.equal(readFileSync(path.join(s.vault, ".claude", "scripts", "mine.ts"), "utf8"), "export const m = 1;\n");
+	assert.ok(!s.lines.some((l) => l.startsWith("vendor: added")), s.lines.join("\n"));
+});
+
+test("an import an older commit added stays the vault's, even when the vault's copy has since diverged unrecorded", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	const rec = JSON.parse(readFileSync(s.recFile, "utf8"));
+	delete rec.files[".claude/scripts/util.ts"];
+	writeFileSync(s.recFile, JSON.stringify(rec, null, 2) + "\n");
+	put(s.vault, ".claude/scripts/util.ts", "export const u = 2; // the vault's fork\n");
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB.replace("export const v19 = 19", "export const v19 = 190") });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.equal(readFileSync(path.join(s.vault, ".claude", "scripts", "util.ts"), "utf8"), "export const u = 2; // the vault's fork\n");
+});
+
+test("import-like text in a string is not an import; template, require and .tsx imports are", (t) => {
+	const s = imports(t);
+	s.commit({
+		"lib.ts": "const fixture = 'import { g } from \"./ghost.ts\";';\nconst where = \"./ghost2.ts\";\nconst glob = \"notes/**/*.md\";\nconst t = await import(`./t.ts`);\nconst r = require(\"./r.cjs\");\nimport v from \"./view.tsx\";\n/** doc */\n" + LIB,
+		"t.ts": "export const t = 1;\n",
+		"r.cjs": "module.exports = 1;\n",
+		"view.tsx": 'import { u } from "./util.ts";\nexport default u;\n',
+		"util.ts": "export const u = 1;\n",
+	});
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	for (const rel of ["t.ts", "r.cjs", "view.tsx", "util.ts"]) assert.ok(s.has(`.claude/scripts/${rel}`), rel);
+});
+
+test("an import lands where it resolves at runtime, even when the record holds the same upstream file at another path", (t) => {
+	const s = imports(t);
+	put(s.vault, ".claude/elsewhere/util.ts", "export const u = 1;\n");
+	const rec = JSON.parse(readFileSync(s.recFile, "utf8"));
+	const h = contentHash(Buffer.from("export const u = 1;\n"));
+	rec.files[".claude/elsewhere/util.ts"] = { upstream: "util.ts", sha256: h, upstreamSha256: h };
+	writeFileSync(s.recFile, JSON.stringify(rec, null, 2) + "\n");
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(s.has(".claude/scripts/util.ts"), "./util.ts from .claude/scripts/lib.ts is .claude/scripts/util.ts");
+});
+test("a target two files import is refused once, and import refusals come with the others", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": 'import { g } from "./ghost.ts";\nimport { a } from "./a.ts";\n' + LIB, "a.ts": 'import { g } from "./ghost.ts";\nexport const a = 1;\n' });
+	assert.equal(s.cli("update", ...s.at()), 1);
+	assert.equal(s.lines.join("\n").match(/ghost\.ts, which upstream doesn't have/g)?.length, 1, s.lines.join("\n"));
+});
+
+test("a new import is followed after a conflict is resolved: new means new against the old upstream", (t) => {
+	const s = imports(t);
+	s.makePatch("bump", "export const v0 = 0", "export const v0 = 100");
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB.replace("export const v0 = 0", "export const v0 = 7"), "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 1, "the patch and upstream change one line: a conflict");
+	put(s.vault, LIB_PATH, 'import { u } from "./util.ts";\n' + LIB.replace("export const v0 = 0", "export const v0 = 100"));
+	assert.equal(s.cli("update", ...s.at("--resolved", LIB_PATH)), 0, s.lines.join("\n"));
+	assert.ok(s.has(".claude/scripts/util.ts"), s.lines.join("\n"));
+});
+
+test("an import a vault patch removed, and upstream still has, stays out", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": 'import { slow } from "./slow.ts";\n' + LIB, "slow.ts": "export const slow = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	const rec = JSON.parse(readFileSync(s.recFile, "utf8"));
+	delete rec.files[".claude/scripts/slow.ts"];
+	writeFileSync(s.recFile, JSON.stringify(rec, null, 2) + "\n");
+	rmSync(path.join(s.vault, ".claude", "scripts", "slow.ts"));
+	s.makePatch("no-slow", 'import { slow } from "./slow.ts";\n', "");
+	s.commit({ "lib.ts": 'import { slow } from "./slow.ts";\n' + LIB.replace("export const v19 = 19", "export const v19 = 190") });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.equal(s.has(".claude/scripts/slow.ts"), false);
+});
+
+test("a regex literal with a backtick or // doesn't hide the imports after it", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": "const fence = /^(`{3,}|~{3,})$/;\nconst url = /https?:\\/\\//;\nimport { u } from \"./util.ts\";\n" + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(s.has(".claude/scripts/util.ts"), s.lines.join("\n"));
+});
+
+test("a target that is a folder in the vault is refused, and nothing is written", (t) => {
+	const s = imports(t);
+	mkdirSync(path.join(s.vault, ".claude", "scripts", "util.ts"), { recursive: true });
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 1);
+	assert.match(s.lines.join("\n"), /\.claude\/scripts\/util\.ts is in the vault and isn't a file/);
+	assert.equal(s.vaultLib(), LIB);
+});
