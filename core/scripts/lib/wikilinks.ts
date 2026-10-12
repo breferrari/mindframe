@@ -51,28 +51,89 @@ const ASSET_EXTENSIONS = new Set([
  */
 export function stripCodeRegions(content: string): string {
 	const out: string[] = [];
-	let inFence = false;
-	let fenceMarker = "";
+	let marker = "";
 	for (const line of content.split("\n")) {
-		const trimmed = line.trimStart();
-		if (inFence) {
-			if (trimmed.startsWith(fenceMarker)) inFence = false;
-			continue;
-		}
-		if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
-			inFence = true;
-			fenceMarker = trimmed.slice(0, 3);
-			continue;
-		}
-		// Inline code spans: remove `...` runs, including multi-backtick
-		// spans (``…`` — CommonMark closes N backticks with exactly N, and
-		// shorter runs are legal INSIDE the span, so ``[[x]]`` and
-		// ``code with ` inside`` must both strip whole). Content charwise
-		// forbids starting the same-length run early; the trailing (?!`)
-		// pins the closer to an exact-length run.
-		out.push(line.replace(/(`+)(?:(?!\1)[^\n])*?\1(?!`)/g, ""));
+		const step = fenceStep(line, marker);
+		marker = step.marker;
+		if (step.fenced) continue;
+		out.push(line.replace(INLINE_CODE, ""));
 	}
 	return out.join("\n");
+}
+
+/**
+ * Inline code spans: `...` runs, including multi-backtick spans (``…`` —
+ * CommonMark closes N backticks with exactly N, and shorter runs are legal
+ * INSIDE the span, so ``[[x]]`` and ``code with ` inside`` both match
+ * whole). Content charwise forbids starting the same-length run early; the
+ * trailing (?!`) pins the closer to an exact-length run.
+ */
+const INLINE_CODE = /(`+)(?:(?!\1)[^\n])*?\1(?!`)/g;
+
+/** A wikilink or embed, `[[...]]` or `![[...]]`, on one line. */
+const WIKILINK = /!?\[\[([^\[\]\n]+?)\]\]/g;
+
+/**
+ * One line of the fence scan: whether the line belongs to a fence, and the
+ * open fence's marker after it ("" outside one). A ``` or ~~~ line opens a
+ * fence, and the next line starting with the same three characters closes
+ * it. stripCodeRegions and lineRegions both step through this, so they
+ * agree on every line.
+ */
+function fenceStep(line: string, marker: string): { fenced: boolean; marker: string } {
+	const trimmed = line.trimStart();
+	if (marker !== "") return { fenced: true, marker: trimmed.startsWith(marker) ? "" : marker };
+	if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) return { fenced: true, marker: trimmed.slice(0, 3) };
+	return { fenced: false, marker: "" };
+}
+
+/** Which part of a note a line is in. */
+export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
+
+/**
+ * The region of each line of a note, for an extension that rewrites a note
+ * line by line. Lines may keep a trailing \r (CRLF split on \n).
+ *
+ * - Frontmatter runs from an opening `---` line (a BOM may precede it) to
+ *   the first `---` line after it, as frontmatter.ts reads it: a `---`
+ *   inside a value doesn't end it, and an unterminated block is no
+ *   frontmatter at all.
+ * - Fences are the ones stripCodeRegions strips, so a link on a "fence"
+ *   line is never one extractWikilinkTargets reads.
+ * - A heading is one to six #s and a space.
+ */
+export function lineRegions(lines: readonly string[]): LineRegion[] {
+	const bare = lines.map((l) => l.replace(/\r$/, ""));
+	const close = bare[0]?.replace(/^\uFEFF/, "") === "---" ? bare.indexOf("---", 1) : -1;
+	let marker = "";
+	return bare.map((line, i): LineRegion => {
+		if (i <= close) return "frontmatter";
+		const step = fenceStep(line, marker);
+		marker = step.marker;
+		if (step.fenced) return "fence";
+		return /^#{1,6}\s/.test(line) ? "heading" : "body";
+	});
+}
+
+/** A wikilink on a line: its target as extractWikilinkTargets reads it, and where the whole link sits. */
+export type WikilinkSpan = { readonly target: string; readonly start: number; readonly end: number };
+
+/**
+ * Every wikilink on one line, with its offsets: `line.slice(start, end)`
+ * is the whole link, `!` and alias tail included. Inline code is blanked
+ * the way stripCodeRegions removes it, keeping every offset, and each
+ * target is read by extractWikilinkTargets, so aliases, table escapes,
+ * fragments, embeds, assets and placeholders follow its rules: a link it
+ * drops has no span. Fences span lines; use lineRegions for them.
+ */
+export function wikilinkSpans(line: string): WikilinkSpan[] {
+	const masked = line.replace(INLINE_CODE, (code) => " ".repeat(code.length));
+	const spans: WikilinkSpan[] = [];
+	for (const m of masked.matchAll(WIKILINK)) {
+		const target = extractWikilinkTargets(m[0])[0];
+		if (target !== undefined) spans.push({ target, start: m.index, end: m.index + m[0].length });
+	}
+	return spans;
 }
 
 /**
@@ -83,8 +144,7 @@ export function stripCodeRegions(content: string): string {
  */
 export function extractWikilinkTargets(content: string): string[] {
 	const targets: string[] = [];
-	const re = /!?\[\[([^\[\]\n]+?)\]\]/g;
-	for (const m of stripCodeRegions(content).matchAll(re)) {
+	for (const m of stripCodeRegions(content).matchAll(WIKILINK)) {
 		let inner = m[1] ?? "";
 		// Table-escaped alias pipes — both forms Obsidian accepts inside
 		// tables: backslash (`[[Target\|alias]]`) and HTML entity
