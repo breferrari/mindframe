@@ -8,11 +8,11 @@
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { performance } from "node:perf_hooks";
-import { RENAME_RETRY_MS, claimFile, renameWithRetry, retryHeld, tempPathFor } from "../lib/atomic-write.ts";
+import { RENAME_RETRY_MS, claimFile, renameWithRetry, retryHeld, tempPathFor, writeThrough } from "../lib/atomic-write.ts";
 
 const err = (code: string) => Object.assign(new Error(code), { code });
 
@@ -49,7 +49,7 @@ describe("retryHeld", () => {
 			const f = failing(Array(1000).fill("EPERM"), c, cost);
 			assert.throws(() => retryHeld(f.op, { platform: "win32", sleep: c.sleep, now: c.now }), { code: "EPERM" });
 			assert.ok(c.now() <= RENAME_RETRY_MS + cost, `cost ${cost}: ran ${c.now()} ms`);
-			assert.ok(c.now() > RENAME_RETRY_MS - 150, `cost ${cost}: gave up early, after ${c.now()} ms`);
+			assert.ok(c.now() >= RENAME_RETRY_MS, `cost ${cost}: gave up early, after ${c.now()} ms`);
 			assert.ok(c.slept.every((ms) => ms <= 100), "no single wait above 100 ms");
 		}
 	});
@@ -64,11 +64,27 @@ describe("retryHeld", () => {
 		}
 	});
 
-	test("an error the caller knows will last is thrown at once", () => {
+	test("an error the caller knows will last is thrown at once, and the caller is asked once", () => {
 		const c = clock();
 		const f = failing(["EPERM"]);
 		assert.throws(() => retryHeld(f.op, { platform: "win32", sleep: c.sleep, now: c.now }, () => true), { code: "EPERM" });
 		assert.equal(f.calls(), 1);
+		let asked = 0;
+		const g = failing(["EPERM", "EPERM", "EPERM"]);
+		retryHeld(g.op, { platform: "win32", sleep: c.sleep, now: c.now }, () => (asked++, false));
+		assert.equal(asked, 1);
+	});
+
+	test("a file held until just before the deadline is still caught: the last wait is cut to what is left", () => {
+		const c = clock();
+		let calls = 0;
+		const op = () => {
+			calls++;
+			if (c.now() < RENAME_RETRY_MS - 20) throw err("EBUSY");
+		};
+		retryHeld(op, { platform: "win32", sleep: c.sleep, now: c.now });
+		assert.ok(c.now() <= RENAME_RETRY_MS, `ran ${c.now()} ms`);
+		assert.ok(calls > 1);
 	});
 
 	test("the default sleep really waits", () => {
@@ -94,6 +110,30 @@ describe("renameWithRetry", () => {
 			};
 			assert.throws(() => renameWithRetry("a", "b", { rename, stat: () => target, platform: "win32", sleep: c.sleep, now: c.now }), { code: "EPERM" });
 			assert.equal(calls, 1);
+		}
+	});
+
+	test("the real stat: a read-only file or a folder at the target is thrown at once", () => {
+		const dir = mkdtempSync(join(tmpdir(), "rename-"));
+		try {
+			const ro = join(dir, "ro.md");
+			writeFileSync(ro, "x");
+			chmodSync(ro, 0o444);
+			const folder = join(dir, "folder");
+			mkdirSync(folder);
+			for (const to of [ro, folder]) {
+				const c = clock();
+				let calls = 0;
+				const rename = () => {
+					calls++;
+					throw err("EPERM");
+				};
+				assert.throws(() => renameWithRetry(join(dir, "tmp"), to, { rename, platform: "win32", sleep: c.sleep, now: c.now }), { code: "EPERM" });
+				assert.equal(calls, 1, to);
+			}
+			chmodSync(ro, 0o666);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 
@@ -140,4 +180,40 @@ test("claimFile leaves only the claimed file, its temp file gone", () => {
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
+});
+
+describe("writeThrough", () => {
+	test("a held temp file is cleaned up with retries, and rename and cleanup share one deadline", () => {
+		const c = clock();
+		let unlinks = 0;
+		const unlink = () => {
+			c.spend(5);
+			if (++unlinks < 3) throw err("EBUSY");
+		};
+		const rename = () => {
+			c.spend(5);
+			throw err("EPERM");
+		};
+		assert.throws(
+			() => writeThrough("/v/note.md", "x", { write: () => {}, rename, unlink, stat: () => null, platform: "win32", sleep: c.sleep, now: c.now }),
+			{ code: "EPERM" },
+		);
+		// Past the deadline, the rename's last attempt and one cleanup attempt
+		// may each run once more; the cleanup is not given a deadline of its own.
+		assert.equal(unlinks, 1);
+		assert.ok(c.now() <= RENAME_RETRY_MS + 10, `rename and cleanup took ${c.now()} ms in all`);
+	});
+
+	test("a held temp file is still removed when time is left", () => {
+		const c = clock();
+		let unlinks = 0;
+		const unlink = () => {
+			if (++unlinks < 3) throw err("EBUSY");
+		};
+		const rename = () => {
+			throw err("ENOSPC");
+		};
+		assert.throws(() => writeThrough("/v/note.md", "x", { write: () => {}, rename, unlink, stat: () => null, platform: "win32", sleep: c.sleep, now: c.now }), { code: "ENOSPC" });
+		assert.equal(unlinks, 3);
+	});
 });
