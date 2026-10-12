@@ -13,7 +13,7 @@ Status: ✅ done · 🔨 in progress · ⏳ blocked · ⬜ not started
 | [#3](https://github.com/breferrari/mindframe/issues/3) | Test bed runner: beds, paced sessions on both arms, per-hook results | ✅ |
 | [#4](https://github.com/breferrari/mindframe/issues/4) | Expectation spec format and grader | ✅ |
 | [#5](https://github.com/breferrari/mindframe/issues/5) | Run the obsidian-mind baseline spec in real sessions | 🔨 Windows done; POSIX leg pending |
-| [#74](https://github.com/breferrari/mindframe/issues/74) | Let expectations read the mod's delivery in dry runs, and dry-run it in CI | ⬜ |
+| [#74](https://github.com/breferrari/mindframe/issues/74) | Let expectations read the mod's delivery in dry runs, and dry-run it in CI | ✅ |
 
 ## Phase 2: the core
 

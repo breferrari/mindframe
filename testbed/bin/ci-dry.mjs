@@ -2,8 +2,9 @@
 // CI's dry run of every shipped spec, against pinned vault commits
 // (testbed/ci/pins.json). No model and no Claude Code: each vault's own hook
 // scripts run as a session would run them, with the same qmd redirect and
-// residue check as any bed run (lib/dry.mjs). Deterministic, so it gates CI;
-// live sessions never do.
+// residue check as any bed run (lib/dry.mjs). Each also runs SessionStart the
+// way the mod does (--deliver), so expectations on the mod's delivery are
+// graded. Deterministic, so it gates CI; live sessions never do.
 //
 //   node testbed/bin/ci-dry.mjs [--work <dir>]
 //
@@ -52,8 +53,10 @@ for (const { spec: name, vault } of pins.specs) {
   const pin = pins.vaults[vault]
   const dir = checkout(vault, pin)
   const spec = loadSpec(path.join(ROOT, 'specs', `${name}.json`))
-  const record = dryRun({ spec, vault: dir, out: path.join(work, 'out', name) })
-  const graded = grade(record, spec)
+  const record = dryRun({ spec, vault: dir, out: path.join(work, 'out', name), deliver: true })
+  // requireDeliver: a delivery that went missing fails its rows, so it can't
+  // hide the regression they exist to catch.
+  const graded = grade(record, spec, {}, { requireDeliver: true })
   console.log(`\n### ${name} on ${vault} ${pin.commit}: ${graded.outcome.toUpperCase()}\n`)
   console.log(renderMarkdown(record, graded))
   if (graded.outcome !== 'pass') failed++

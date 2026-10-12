@@ -8,8 +8,13 @@ import { formatValue, measureAll, measureLabel } from './measure.mjs'
 // An expectation of any kind that reads the model's answer or what the user
 // was shown (order over the answer, linesCite, …) needs a live session.
 const readsModel = (e) => ['answer', 'shown'].includes(e[e.kind]?.in)
+// The mod's startup delivery exists only in a dry run with --deliver.
+const readsDeliver = (e) => e[e.kind]?.in === 'deliver'
 
-export function grade(record, spec, verdicts = {}) {
+// `requireDeliver`: a dry run that recorded no delivery fails each delivery
+// row instead of leaving it ungraded. CI sets it, so a delivery that goes
+// missing can't pass quietly.
+export function grade(record, spec, verdicts = {}, { requireDeliver = false } = {}) {
   const rows = []
   // What a dry run could not check, by name and why, so a dry pass never
   // reads as full coverage (DESIGN.md rule 10).
@@ -17,6 +22,22 @@ export function grade(record, spec, verdicts = {}) {
   for (const s of spec.scenarios) {
     const ran = record.runs.some((r) => r.scenario === s.id)
     for (const e of s.expect ?? []) {
+      // The delivery is graded against the dry run that recorded it, as the
+      // mod arm it describes. With none recorded the row is left out and
+      // named, never failed for an empty source, unless requireDeliver.
+      if (readsDeliver(e)) {
+        if (!ran) continue
+        if (!record.dry) {
+          notGraded.push({ scenario: s.id, id: e.id, why: 'dry only' })
+          continue
+        }
+        for (const run of record.runs.filter((r) => r.scenario === s.id)) {
+          if (run.deliver) rows.push({ scenario: s.id, ...evaluate(e, run, verdicts), arm: 'mod' })
+          else if (requireDeliver) rows.push({ scenario: s.id, id: e.id, kind: e.kind, turn: e.turn, arm: 'mod', pass: false, detail: 'no delivery recorded: run dry with --deliver' })
+          else notGraded.push({ scenario: s.id, id: e.id, why: 'dry --deliver only' })
+        }
+        continue
+      }
       // A dry run has no model and no Claude Code: those rows aren't graded.
       if (record.dry && ran && !e.arms.includes('settings')) {
         notGraded.push({ scenario: s.id, id: e.id, why: 'mod arm' })
@@ -78,10 +99,16 @@ export function renderMarkdown(record, graded) {
   const out = []
   const versions = [...new Set(record.runs.map((r) => r.claudeVersion).filter(Boolean))]
   out.push(`# Test bed: ${record.spec}`, '')
-  if (record.dry) out.push('**Dry run:** the hook scripts ran directly, with no model and no Claude Code, on the settings arm. Answers, what the user is shown, judged rows and mod events are not graded.', '')
+  if (record.dry) out.push('**Dry run:** the hook scripts ran directly, with no model and no Claude Code, on the settings arm. Answers, what the user is shown, judged rows and mod events are not graded. The mod\'s delivery is, as the mod arm, when the run recorded it (--deliver).', '')
   if (graded.notGraded?.length) {
     const by = (why) => graded.notGraded.filter((n) => n.why === why).length
-    out.push(`**${graded.notGraded.length} expectations not graded in dry** (${by('model layer')} model layer, ${by('mod arm')} mod arm only). A dry pass covers the rest:`, '')
+    const mode = record.dry ? 'dry' : 'live'
+    const counts = [
+      [by('model layer'), 'model layer'],
+      [by('mod arm'), 'mod arm only'],
+      [by('dry --deliver only') + by('dry only'), "the mod's delivery"],
+    ].filter(([n], k) => n > 0 || (record.dry && k < 2))
+    out.push(`**${graded.notGraded.length} expectations not graded in ${mode === 'dry' ? 'dry' : 'a live run'}** (${counts.map(([n, what]) => `${n} ${what}`).join(', ')}). A ${mode} pass covers the rest:`, '')
     for (const n of graded.notGraded) out.push(`- ${n.scenario}: ${esc(n.id)} (${n.why})`)
     out.push('')
   }
@@ -95,7 +122,8 @@ export function renderMarkdown(record, graded) {
   }
   if (graded.outcome === 'incomplete') out.push('Not a pass: the blind grader has not ruled on every judged answer. Run `bed.mjs judge prepare`, then `judge apply`.', '')
 
-  const arms = [...new Set(record.runs.map((r) => r.arm))]
+  // A dry run's delivery rows are graded as the mod arm, which it never ran.
+  const arms = [...new Set([...record.runs.map((r) => r.arm), ...graded.rows.map((r) => r.arm)])]
   out.push('## Expectations', '')
   out.push(`| Scenario | Expectation | Turn | ${arms.join(' | ')} |`, `|---|---|---|${arms.map(() => '---').join('|')}|`)
   const keys = [...new Set(graded.rows.map((r) => `${r.scenario}\u0000${r.id}`))]

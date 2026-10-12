@@ -54,6 +54,22 @@
           }
         },
         { "id": "rule 7: collapsed sections left their pointers", "arms": ["settings"], "turn": "preamble", "budget": { "in": "hook:SessionStart", "present": ["MF-BUDGET-930-POINTER", "MF-BUDGET-UNSET-POINTER"] } },
+        {
+          "id": "rule 7: the mod's delivery is cut to the instruction budget",
+          "arms": ["mod"],
+          "turn": "preamble",
+          "meter": {
+            "in": "deliver",
+            "maxBytes": 4000,
+            "collapsed": ["MF budget unset", "MF budget 930"],
+            "sections": [
+              { "name": "MF budget core", "body": "MF-BUDGET-CORE-BODY" },
+              { "name": "MF budget 920", "body": "MF-BUDGET-920-BODY" },
+              { "name": "MF budget 930", "body": "MF-BUDGET-930-BODY" },
+              { "name": "MF budget unset", "body": "MF-BUDGET-UNSET-BODY" }
+            ]
+          }
+        },
         { "id": "rule 7: the model received the meter whole", "turn": 2, "answer": { "re": "context injected: [\\d.]+kB / 4\\.0kB budget — collapsed: MF budget unset, MF budget 930" } },
         { "id": "mod: the settings SessionStart stood down", "arms": ["mod"], "turn": "preamble", "hook": { "event": "SessionStart", "silent": true } },
         { "id": "mod: ran SessionStart", "arms": ["mod"], "modEvent": { "event": "classic.SessionStart" } },

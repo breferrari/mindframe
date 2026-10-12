@@ -207,3 +207,39 @@ test('a dry pass says what it did not check: model-layer and mod-arm expectation
   const live = grade({ ...record, dry: false }, record.specDoc)
   assert.equal(live.notGraded.length, 0, 'a live grade has nothing it skipped')
 })
+
+test('a deliver expectation is graded in a dry run with a delivery, as the mod arm; without one, it says why', (t) => {
+  const s = validateSpec(
+    minimalSpec({
+      scenarios: [
+        {
+          id: 'dl',
+          turns: ['x'],
+          expect: [
+            { id: 'delivery holds its meter', arms: ['mod'], turn: 'preamble', meter: { in: 'deliver', collapsed: [] } },
+            { id: 'delivery cut a section', arms: ['mod'], turn: 'preamble', meter: { in: 'deliver', collapsed: ['MF low'] } },
+          ],
+        },
+      ],
+    }),
+  )
+  const delivered = dryRun({ spec: s, vault: vaultWithScripts(t), out: path.join(tmp(t), 'out'), deliver: true })
+  const g = grade(delivered, delivered.specDoc)
+  assert.deepEqual(g.rows.map((r) => [r.id, r.arm, r.pass]), [['delivery holds its meter', 'mod', true], ['delivery cut a section', 'mod', false]])
+  assert.deepEqual(g.notGraded, [])
+  assert.match(renderMarkdown(delivered, g), /\| Turn \| settings \| mod \|[\s\S]*\| dl \| delivery holds its meter \| preamble \| — \| ✅ \|/, 'the row shows in a mod column')
+
+  const plain = dryRun({ spec: s, vault: vaultWithScripts(t), out: path.join(tmp(t), 'out2') })
+  const gp = grade(plain, plain.specDoc)
+  assert.equal(gp.rows.length, 0)
+  assert.deepEqual(gp.notGraded.map((n) => n.why), ['dry --deliver only', 'dry --deliver only'])
+  assert.match(renderMarkdown(plain, gp), /- dl: delivery holds its meter \(dry --deliver only\)/)
+  const required = grade(plain, plain.specDoc, {}, { requireDeliver: true })
+  assert.equal(required.outcome, 'fail', 'CI grades with requireDeliver: a missing delivery fails')
+  assert.deepEqual(required.rows.map((r) => [r.id, r.arm, r.pass]), [['delivery holds its meter', 'mod', false], ['delivery cut a section', 'mod', false]])
+  assert.deepEqual(required.notGraded, [])
+
+  const live = grade({ ...delivered, dry: false, runs: delivered.runs.map((r) => ({ ...r, arm: 'mod', deliver: undefined })) }, delivered.specDoc)
+  assert.equal(live.rows.length, 0, 'a live run records no delivery, so it is never failed for an empty one')
+  assert.deepEqual(live.notGraded.map((n) => n.why), ['dry only', 'dry only'])
+})
