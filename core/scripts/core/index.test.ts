@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+import * as lib from "../lib/project-dir.ts";
 import { resolveProjectDir, writeFileAtomic } from "./index.ts";
 
 describe("writeFileAtomic, through index.ts", () => {
@@ -53,19 +54,14 @@ describe("resolveProjectDir, through index.ts", () => {
 	});
 	afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-	test("a session started in a nested folder finds the vault root above it", () => {
-		const nested = join(root, "notes", "deep");
-		assert.equal(resolveProjectDir(nested, {}), root);
-		assert.equal(resolveProjectDir("unused", { CLAUDE_PROJECT_DIR: nested }), root);
-		assert.equal(resolveProjectDir("unused", { CLAUDE_PROJECT_DIR: "", GEMINI_PROJECT_DIR: nested }), root, "an empty variable counts as unset");
+	test("is the core's own function", () => {
+		assert.equal(resolveProjectDir, lib.resolveProjectDir);
 	});
 
-	test("outside any vault, the named folder itself", () => {
-		const outside = mkdtempSync(join(tmpdir(), "core-novault-"));
-		try {
-			assert.equal(resolveProjectDir(outside, {}), outside);
-		} finally {
-			rmSync(outside, { recursive: true, force: true });
-		}
+	test("a runner in a nested folder finds the vault root above it, named absolutely or relative to the working directory", () => {
+		const nested = join(root, "notes", "deep");
+		assert.equal(resolveProjectDir(nested, {}), root);
+		const fromCwd = relative(process.cwd(), nested);
+		assert.equal(resolveProjectDir(fromCwd, {}), root);
 	});
 });
