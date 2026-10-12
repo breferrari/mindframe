@@ -330,3 +330,38 @@ test("a needed file already in the vault, unrecorded, is refused when it differs
 	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
 	assert.equal(s.record().files[".claude/scripts/util.ts"]?.upstream, "util.ts");
 });
+
+test("an import cycle is followed once, and both files come along", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": 'import { a } from "./a.ts";\n' + LIB, "a.ts": 'import { b } from "./b.ts";\nexport const a = 1;\n', "b.ts": 'import { a } from "./a.ts";\nexport const b = a;\n' });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(s.has(".claude/scripts/a.ts") && s.has(".claude/scripts/b.ts"));
+	assert.equal(s.lines.filter((l) => l.startsWith("vendor: added")).length, 2);
+});
+
+test("a refusal after an add writes nothing: not the importer, not the file it could add", (t) => {
+	const s = imports(t);
+	const before = readFileSync(s.recFile, "utf8");
+	s.commit({ "lib.ts": 'import { a } from "./a.ts";\nimport { g } from "./ghost.ts";\n' + LIB, "a.ts": "export const a = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 1);
+	assert.equal(s.has(".claude/scripts/a.ts"), false);
+	assert.equal(s.vaultLib(), LIB);
+	assert.equal(readFileSync(s.recFile, "utf8"), before);
+});
+
+test("a record of an older schema, or one check can't verify, still owns the files it names", (t) => {
+	const s = imports(t);
+	put(s.vault, ".claude/scripts/util.ts", "export const u = 0;\n");
+	writeFileSync(path.join(s.vault, ".claude", "scripts", "VENDOR.json"), JSON.stringify({ schemaVersion: 1, files: { "util.ts": { sha256: "x" } } }));
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 1);
+	assert.match(s.lines.join("\n"), /\.claude\/scripts\/util\.ts is owned by \.claude\/scripts\/VENDOR\.json/);
+	assert.equal(readFileSync(path.join(s.vault, ".claude", "scripts", "util.ts"), "utf8"), "export const u = 0;\n");
+});
+
+test("an import in a comment is not an import", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": '// import { x } from "./ghost.ts";\n/* see "./ghost2.ts": import "./ghost2.ts" */\n' + LIB });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(!s.lines.some((l) => l.startsWith("vendor: added")));
+});

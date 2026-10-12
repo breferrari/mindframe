@@ -414,8 +414,7 @@ export const nextNumber = (existing: readonly string[]): string => String(Math.m
 
 /** A file's upstream path inside an upstream checkout. */
 export const upstreamPathOf = (record: VendorRecord, file: string): string => {
-	const up = record.files[file]?.upstream ?? file;
-	return typeof record.sourceRoot === "string" && record.sourceRoot !== "" ? `${record.sourceRoot}/${up}` : up;
+	return withSourceRoot(record, record.files[file]?.upstream ?? file);
 };
 
 export type NewPatchInput = {
@@ -535,8 +534,8 @@ export type UpdateInput = {
 	readonly patches: PatchSet;
 	/** Files whose conflict markers have been resolved by hand; their vault bytes are taken as the result. */
 	readonly resolved?: readonly string[];
-	/** Paths, in this record's frame, that another record in the vault owns, mapped to that record. */
-	readonly ownedElsewhere?: ReadonlyMap<string, string>;
+	/** The other record that owns a path in this record's frame, if any. */
+	readonly ownerOf?: (file: string) => string | null;
 };
 
 export type UpdatePlan = {
@@ -555,14 +554,81 @@ export type UpdatePlan = {
 /** The import specifiers in a module's source: `import … from`, `export … from`, `import "…"` and `import("…")`. */
 const SPECIFIERS = [/\bfrom\s*["']([^"'\r\n]+)["']/g, /\bimport\s*["']([^"'\r\n]+)["']/g, /\bimport\s*\(\s*["']([^"'\r\n]+)["']\s*\)/g];
 
-/** The relative import specifiers in a module's source. Package and node: specifiers are left out. */
+/**
+ * The relative import specifiers in a module's source, comments left out.
+ * Package and node: specifiers are the vault's concern, and a specifier names
+ * its file, extension included, as the core's own imports do.
+ */
 export function importsOf(source: string): string[] {
+	const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
 	const found = new Set<string>();
-	for (const re of SPECIFIERS) for (const m of source.matchAll(re)) if (m[1]?.startsWith("./") || m[1]?.startsWith("../")) found.add(m[1]);
+	for (const re of SPECIFIERS) for (const m of code.matchAll(re)) if (m[1]?.startsWith("./") || m[1]?.startsWith("../")) found.add(m[1]);
 	return [...found];
 }
 
-const MODULE = /\.(?:[cm]?[jt]s)$/;
+const MODULE_FILE = /\.(?:[cm]?[jt]s)$/;
+
+/** An upstream path, relative to the record's root, as a path in the upstream checkout. */
+const withSourceRoot = (record: VendorRecord, up: string): string =>
+	typeof record.sourceRoot === "string" && record.sourceRoot !== "" ? `${record.sourceRoot}/${up}` : up;
+
+/**
+ * The files the update's files import that the record lacks, followed
+ * transitively and added to `files` and `entries`, unpatched at the new commit:
+ * the update can't work without them (#78). A target another record owns, one
+ * upstream lacks, or one already in the vault that differs from upstream is a
+ * problem, so the update writes nothing. An import outside the record's root
+ * is the vault's own.
+ */
+function closeImports(
+	input: UpdateInput,
+	files: Array<{ file: string; bytes: Uint8Array }>,
+	entries: Record<string, FileEntry>,
+	problems: string[],
+): Array<{ file: string; importedBy: string }> {
+	const { record } = input;
+	const short = input.commit.slice(0, 7);
+	const added: Array<{ file: string; importedBy: string }> = [];
+	const queue = files.map((f) => ({ file: f.file, upstream: entries[f.file]?.upstream ?? record.files[f.file]?.upstream ?? f.file, bytes: f.bytes }));
+	for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+		if (!MODULE_FILE.test(next.file)) continue;
+		for (const spec of importsOf(Buffer.from(next.bytes).toString("utf8"))) {
+			const upstream = path.posix.normalize(path.posix.join(path.posix.dirname(next.upstream), spec));
+			if (upstream === ".." || upstream.startsWith("../")) continue;
+			const file = path.posix.normalize(path.posix.join(path.posix.dirname(next.file), spec));
+			if (record.files[file] !== undefined || entries[file] !== undefined) continue;
+			const owner = input.ownerOf?.(file);
+			if (owner) {
+				problems.push(`${file} is owned by ${owner}, and ${next.file} now imports it; take it off that record, or update that record instead`);
+				continue;
+			}
+			let target: string;
+			try {
+				target = resolveInside(input.vault, file);
+			} catch (e) {
+				problems.push(`${file}, which ${next.file} now imports: ${(e as Error).message}`);
+				continue;
+			}
+			let bytes: Uint8Array;
+			try {
+				bytes = readFileSync(resolveInside(input.upstreamRoot, withSourceRoot(record, upstream)));
+			} catch {
+				problems.push(`${next.file} imports ${file}, which upstream doesn't have at ${short}`);
+				continue;
+			}
+			const hash = contentHash(bytes);
+			if (existsSync(target) && contentHash(readFileSync(target)) !== hash) {
+				problems.push(`${file} is in the vault, unrecorded, and differs from upstream; ${next.file} now imports it. Move it aside, or record it, then update`);
+				continue;
+			}
+			entries[file] = { upstream, sha256: hash, upstreamSha256: hash };
+			files.push({ file, bytes });
+			added.push({ file, importedBy: next.file });
+			queue.push({ file, upstream, bytes });
+		}
+	}
+	return added;
+}
 
 /**
  * Moves a vault's vendored files to a new upstream commit, carrying its
@@ -718,49 +784,7 @@ export function planUpdate(input: UpdateInput): UpdatePlan {
 		const done = carry(merged.text);
 		if (!("stuck" in done)) settle(done, text(done.at));
 	}
-	// Files the updated ones import that the record lacks come along, unpatched at
-	// the new commit: the update can't work without them (#78). One another record
-	// owns, or one upstream lacks, is refused, so nothing is written.
-	const added: Array<{ file: string; importedBy: string }> = [];
-	if (problems.length === 0 && conflicts.length === 0) {
-		const queue = files.map((f) => ({ file: f.file, upstream: entries[f.file]?.upstream ?? record.files[f.file]?.upstream ?? f.file, bytes: f.bytes }));
-		for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-			if (!MODULE.test(next.file)) continue;
-			for (const spec of importsOf(Buffer.from(next.bytes).toString("utf8"))) {
-				const upstream = path.posix.normalize(path.posix.join(path.posix.dirname(next.upstream), spec));
-				if (upstream === ".." || upstream.startsWith("../")) continue; // outside the record's root: the vault's own
-				const file = path.posix.normalize(path.posix.join(path.posix.dirname(next.file), spec));
-				if (record.files[file] !== undefined || entries[file] !== undefined) continue;
-				const owner = input.ownedElsewhere?.get(file);
-				if (owner !== undefined) {
-					problems.push(`${file} is owned by ${owner}, and ${next.file} now imports it; take it off that record, or update that record instead`);
-					continue;
-				}
-				let bytes: Uint8Array;
-				try {
-					bytes = readFileSync(resolveInside(input.upstreamRoot, typeof record.sourceRoot === "string" && record.sourceRoot !== "" ? `${record.sourceRoot}/${upstream}` : upstream));
-				} catch {
-					problems.push(`${next.file} imports ${file}, which upstream doesn't have at ${short}`);
-					continue;
-				}
-				const hash = contentHash(bytes);
-				let present: Uint8Array | null = null;
-				try {
-					present = readFileSync(resolveInside(input.vault, file));
-				} catch {
-					/* not in the vault yet: it is written */
-				}
-				if (present !== null && contentHash(present) !== hash) {
-					problems.push(`${file} is in the vault, unrecorded, and differs from upstream; ${next.file} now imports it. Move it aside, or record it, then update`);
-					continue;
-				}
-				entries[file] = { upstream, sha256: hash, upstreamSha256: hash };
-				files.push({ file, bytes });
-				added.push({ file, importedBy: next.file });
-				queue.push({ file, upstream, bytes });
-			}
-		}
-	}
+	const added = problems.length === 0 && conflicts.length === 0 ? closeImports(input, files, entries, problems) : [];
 
 	if (problems.length) throw new VendorError(problems.join("\n"));
 

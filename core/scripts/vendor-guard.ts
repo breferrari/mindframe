@@ -65,10 +65,14 @@ export function findRecords(vaultRoot: string): string[] {
 	return found;
 }
 
-/** The vendored file at `filePath`, or null when no record lists it. */
-export function vendoredAt(vaultRoot: string, filePath: string, platform: string = process.platform): Vendored | null {
-	const target = fold(posix(path.resolve(vaultRoot, filePath)), platform);
-	const defaultRecord = path.join(vaultRoot, ".claude", "VENDOR.json");
+/**
+ * Every file each record under `.claude/` lists, as an absolute path, with its
+ * record. Records are read leniently, any schema: a record that names a file
+ * owns it, whether or not `check` can verify the record. `.claude/VENDOR.json`
+ * lists paths from the vault root, any other record from its own folder.
+ */
+function* listed(vaultRoot: string, platform: string): Generator<{ recordFile: string; file: string }> {
+	const defaultRecord = fold(posix(path.join(vaultRoot, ".claude", "VENDOR.json")), platform);
 	for (const recordFile of findRecords(vaultRoot)) {
 		let record: unknown;
 		try {
@@ -80,12 +84,31 @@ export function vendoredAt(vaultRoot: string, filePath: string, platform: string
 		if (typeof record !== "object" || record === null) continue;
 		const { files } = record as { files?: unknown };
 		if (typeof files !== "object" || files === null) continue;
-		const root = fold(posix(recordFile), platform) === fold(posix(defaultRecord), platform) ? vaultRoot : path.dirname(recordFile);
-		for (const key of Object.keys(files)) {
-			if (fold(posix(path.resolve(root, key)), platform) === target) {
-				return { rel: posix(path.relative(vaultRoot, path.resolve(root, key))) };
-			}
-		}
+		const root = fold(posix(recordFile), platform) === defaultRecord ? vaultRoot : path.dirname(recordFile);
+		for (const key of Object.keys(files)) yield { recordFile, file: path.resolve(root, key) };
+	}
+}
+
+/** The vendored file at `filePath`, or null when no record lists it. */
+export function vendoredAt(vaultRoot: string, filePath: string, platform: string = process.platform): Vendored | null {
+	const target = fold(posix(path.resolve(vaultRoot, filePath)), platform);
+	for (const { file } of listed(vaultRoot, platform)) {
+		if (fold(posix(file), platform) === target) return { rel: posix(path.relative(vaultRoot, file)) };
+	}
+	return null;
+}
+
+/**
+ * The record, other than `except`, that lists `filePath` (absolute, or from the
+ * vault root), as a path from the vault root; null when none does. Compared as
+ * vendoredAt compares: without case on Windows.
+ */
+export function ownerOf(vaultRoot: string, filePath: string, except: string, platform: string = process.platform): string | null {
+	const target = fold(posix(path.resolve(vaultRoot, filePath)), platform);
+	const skip = fold(posix(path.resolve(except)), platform);
+	for (const { recordFile, file } of listed(vaultRoot, platform)) {
+		if (fold(posix(path.resolve(recordFile)), platform) === skip) continue;
+		if (fold(posix(file), platform) === target) return posix(path.relative(vaultRoot, recordFile));
 	}
 	return null;
 }
