@@ -44,7 +44,7 @@ node testbed/bin/bed.mjs build --vault <vault-dir> --spec <spec.json> --bed <new
 
 **Cost.** Each session is a real model session, capped by `session.maxBudgetUsd`. On Windows every session briefly opens console windows that take focus. Live sessions never run in CI.
 
-**CI is deterministic.** It runs `npm test`, which drives the runner against a stand-in for `claude` (`tests/fixtures/fake-claude.mjs`). It also runs `node testbed/bin/ci-dry.mjs`, which dry-runs every shipped spec against the vault commits pinned in [`ci/pins.json`](ci/pins.json), on Windows, macOS and Linux, with no model and no API key. A live run is evidence for a design decision, never a CI gate. What a live run finds becomes a dry assertion wherever the finding is in the hooks' output rather than in the model's answer.
+**CI is deterministic.** It runs `npm test`, which drives the runner against a stand-in for `claude` (`tests/fixtures/fake-claude.mjs`). It also runs `node testbed/bin/ci-dry.mjs`, which dry-runs every shipped spec against the vault commits pinned in [`ci/pins.json`](ci/pins.json), on Windows, macOS and Linux, with no model and no API key. It passes `--deliver`, and fails if a delivery row was left ungraded. A live run is evidence for a design decision, never a CI gate. What a live run finds becomes a dry assertion wherever the finding is in the hooks' output rather than in the model's answer.
 
 ## The bed
 
@@ -135,7 +135,7 @@ There are two layers. A log shows that a hook ran, not what reached the model. S
 | `isolates: { event, extension, present? }` | log | The hook still exited 0, its output names the extension that failed, and the other sections (`present`) are still there |
 | `judge: { question, rubric }` | model | A blind model grader decides (see below). Needs a numbered turn |
 
-`in` (the source) is `answer`, `shown`, or `hook:<Event>` (the outputs of that event's hooks in the turn).
+`in` (the source) is `answer`, `shown`, `hook:<Event>` (the outputs of that event's hooks in the turn), or `deliver`. `deliver` is what the mod hands the model at startup, as a dry run with `--deliver` records it. It takes `turn: "preamble"` and `arms: ["mod"]`, and is graded only in such a dry run, as the mod arm. A live run or a plain dry run names the row as not graded ("dry only", "dry --deliver only") and never fails it for an empty source.
 
 A mod's line under the answer is labelled with its plugin's name. Claude Code 2.1.296 has a built-in plugin, `cc-plugin-agents-md`, that also answers on Stop. When two plugins answer the same event, the label joins their names with `+` (`wiki-mind+cc-plugin-agents-md: vault check: …`). So a `shown` anchor on a label allows other names on either side of the vault's: `^([^:\n]+\+)?wiki-mind(\+[^:\n]+)?: `.
 

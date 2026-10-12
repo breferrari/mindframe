@@ -2,8 +2,9 @@
 // CI's dry run of every shipped spec, against pinned vault commits
 // (testbed/ci/pins.json). No model and no Claude Code: each vault's own hook
 // scripts run as a session would run them, with the same qmd redirect and
-// residue check as any bed run (lib/dry.mjs). Deterministic, so it gates CI;
-// live sessions never do.
+// residue check as any bed run (lib/dry.mjs). Each also runs SessionStart the
+// way the mod does (--deliver), so expectations on the mod's delivery are
+// graded. Deterministic, so it gates CI; live sessions never do.
 //
 //   node testbed/bin/ci-dry.mjs [--work <dir>]
 //
@@ -52,11 +53,15 @@ for (const { spec: name, vault } of pins.specs) {
   const pin = pins.vaults[vault]
   const dir = checkout(vault, pin)
   const spec = loadSpec(path.join(ROOT, 'specs', `${name}.json`))
-  const record = dryRun({ spec, vault: dir, out: path.join(work, 'out', name) })
+  const record = dryRun({ spec, vault: dir, out: path.join(work, 'out', name), deliver: true })
   const graded = grade(record, spec)
   console.log(`\n### ${name} on ${vault} ${pin.commit}: ${graded.outcome.toUpperCase()}\n`)
   console.log(renderMarkdown(record, graded))
-  if (graded.outcome !== 'pass') failed++
+  // A delivery row left ungraded here means the delivery went missing: a
+  // skip would hide exactly the regression the row exists to catch.
+  const skipped = graded.notGraded.filter((n) => n.why === 'dry --deliver only')
+  for (const n of skipped) console.log(`${name}: ${n.scenario}: ${n.id} was not graded, because no delivery was recorded`)
+  if (graded.outcome !== 'pass' || skipped.length > 0) failed++
 }
 console.log(failed ? `\n${failed} spec(s) failed their dry grade` : '\nevery spec passed its dry grade')
 process.exitCode = failed ? 1 : 0

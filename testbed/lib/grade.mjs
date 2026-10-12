@@ -115,7 +115,8 @@ export function renderMarkdown(record, graded) {
   }
   if (graded.outcome === 'incomplete') out.push('Not a pass: the blind grader has not ruled on every judged answer. Run `bed.mjs judge prepare`, then `judge apply`.', '')
 
-  const arms = [...new Set(record.runs.map((r) => r.arm))]
+  // A dry run's delivery rows are graded as the mod arm, which it never ran.
+  const arms = [...new Set([...record.runs.map((r) => r.arm), ...graded.rows.map((r) => r.arm)])]
   out.push('## Expectations', '')
   out.push(`| Scenario | Expectation | Turn | ${arms.join(' | ')} |`, `|---|---|---|${arms.map(() => '---').join('|')}|`)
   const keys = [...new Set(graded.rows.map((r) => `${r.scenario}\u0000${r.id}`))]

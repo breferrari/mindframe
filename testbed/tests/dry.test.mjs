@@ -227,6 +227,7 @@ test('a deliver expectation is graded in a dry run with a delivery, as the mod a
   const g = grade(delivered, delivered.specDoc)
   assert.deepEqual(g.rows.map((r) => [r.id, r.arm, r.pass]), [['delivery holds its meter', 'mod', true], ['delivery cut a section', 'mod', false]])
   assert.deepEqual(g.notGraded, [])
+  assert.match(renderMarkdown(delivered, g), /\| Turn \| settings \| mod \|[\s\S]*\| dl \| delivery holds its meter \| preamble \| — \| ✅ \|/, 'the row shows in a mod column')
 
   const plain = dryRun({ spec: s, vault: vaultWithScripts(t), out: path.join(tmp(t), 'out2') })
   const gp = grade(plain, plain.specDoc)
