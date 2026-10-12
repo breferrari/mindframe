@@ -40,9 +40,9 @@ describe("lineRegions", () => {
 		assert.deepEqual(lineRegions(lines), ["fence", "fence", "fence", "fence", "fence", "fence", "fence", "body", "fence", "fence"]);
 	});
 
-	test("a heading is up to three spaces, one to six #s, then a space or the end of the line", () => {
-		const lines = ["#tag", "###### six", "####### seven", "   # indented", "#", "    # code-indented"];
-		assert.deepEqual(lineRegions(lines), ["body", "heading", "body", "heading", "heading", "body"]);
+	test("a heading is up to three spaces, one to six #s, then a space, a tab or the end of the line", () => {
+		const lines = ["#tag", "###### six", "####### seven", "   # indented", "#", "    # code-indented", "#\ttab", "#\u00a0nbsp"];
+		assert.deepEqual(lineRegions(lines), ["body", "heading", "body", "heading", "heading", "body", "heading", "body"]);
 	});
 
 	test("a fence-looking line inside frontmatter is frontmatter, and opens no fence", () => {
@@ -125,17 +125,14 @@ describe("agreement with the whole-note readers", () => {
 	});
 
 	test("the spans on body and heading lines are exactly extractWikilinkTargets' links in the note without its frontmatter", () => {
-		for (const note of notes) {
+		const found = notes.map((note) => {
 			const lines = note.split("\n");
 			const regions = lineRegions(lines);
 			const fromSpans = lines.flatMap((line, i) => (regions[i] === "body" || regions[i] === "heading" ? wikilinkSpans(line).map((s) => s.target) : []));
 			assert.deepEqual(fromSpans, extractWikilinkTargets(stripFrontmatter(note)), JSON.stringify(note.slice(0, 20)));
-		}
-		const first = notes[0] ?? "";
-		const firstLines = first.split("\n");
-		const firstRegions = lineRegions(firstLines);
-		const found = firstLines.flatMap((line, i) => (firstRegions[i] === "body" || firstRegions[i] === "heading" ? wikilinkSpans(line).map((s) => s.target) : []));
-		assert.deepEqual(found, ["Heading link", "One", "Two", "Three", "Four", "Five", "Six", "Seven"]);
+			return fromSpans;
+		});
+		assert.deepEqual(found[0], ["Heading link", "One", "Two", "Three", "Four", "Five", "Six", "Seven"]);
 	});
 });
 

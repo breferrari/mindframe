@@ -87,8 +87,8 @@ function fenceStep(line: string, marker: string): { fenced: boolean; marker: str
 	return { fenced: false, marker: "" };
 }
 
-/** An ATX heading: up to three spaces, one to six #s, then a space or the end of the line. */
-const HEADING = /^ {0,3}#{1,6}(\s|$)/;
+/** An ATX heading: up to three spaces, one to six #s, then a space, a tab or the end of the line. */
+const HEADING = /^ {0,3}#{1,6}([ \t]|$)/;
 
 /** Which part of a note a line is in. */
 export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
@@ -104,13 +104,13 @@ export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
  * - Fences are the ones stripCodeRegions finds in the note without its
  *   frontmatter, so the links on body and heading lines are exactly
  *   extractWikilinkTargets(stripFrontmatter(note)).
- * - A heading is up to three spaces, one to six #s, then a space or the
- *   end of the line.
+ * - A heading is up to three spaces, one to six #s, then a space, a tab
+ *   or the end of the line.
  */
 export function lineRegions(lines: readonly string[]): LineRegion[] {
 	const bare = lines.map((l) => l.replace(/\r$/, ""));
-	// stripFrontmatter's rule, restated for lines: it and frontmatter.ts's
-	// validateContent each hold a copy, and none is exported to share.
+	// stripFrontmatter's rule, restated for lines. The core holds several
+	// copies of the frontmatter rule, and they drift; #82 makes them one.
 	const close = bare[0]?.startsWith("---") ? bare.indexOf("---", 1) : -1;
 	let marker = "";
 	return bare.map((line, i): LineRegion => {
@@ -127,37 +127,43 @@ export type WikilinkSpan = { readonly target: string; readonly start: number; re
 
 /**
  * Every wikilink on one line, with its offsets: `line.slice(start, end)`
- * is the whole link, `!` and alias tail included. Inline code is blanked
- * the way stripCodeRegions removes it, keeping every offset, and each
- * target is read as extractWikilinkTargets reads it, so aliases, table escapes,
- * fragments, embeds, assets and placeholders follow its rules: a link it
- * drops has no span. Fences span lines; use lineRegions for them.
+ * is the whole link as written, `!` and alias tail included. Links are
+ * found after inline code is removed, as stripCodeRegions removes it, so
+ * a link extraction reads is a link here too; inline code written inside
+ * or between a link's brackets falls inside its span, so replacing the
+ * span replaces that code as well. Each target is read as
+ * extractWikilinkTargets reads it, so aliases, table escapes, fragments,
+ * embeds, assets and placeholders follow its rules: a link it drops has
+ * no span. Fences span lines; use lineRegions for them.
  */
 export function wikilinkSpans(line: string): WikilinkSpan[] {
 	// Remove inline code as stripCodeRegions does, and keep where each kept
 	// character came from: links are found in what's left, as extraction
 	// finds them (`[[A`x`B]]` reads as AB), and their offsets map back.
-	let kept = "";
-	const from: number[] = [];
-	let at = 0;
-	const keep = (to: number) => {
-		for (; at < to; at++) {
-			kept += line.charAt(at);
-			from.push(at);
+	let kept = line;
+	let from = (i: number) => i;
+	if (line.includes("`")) {
+		const at: number[] = [];
+		const parts: string[] = [];
+		let next = 0;
+		for (const code of line.matchAll(INLINE_CODE)) {
+			parts.push(line.slice(next, code.index));
+			for (let i = next; i < code.index; i++) at.push(i);
+			next = code.index + code[0].length;
 		}
-	};
-	for (const code of line.matchAll(INLINE_CODE)) {
-		keep(code.index);
-		at = code.index + code[0].length;
+		parts.push(line.slice(next));
+		for (let i = next; i < line.length; i++) at.push(i);
+		kept = parts.join("");
+		from = (i) => {
+			const original = at[i];
+			if (original === undefined) throw new Error(`wikilinkSpans: no source offset for ${i}`);
+			return original;
+		};
 	}
-	keep(line.length);
 	const spans: WikilinkSpan[] = [];
 	for (const m of kept.matchAll(WIKILINK)) {
 		const target = targetOf(m[1] ?? "");
-		if (target === null) continue;
-		const first = from[m.index] ?? 0;
-		const last = from[m.index + m[0].length - 1] ?? first;
-		spans.push({ target, start: first, end: last + 1 });
+		if (target !== null) spans.push({ target, start: from(m.index), end: from(m.index + m[0].length - 1) + 1 });
 	}
 	return spans;
 }
