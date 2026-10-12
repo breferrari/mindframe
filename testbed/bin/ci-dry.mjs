@@ -54,14 +54,12 @@ for (const { spec: name, vault } of pins.specs) {
   const dir = checkout(vault, pin)
   const spec = loadSpec(path.join(ROOT, 'specs', `${name}.json`))
   const record = dryRun({ spec, vault: dir, out: path.join(work, 'out', name), deliver: true })
-  const graded = grade(record, spec)
+  // requireDeliver: a delivery that went missing fails its rows, so it can't
+  // hide the regression they exist to catch.
+  const graded = grade(record, spec, {}, { requireDeliver: true })
   console.log(`\n### ${name} on ${vault} ${pin.commit}: ${graded.outcome.toUpperCase()}\n`)
   console.log(renderMarkdown(record, graded))
-  // A delivery row left ungraded here means the delivery went missing: a
-  // skip would hide exactly the regression the row exists to catch.
-  const skipped = graded.notGraded.filter((n) => n.why === 'dry --deliver only')
-  for (const n of skipped) console.log(`${name}: ${n.scenario}: ${n.id} was not graded, because no delivery was recorded`)
-  if (graded.outcome !== 'pass' || skipped.length > 0) failed++
+  if (graded.outcome !== 'pass') failed++
 }
 console.log(failed ? `\n${failed} spec(s) failed their dry grade` : '\nevery spec passed its dry grade')
 process.exitCode = failed ? 1 : 0

@@ -31,7 +31,7 @@ export function validateMeasure(m, { arms, turns }, where) {
   }
   const out = { ...m, turn, arms: m.arms ?? arms }
   for (const a of out.arms) if (!arms.includes(a)) throw new MeasureError(`${where}: arm ${a} is not one of the scenario's arms`)
-  if (m.kind !== 'toolRead' && !SOURCE.test(m.in ?? '')) throw new MeasureError(`${where}.in must be answer, shown or hook:<Event>`)
+  if (m.kind !== 'toolRead' && !SOURCE.test(m.in ?? '')) throw new MeasureError(`${where}.in must be answer, shown, deliver or hook:<Event>`)
   if (m.kind === 'count' && !(Array.isArray(m.markers) && m.markers.length > 0 && m.markers.every((x) => typeof x === 'string' && x !== ''))) {
     throw new MeasureError(`${where}.markers must be a non-empty list of words`)
   }

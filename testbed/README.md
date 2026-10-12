@@ -44,7 +44,7 @@ node testbed/bin/bed.mjs build --vault <vault-dir> --spec <spec.json> --bed <new
 
 **Cost.** Each session is a real model session, capped by `session.maxBudgetUsd`. On Windows every session briefly opens console windows that take focus. Live sessions never run in CI.
 
-**CI is deterministic.** It runs `npm test`, which drives the runner against a stand-in for `claude` (`tests/fixtures/fake-claude.mjs`). It also runs `node testbed/bin/ci-dry.mjs`, which dry-runs every shipped spec against the vault commits pinned in [`ci/pins.json`](ci/pins.json), on Windows, macOS and Linux, with no model and no API key. It passes `--deliver`, and fails if a delivery row was left ungraded. A live run is evidence for a design decision, never a CI gate. What a live run finds becomes a dry assertion wherever the finding is in the hooks' output rather than in the model's answer.
+**CI is deterministic.** It runs `npm test`, which drives the runner against a stand-in for `claude` (`tests/fixtures/fake-claude.mjs`). It also runs `node testbed/bin/ci-dry.mjs`, which dry-runs every shipped spec against the vault commits pinned in [`ci/pins.json`](ci/pins.json), on Windows, macOS and Linux, with no model and no API key. It passes `--deliver` and grades with `requireDeliver`, so a delivery row with no delivery recorded fails rather than being left ungraded. A live run is evidence for a design decision, never a CI gate. What a live run finds becomes a dry assertion wherever the finding is in the hooks' output rather than in the model's answer.
 
 ## The bed
 

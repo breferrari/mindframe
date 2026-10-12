@@ -234,6 +234,10 @@ test('a deliver expectation is graded in a dry run with a delivery, as the mod a
   assert.equal(gp.rows.length, 0)
   assert.deepEqual(gp.notGraded.map((n) => n.why), ['dry --deliver only', 'dry --deliver only'])
   assert.match(renderMarkdown(plain, gp), /- dl: delivery holds its meter \(dry --deliver only\)/)
+  const required = grade(plain, plain.specDoc, {}, { requireDeliver: true })
+  assert.equal(required.outcome, 'fail', 'CI grades with requireDeliver: a missing delivery fails')
+  assert.deepEqual(required.rows.map((r) => [r.id, r.arm, r.pass]), [['delivery holds its meter', 'mod', false], ['delivery cut a section', 'mod', false]])
+  assert.deepEqual(required.notGraded, [])
 
   const live = grade({ ...delivered, dry: false, runs: delivered.runs.map((r) => ({ ...r, arm: 'mod', deliver: undefined })) }, delivered.specDoc)
   assert.equal(live.rows.length, 0, 'a live run records no delivery, so it is never failed for an empty one')
