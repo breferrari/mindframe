@@ -12,7 +12,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { manifestOf, type ManifestObject } from "../lib/manifest.ts";
-import { loadRegistry, parseDeclarations, type Registry } from "./registry.ts";
+import { EXTENSIONS_KEY, loadRegistry, parseDeclarations, type Registry } from "./registry.ts";
 import type { HookContext, HookEvent } from "./types.ts";
 
 /** The name openVault has always returned; the same type as ManifestObject. */
@@ -47,7 +47,7 @@ export async function openVault(
 }
 
 /** The declaration a vault adds to `extensions` to keep QMD's session-start work (#70). */
-export const QMD_DECLARATION = '{"id":"qmd","module":".claude/scripts/extensions/qmd/index.ts","events":["session-start"],"timeoutMs":30000}';
+export const QMD_DECLARATION = '{"id":"qmd","module":".claude/scripts/extensions/qmd/index.ts","events":["session-start"]}';
 
 /**
  * Notes for the meter line about a step a vault still has to take after a
@@ -68,5 +68,8 @@ export function migrationNotes(manifest: Manifest): string[] {
 	const setsQmd = typeof manifest?.["qmd_index"] === "string" || typeof manifest?.["qmd_min_version"] === "string";
 	if (!setsQmd) return [];
 	const hasQmd = parseDeclarations(manifest).result.some((d) => d.id === "qmd" && d.events.includes("session-start"));
-	return hasQmd ? [] : [`QMD off, no qmd extension: add ${QMD_DECLARATION} to extensions`];
+	if (hasQmd) return [];
+	const declared = manifest?.[EXTENSIONS_KEY];
+	const named = Array.isArray(declared) && declared.some((d: unknown) => typeof d === "object" && d !== null && (d as Record<string, unknown>)["id"] === "qmd");
+	return [`QMD off: ${named ? "make the qmd entry" : "add"} ${QMD_DECLARATION} in manifest extensions`];
 }

@@ -87,18 +87,23 @@ describe("migrationNotes: qmd set in the manifest, no qmd extension declared (#7
 	});
 
 	test("a qmd declaration that doesn't run at session start doesn't count: QMD's work would never run", () => {
-		assert.equal(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop"] }] }).length, 1);
+		const [note] = notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop"] }] });
+		assert.match(note ?? "", /make the qmd entry/, "fix the entry, not add a second one the registry would refuse");
+		assert.match(notes({ qmd_index: "" })[0] ?? "", /: add /);
 		assert.deepEqual(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop", "session-start"] }] }), []);
 	});
 
 	test("the note and a full meter fit the room the budget keeps for the meter", () => {
-		const [note] = notes({ qmd_index: "" });
+		const [note] = notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop"] }] });
+		assert.ok(note !== undefined);
 		const meter = formatInjectionSize(INJECTION_CEILING_BYTES, {
 			budgetBytes: INJECTION_CEILING_BYTES,
 			clampedFrom: 99_000,
 			collapsed: ["Recent Changes", "Open Tasks"],
 			degraded: [{ section: "North Star", level: "headlines" }],
-			notes: [note ?? ""],
+			cutSections: [{ section: "Open Tasks", note: "10 of 14" }],
+			cut: true,
+			notes: [note],
 		});
 		assert.ok(Buffer.byteLength(meter, "utf-8") <= METER_HEADROOM, `${Buffer.byteLength(meter, "utf-8")} bytes: ${meter}`);
 	});

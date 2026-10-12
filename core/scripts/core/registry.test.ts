@@ -223,6 +223,11 @@ describe("rule 5: a throw or a timeout is isolated", () => {
 		const { result, failures } = await collectSections(fromLoaded([declared(blocking), declared(waiting, { timeoutMs: 100 })]), ctx, "full");
 		assert.deepEqual(failures, []);
 		assert.deepEqual(result.map((s) => s.body), ["blocked", "arrived"]);
+		// And the other way round: an async call that starts first keeps its time too.
+		const first: Extension = { id: "waits-first", sections: [{ id: "io", priority: -1, header: "### io", render: () => new Promise<string>((r) => setTimeout(() => r("arrived"), 20)) }] };
+		const after = await collectSections(fromLoaded([declared(first, { timeoutMs: 100 }), declared(blocking)]), ctx, "full");
+		assert.deepEqual(after.failures, []);
+		assert.deepEqual(after.result.map((s) => s.body), ["arrived", "blocked"]);
 	});
 
 	test("an item with an invalid priority is a failure, not a guess", async () => {

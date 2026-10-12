@@ -6,13 +6,13 @@
  *
  * Both sections read one run of QMD's work per hook (session.ts), which also
  * starts the background index refresh, as the core did before. Moving that
- * refresh to an effect is #95. So `disable` on a section hides its note and
- * leaves the work running: `enabled: false` or `VAULT_QMD=off` turns it off.
+ * refresh to an effect is #95. So `disable` on one section hides its note
+ * and leaves the work running; disabling both, `enabled: false` or
+ * `VAULT_QMD=off` turns it off, the refresh included.
  *
- * The work is synchronous (spawnSync probes), so the declaration's
- * `timeoutMs` can't cut it short; it keeps the limit honest for when it
- * isn't. The registry starts each call's limit when the call starts, so
- * this run doesn't spend other extensions' time.
+ * The work is synchronous (spawnSync probes), so no time limit can cut it
+ * short, and its declaration sets none. The registry starts every call
+ * before any limit, so this run doesn't spend other extensions' time.
  */
 
 import type { Extension, HookContext, Section } from "../../core/index.ts";

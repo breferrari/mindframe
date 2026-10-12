@@ -10,8 +10,8 @@ import { dirname, join, posix, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-// `import x from "s"`, `export { x } from "s"`, `import "s"`, and `import("s")`.
-const IMPORT = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
+// `import x from "s"`, `export { x } from "s"`, `import "s"`, `import("s")` and `require("s")`, quoted or in backticks.
+const IMPORT = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["'`]([^"'`]+)["'`]/g;
 
 /** Every module specifier a source names. */
 export function specifiers(source: string): string[] {
@@ -49,6 +49,18 @@ test("the rule reads every form of import, so none slips past it", () => {
 		'import "../../lib/side-effect.ts";',
 		'const m = await import("../../lib/dynamic.ts");',
 		"const n = await import ( '../../lib/spaced.ts' );",
+		"const t = await import(`../../lib/template.ts`);",
+		'const r = require("../../lib/required.ts");',
 	].join("\n");
-	assert.deepEqual(specifiers(source), ["./a.ts", "../../core/index.ts", "./c.ts", "./d.ts", "../../lib/side-effect.ts", "../../lib/dynamic.ts", "../../lib/spaced.ts"]);
+	assert.deepEqual(specifiers(source), [
+		"./a.ts",
+		"../../core/index.ts",
+		"./c.ts",
+		"./d.ts",
+		"../../lib/side-effect.ts",
+		"../../lib/dynamic.ts",
+		"../../lib/spaced.ts",
+		"../../lib/template.ts",
+		"../../lib/required.ts",
+	]);
 });
