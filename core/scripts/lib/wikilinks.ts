@@ -87,6 +87,9 @@ function fenceStep(line: string, marker: string): { fenced: boolean; marker: str
 	return { fenced: false, marker: "" };
 }
 
+/** An ATX heading: one to six #s and a space. */
+const HEADING = /^#{1,6}\s/;
+
 /** Which part of a note a line is in. */
 export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
 
@@ -94,16 +97,19 @@ export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
  * The region of each line of a note, for an extension that rewrites a note
  * line by line. Lines may keep a trailing \r (CRLF split on \n).
  *
- * - Frontmatter runs from an opening `---` line (a BOM may precede it) to
- *   the first `---` line after it, as frontmatter.ts reads it: a `---`
- *   inside a value doesn't end it, and an unterminated block is no
- *   frontmatter at all.
+ * - Frontmatter runs from a first line of exactly `---` (a BOM may precede
+ *   it) to the first `---` line after it. It closes as frontmatter.ts
+ *   reads it: a `---` inside a value doesn't end it, and an unterminated
+ *   block is no frontmatter at all. A first line such as `----` opens
+ *   nothing, as in Obsidian.
  * - Fences are the ones stripCodeRegions strips, so a link on a "fence"
  *   line is never one extractWikilinkTargets reads.
  * - A heading is one to six #s and a space.
  */
 export function lineRegions(lines: readonly string[]): LineRegion[] {
 	const bare = lines.map((l) => l.replace(/\r$/, ""));
+	// The same rule as validateContent in frontmatter.ts, which exports no
+	// finder to share; the two join when that file next changes.
 	const close = bare[0]?.replace(/^\uFEFF/, "") === "---" ? bare.indexOf("---", 1) : -1;
 	let marker = "";
 	return bare.map((line, i): LineRegion => {
@@ -111,7 +117,7 @@ export function lineRegions(lines: readonly string[]): LineRegion[] {
 		const step = fenceStep(line, marker);
 		marker = step.marker;
 		if (step.fenced) return "fence";
-		return /^#{1,6}\s/.test(line) ? "heading" : "body";
+		return HEADING.test(line) ? "heading" : "body";
 	});
 }
 
@@ -122,7 +128,7 @@ export type WikilinkSpan = { readonly target: string; readonly start: number; re
  * Every wikilink on one line, with its offsets: `line.slice(start, end)`
  * is the whole link, `!` and alias tail included. Inline code is blanked
  * the way stripCodeRegions removes it, keeping every offset, and each
- * target is read by extractWikilinkTargets, so aliases, table escapes,
+ * target is read as extractWikilinkTargets reads it, so aliases, table escapes,
  * fragments, embeds, assets and placeholders follow its rules: a link it
  * drops has no span. Fences span lines; use lineRegions for them.
  */
@@ -130,8 +136,13 @@ export function wikilinkSpans(line: string): WikilinkSpan[] {
 	const masked = line.replace(INLINE_CODE, (code) => " ".repeat(code.length));
 	const spans: WikilinkSpan[] = [];
 	for (const m of masked.matchAll(WIKILINK)) {
-		const target = extractWikilinkTargets(m[0])[0];
-		if (target !== undefined) spans.push({ target, start: m.index, end: m.index + m[0].length });
+		const end = m.index + m[0].length;
+		// The target from the link as written, with its inline code removed
+		// as stripCodeRegions removes it: `[[A`x`B]]` reads as AB, as it does
+		// when extracted from the whole note.
+		const inner = /^!?\[\[([^]*)\]\]$/.exec(line.slice(m.index, end).replace(INLINE_CODE, ""))?.[1];
+		const target = inner === undefined ? null : targetOf(inner);
+		if (target !== null) spans.push({ target, start: m.index, end });
 	}
 	return spans;
 }
@@ -145,22 +156,27 @@ export function wikilinkSpans(line: string): WikilinkSpan[] {
 export function extractWikilinkTargets(content: string): string[] {
 	const targets: string[] = [];
 	for (const m of stripCodeRegions(content).matchAll(WIKILINK)) {
-		let inner = m[1] ?? "";
-		// Table-escaped alias pipes — both forms Obsidian accepts inside
-		// tables: backslash (`[[Target\|alias]]`) and HTML entity
-		// (`[[Target&#124;alias]]`). Normalize before splitting so the
-		// target doesn't keep a trailing `\` or `&`.
-		inner = inner.replaceAll("\\|", "|").replaceAll("&#124;", "|");
-		const target = (inner.split("|")[0] ?? "").split("#")[0]?.trim() ?? "";
-		if (target === "") continue; // [[#heading]] / [[|alias]] — same-file
-		if (target.includes("{{")) continue; // template placeholder
-		const ext = target.includes(".")
-			? (target.split(".").pop() ?? "").toLowerCase()
-			: "";
-		if (ASSET_EXTENSIONS.has(ext)) continue;
-		targets.push(target);
+		const target = targetOf(m[1] ?? "");
+		if (target !== null) targets.push(target);
 	}
 	return targets;
+}
+
+/** The target inside one `[[...]]`, or null for a link that isn't a note edge. */
+function targetOf(inner: string): string | null {
+	// Table-escaped alias pipes — both forms Obsidian accepts inside
+	// tables: backslash (`[[Target\|alias]]`) and HTML entity
+	// (`[[Target&#124;alias]]`). Normalize before splitting so the
+	// target doesn't keep a trailing `\` or `&`.
+	const normal = inner.replaceAll("\\|", "|").replaceAll("&#124;", "|");
+	const target = (normal.split("|")[0] ?? "").split("#")[0]?.trim() ?? "";
+	if (target === "") return null; // [[#heading]] / [[|alias]] — same-file
+	if (target.includes("{{")) return null; // template placeholder
+	const ext = target.includes(".")
+		? (target.split(".").pop() ?? "").toLowerCase()
+		: "";
+	if (ASSET_EXTENSIONS.has(ext)) return null;
+	return target;
 }
 
 /**

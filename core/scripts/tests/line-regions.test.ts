@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { extractWikilinkTargets, lineRegions, wikilinkSpans } from "../lib/wikilinks.ts";
 import * as core from "../core/index.ts";
 
+// Backticks built from parts, so this file holds no literal fence of its own.
 const tick = "`";
 const fence = tick.repeat(3);
 
@@ -29,6 +30,10 @@ describe("lineRegions", () => {
 
 	test("an unterminated block is not frontmatter, as frontmatter.ts reads it", () => {
 		assert.deepEqual(lineRegions(["---", "a: 1", "text"]), ["body", "body", "body"]);
+	});
+
+	test("a first line that is not exactly --- opens nothing", () => {
+		assert.deepEqual(lineRegions(["----", "a: 1", "---"]), ["body", "body", "body"]);
 	});
 
 	test("``` and ~~~ fences, a fence that never closes, and #s inside a fence", () => {
@@ -94,14 +99,14 @@ test("agreement: the spans on body and heading lines are exactly extractWikilink
 		"~~~",
 		"[[Also fenced]]",
 		"~~~",
-		"End [[Five#Part]].",
+		"End [[Five#Part]] and [[Si`x`x]].",
 	].join("\r\n");
 	const lines = note.split("\n");
 	const regions = lineRegions(lines);
 	const fromSpans = lines.flatMap((line, i) => (regions[i] === "body" || regions[i] === "heading" ? wikilinkSpans(line).map((s) => s.target) : []));
 	const body = lines.filter((_, i) => regions[i] !== "frontmatter").join("\n");
 	assert.deepEqual(fromSpans, extractWikilinkTargets(body));
-	assert.deepEqual(fromSpans, ["Heading link", "One", "Two", "Three", "Four", "Five"]);
+	assert.deepEqual(fromSpans, ["Heading link", "One", "Two", "Three", "Four", "Five", "Six"]);
 });
 
 test("both are exported to extensions through core/index.ts", () => {
