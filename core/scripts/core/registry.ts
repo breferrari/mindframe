@@ -19,7 +19,8 @@
  * 5. Each call runs in its own try with its own time limit, and fails open:
  *    a throw or a timeout is recorded, the item is skipped, and the hook
  *    carries on and reports it. `VAULT_EXTENSIONS=off` turns every extension
- *    off, for debugging.
+ *    off, for debugging. Effects (write, pre-compact, Stop) are calls like
+ *    any other, made for their side effect: they return nothing.
  * 6. The core owns the output budget. Extensions return sections; the entry
  *    point assembles them and applyInjectionBudget gives up the highest
  *    priority number first.
@@ -430,13 +431,16 @@ export async function runValidators(registry: Registry, target: WriteTarget, ctx
  */
 export async function runEffects(registry: Registry, trigger: EffectTrigger, ctx: HookContext): Promise<Dispatch<null>> {
 	const failures: Failure[] = [];
-	const entries = ordered<Effect>(registry, trigger.event, "effect", (e) => e.effects, failures).filter(({ ext, item }) => {
+	const entries = ordered<Effect>(registry, trigger.event, "effect", (e) => e.effects, failures);
+	// `on` is checked inside the call, so its failure is reported in run order like any other.
+	const run = (item: Effect) => {
 		const on: unknown = item.on;
-		if (Array.isArray(on) && on.every((e) => EFFECT_EVENTS.includes(e))) return on.includes(trigger.event);
-		failures.push({ extension: ext, point: "effect", item: item.id, message: `\`on\` must list some of ${EFFECT_EVENTS.join(", ")}` });
-		return false;
-	});
-	await each(entries, failures, "effect", (item) => item.run(trigger, ctx), (v): v is undefined => v === undefined, "nothing");
+		if (!Array.isArray(on) || !on.every((event) => EFFECT_EVENTS.includes(event))) {
+			throw new Error(`\`on\` must list some of ${EFFECT_EVENTS.join(", ")}`);
+		}
+		return on.includes(trigger.event) ? item.run(trigger, ctx) : undefined;
+	};
+	await each(entries, failures, "effect", run, (v): v is undefined => v === undefined, "nothing");
 	return { result: null, failures };
 }
 

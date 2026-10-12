@@ -403,16 +403,19 @@ describe("rule 5: effects run for their side effect alone", () => {
 		assert.match(formatFailures(failures)[0] ?? "", /extension a, effect hangs: skipped/);
 	});
 
-	test("one effect timing out does not hold another's report past its own limit", async () => {
-		const ext = (id: string, run: Effect["run"]): Extension => ({ id, effects: [effect(id, ["stop"], run)] });
-		const registry = fromLoaded([
-			declared(ext("slow", () => new Promise<void>(() => {})), { events: all, timeoutMs: 300 }),
-			declared(ext("quick", () => new Promise<void>(() => {})), { events: all, timeoutMs: 300 }),
-		]);
+	test("one effect timing out does not hold another past its own limit, and the limits do not add up", async () => {
+		const one = (id: string, run: Effect["run"]): Extension => ({ id, effects: [effect(id, ["stop"], run)] });
+		let quickDone = 0;
 		const started = Date.now();
+		const registry = fromLoaded([
+			declared(one("hang-a", () => new Promise<void>(() => {})), { events: all, timeoutMs: 300 }),
+			declared(one("hang-b", () => new Promise<void>(() => {})), { events: all, timeoutMs: 300 }),
+			declared(one("quick", () => new Promise<void>((r) => setTimeout(() => { quickDone = Date.now(); r(); }, 10))), { events: all, timeoutMs: 1_000 }),
+		]);
 		const { failures } = await runEffects(registry, { event: "stop" }, ctx);
-		assert.ok(Date.now() - started < 600, "effects run concurrently: the limits do not add up");
-		assert.equal(failures.length, 2);
+		assert.ok(quickDone > 0 && quickDone - started < 300, "the quick effect finished before the others timed out");
+		assert.ok(Date.now() - started < 600, "the two 300 ms limits ran together, not one after the other");
+		assert.deepEqual(failures.map((f) => f.extension), ["hang-a", "hang-b"]);
 	});
 
 	test("an effect that returns a value, now or later, is a failure", async () => {
@@ -443,7 +446,7 @@ describe("rule 5: effects run for their side effect alone", () => {
 		};
 		const { failures } = await runEffects(fromLoaded([declared(ext, { events: all })]), { event: "stop" }, ctx);
 		assert.equal(ran, 1);
-		assert.deepEqual(failures.map((f) => f.item).sort(), ["missing", "string", "unknown"]);
+		assert.deepEqual(failures.map((f) => f.item), ["missing", "string", "unknown"], "reported in run order");
 	});
 
 	test("a getter that throws on `effects` is a failure, not a crash", async () => {
@@ -469,6 +472,7 @@ export default { id: "fx", effects: [{ id: "e", on: ["pre-compact"], run: () => 
 		const manifest = { extensions: [{ id: "fx", module: "fx.mjs", events: ["pre-compact"] }] };
 		assert.deepEqual((await loadRegistry(root, manifest, "stop", {})).loaded, []);
 		const off = await loadRegistry(root, manifest, "pre-compact", { [KILL_SWITCH]: "off" });
+		assert.deepEqual(off.loaded, []);
 		await runEffects(off, { event: "pre-compact" }, ctx);
 		assert.equal(existsSync(marker), false);
 		const on = await loadRegistry(root, manifest, "pre-compact", {});
