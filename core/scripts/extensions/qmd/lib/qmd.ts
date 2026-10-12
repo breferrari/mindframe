@@ -1,0 +1,183 @@
+/**
+ * Cross-platform QMD invocation helpers.
+ *
+ * Bare `spawnSync("qmd", ...)` fails on Windows because npm installs qmd as a
+ * .cmd/.ps1 shim that Node's spawn can't resolve without routing through the
+ * platform shell — and even with `shell: true` the .cmd shim itself depends
+ * on /bin/sh via %_prog%, which fails on stock Windows without Git Bash.
+ *
+ * Rather than scatter platform-conditional `shell: process.platform === "win32"`
+ * flags across every qmd call, these helpers resolve @tobilu/qmd's real JS
+ * entry and let callers spawn it with the current Node binary. No shell, no
+ * shim, same code path on Windows, macOS, and Linux.
+ *
+ * Shared with `.claude/scripts/qmd-mcp.mjs` by duplicated implementation —
+ * that file is .mjs (MCP servers run as their own entry), so it can't import
+ * this .ts helper at Node's `--experimental-strip-types` runtime. The two
+ * copies are asserted independently: `tests/qmd.test.ts` locks this file's
+ * `resolveQmdEntry` + `buildQmdCommand` shape, and `tests/qmd-mcp.test.ts`
+ * locks the .mjs wrapper's equivalents. Drift between the two shows up as
+ * a test failure on the CI matrix rather than a silent platform bug.
+ */
+
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import { isAbsolute, join } from "node:path";
+
+const require = createRequire(import.meta.url);
+
+/**
+ * Locate @tobilu/qmd's real JS entrypoint. Returns an absolute path when
+ * resolvable, null when not. A null return signals the caller to fall back
+ * to invoking `qmd` directly via the platform shell (last-resort path for
+ * non-npm installs). A runnable install is preferred over one that merely
+ * exists — see {@link pickQmdEntry}.
+ */
+export function resolveQmdEntry(): string | null {
+	return pickQmdEntry([localQmdEntry, globalQmdEntry], isRunnableQmdEntry);
+}
+
+/**
+ * Choose among candidate entrypoints, in order. Each source returns a path
+ * that EXISTS, or null. A present entry can still be broken — missing
+ * dependencies, a half-finished install, a native binding built for another
+ * Node ABI — and a broken first candidate must not shadow a working later one.
+ *
+ * - The first present candidate that passes `runnable` wins.
+ * - When every present candidate fails, the FIRST present one is returned, not
+ *   null: SessionStart's ABI self-heal needs a broken entry to find the
+ *   package it rebuilds.
+ * - A candidate with nothing after it to fall back to, and nothing before it,
+ *   is returned without a probe: probing could not change the answer. That is
+ *   the common single-install case, which therefore costs no extra spawn.
+ *
+ * Sources are thunks so a runnable early candidate never pays for the later
+ * lookups (`npm root -g` is a shell spawn).
+ */
+export function pickQmdEntry(
+	sources: ReadonlyArray<() => string | null>,
+	runnable: (entry: string) => boolean,
+): string | null {
+	let firstPresent: string | null = null;
+	for (let i = 0; i < sources.length; i++) {
+		const entry = (sources[i] as () => string | null)();
+		if (entry === null) continue;
+		if (firstPresent === null && i === sources.length - 1) return entry;
+		if (runnable(entry)) return entry;
+		firstPresent ??= entry;
+	}
+	return firstPresent;
+}
+
+/**
+ * Does this entrypoint actually start? `--version` is the cheapest call that
+ * loads the CLI. Bounded, so a hung install reads as broken rather than
+ * blocking a hook.
+ */
+export function isRunnableQmdEntry(entry: string): boolean {
+	const probe = spawnSync(process.execPath, [entry, "--version"], {
+		encoding: "utf8",
+		timeout: 10_000,
+		windowsHide: true,
+	});
+	return !probe.error && probe.signal === null && probe.status === 0;
+}
+
+function localQmdEntry(): string | null {
+	try {
+		return require.resolve("@tobilu/qmd/dist/cli/qmd.js");
+	} catch {
+		return null;
+	}
+}
+
+function globalQmdEntry(): string | null {
+	// Fallback for global npm installs that aren't on this package's resolution
+	// path — ask npm directly where global packages live. Bounded timeout so a
+	// hung npm process can't block a fire-and-forget hook indefinitely.
+	//
+	// Single-string command with `shell: true` rather than args+shell so this
+	// stays clean on Node 24, which emits DEP0190 when args are passed with
+	// shell:true (the args get concatenated into the shell command unescaped,
+	// a real injection risk in the general case). Our command is a literal
+	// constant — no user input — so the concatenated form is safe.
+	const npmRoot = spawnSync("npm root -g", {
+		shell: true,
+		encoding: "utf8",
+		timeout: 3000,
+	});
+	if (npmRoot.error || npmRoot.signal !== null || npmRoot.status !== 0) {
+		return null;
+	}
+
+	const root = (npmRoot.stdout ?? "").trim();
+	if (root === "" || !isAbsolute(root)) return null;
+
+	const entry = join(root, "@tobilu", "qmd", "dist", "cli", "qmd.js");
+	return existsSync(entry) ? entry : null;
+}
+
+/**
+ * Build the (command, args, shell) tuple for a qmd invocation. When an
+ * entrypoint resolves, `process.execPath` runs it directly with no shell
+ * (identical on every platform). When it doesn't, fall back to `qmd` via
+ * the platform shell — best-effort for non-npm installs.
+ *
+ * The shell-fallback path returns the whole invocation in `cmd` with an
+ * empty `args` so callers spawn it as a single shell command, not as
+ * `args` concatenated with `shell:true` — which Node 24 deprecates
+ * (DEP0190) because args+shell concatenation is an injection risk in
+ * the general case. Our subcommand args are typically literal constants,
+ * but we route through the safe form everywhere so a future caller can't
+ * accidentally introduce a shell-injection vector.
+ */
+export function buildQmdCommand(
+	entry: string | null,
+	subcommandArgs: readonly string[],
+): {
+	readonly cmd: string;
+	readonly args: readonly string[];
+	readonly shell: boolean;
+} {
+	return entry !== null
+		? {
+				cmd: process.execPath,
+				args: [entry, ...subcommandArgs],
+				shell: false,
+			}
+		: {
+				cmd: ["qmd", ...subcommandArgs].join(" "),
+				args: [],
+				shell: true,
+			};
+}
+
+/**
+ * Parse a dotted version into a numeric triple. Accepts the bare "2.5.3"
+ * shape and the `qmd --version` output shape ("qmd 2.5.3 (655769712a)") by
+ * extracting the first x.y.z run. Returns null when no triple is present.
+ */
+export function parseVersionTriple(
+	raw: string,
+): readonly [number, number, number] | null {
+	const m = raw.match(/(\d+)\.(\d+)\.(\d+)/);
+	if (!m) return null;
+	return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+/**
+ * True when the installed qmd version (raw `--version` output) satisfies the
+ * declared minimum. Fails OPEN on anything unparseable — an unknown version
+ * must never brick a bootstrap or nag a session; the declared minimum only
+ * acts when both sides are readable.
+ */
+export function qmdVersionAtLeast(actualRaw: string, minRaw: string): boolean {
+	const actual = parseVersionTriple(actualRaw);
+	const min = parseVersionTriple(minRaw);
+	if (actual === null || min === null) return true;
+	for (let i = 0; i < 3; i++) {
+		if (actual[i]! !== min[i]!) return actual[i]! > min[i]!;
+	}
+	return true;
+}

@@ -12,7 +12,9 @@ Each lifecycle event (session start, prompt submit, write, pre-compact, Stop) ha
 
 ### 2. Vendored paths and vault paths are disjoint
 
-The core and first-party extensions live under paths the vault never edits. A vault's own extensions live under `.claude/extensions/`, which a vendor update never touches.
+The core and first-party extensions live under paths the vault never edits: the core at `.claude/scripts/core/` and `.claude/scripts/lib/`, and a first-party extension at `.claude/scripts/extensions/<id>/`. A vault's own extensions live under `.claude/extensions/`, which a vendor update never touches.
+
+In this repo a first-party extension sits at `core/scripts/extensions/<id>/`, not at the top level. A vault vendors the core and its first-party extensions with one record whose source root is `core/scripts/`, so a top-level folder would need a second record, or a new root in every vault's record.
 
 **Why:** if a vault's code and vendored code share files, every update becomes a merge. When the paths are disjoint, an update replaces vendored files outright and can't lose a vault's work. Rule 11 checks that the vendored side stays unedited.
 
