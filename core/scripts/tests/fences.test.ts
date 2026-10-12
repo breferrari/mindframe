@@ -72,6 +72,10 @@ describe("every scanner follows it", () => {
 		assert.deepEqual(extractWikilinkTargets(note.join("\n")), ["after"]);
 	});
 
+	test("extractWikilinkTargets: a fence that never closes hides every link after it", () => {
+		assert.deepEqual(extractWikilinkTargets(["[[before]]", ticks(3), "[[a]]", ticks(3) + "js", "[[b]]"].join("\n")), ["before"]);
+	});
+
 	test("lineRegions: every line up to the four-backtick close is fence", () => {
 		assert.deepEqual(lineRegions(note), ["fence", "fence", "fence", "fence", "fence", "fence", "body"]);
 	});

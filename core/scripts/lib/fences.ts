@@ -34,10 +34,9 @@ export function fenceStep(line: string, open: OpenFence): { fenced: boolean; ope
 		const closes = run !== undefined && run[0] === open.char && run.length >= open.length;
 		return { fenced: true, open: closes ? null : open };
 	}
-	const m = OPENER.exec(line.trimStart());
-	const run = m?.[1];
+	const [, run, info = ""] = OPENER.exec(line.trimStart()) ?? [];
 	if (run === undefined) return { fenced: false, open: null };
-	const char = run[0] === "`" ? "`" : "~";
-	if (char === "`" && (m?.[2] ?? "").includes("`")) return { fenced: false, open: null };
+	const char = run.startsWith("`") ? "`" : "~";
+	if (char === "`" && info.includes("`")) return { fenced: false, open: null };
 	return { fenced: true, open: { char, length: run.length } };
 }
