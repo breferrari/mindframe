@@ -12,7 +12,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { manifestOf, type ManifestObject } from "../lib/manifest.ts";
-import { EXTENSIONS_KEY, loadRegistry, type Registry } from "./registry.ts";
+import { loadRegistry, parseDeclarations, type Registry } from "./registry.ts";
 import type { HookContext, HookEvent } from "./types.ts";
 
 /** The name openVault has always returned; the same type as ManifestObject. */
@@ -55,12 +55,16 @@ export const QMD_DECLARATION = '{ "id": "qmd", "module": ".claude/scripts/extens
  * (#70): a manifest that sets `qmd_index` or `qmd_min_version` (an empty
  * `qmd_index` too: it means derive the name) and declares no extension with
  * id `qmd` would otherwise lose it without a trace. A declaration with
- * `enabled: false` counts: the vault chose that.
+ * `enabled: false` counts: the vault chose that. One the registry refuses
+ * doesn't, because it would never load.
+ *
+ * The keys are the ones the extension reads (`qmdIndexOf` and
+ * `qmdMinVersionOf` in extensions/qmd/lib/index-name.ts), read wider here:
+ * any string sets a key.
  */
 export function migrationNotes(manifest: Manifest): string[] {
 	const setsQmd = typeof manifest?.["qmd_index"] === "string" || typeof manifest?.["qmd_min_version"] === "string";
 	if (!setsQmd) return [];
-	const declared = manifest?.[EXTENSIONS_KEY];
-	const hasQmd = Array.isArray(declared) && declared.some((d: unknown) => typeof d === "object" && d !== null && (d as Record<string, unknown>)["id"] === "qmd");
+	const hasQmd = parseDeclarations(manifest).result.some((d) => d.id === "qmd");
 	return hasQmd ? [] : [`qmd is set in vault-manifest.json, but no qmd extension is declared, so QMD's session-start work is off: add ${QMD_DECLARATION} to extensions`];
 }

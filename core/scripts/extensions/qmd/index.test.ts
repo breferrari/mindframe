@@ -11,31 +11,14 @@ import { collectSections, fromLoaded, loadRegistry } from "../../core/registry.t
 import type { HookContext } from "../../core/index.ts";
 import { QMD_DECLARATION } from "../../core/context.ts";
 import { SELF_HEAL_HEADER, VERSION_HEADER, extension, qmdExtension } from "./index.ts";
-import { EMPTY_STORE_BYTES, QMD_SWITCH, type QmdDeps } from "./session.ts";
+import { QMD_SWITCH, type QmdDeps } from "./session.ts";
+import { VAULT, fakeDeps, type Calls } from "./fakes.ts";
+
+const counts = (calls: Calls) => ({ sync: calls.sync.length, detached: calls.detached.length });
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const VAULT = join("/", "vaults", "My Wiki");
 const MANIFEST = Object.freeze({ template: "wiki-mind", qmd_index: "", qmd_min_version: "2.0.0" });
 const MISMATCH = { status: 1, stderr: "Error: ... NODE_MODULE_VERSION 115" };
-
-function fakeDeps(opts: { entry?: string | null; status?: { status: number; stderr: string }; version?: string; env?: Record<string, string> }) {
-	const calls = { sync: 0, detached: 0 };
-	const deps: QmdDeps = {
-		env: opts.env ?? {},
-		resolveEntry: () => (opts.entry === undefined ? join("/", "npm", "@tobilu", "qmd", "dist", "cli", "qmd.js") : opts.entry),
-		spawnSync: (cmd, args) => {
-			calls.sync++;
-			const line = [cmd, ...args].join(" ");
-			if (line.includes("npm rebuild")) return { status: 0 };
-			if (line.includes("--version")) return { status: 0, stdout: opts.version ?? "qmd 2.1.0\n" };
-			return opts.status ?? { status: 0, stderr: "" };
-		},
-		spawnDetached: () => void calls.detached++,
-		storeSize: () => EMPTY_STORE_BYTES * 10,
-		home: join("/", "home", "u"),
-	};
-	return { deps, calls };
-}
 
 const declaration = { id: "qmd", module: "scripts/extensions/qmd/index.ts", events: ["session-start" as const] };
 const ctx = (): HookContext => ({ vaultRoot: VAULT, manifest: MANIFEST, now: 0 });
@@ -62,13 +45,13 @@ describe("the qmd extension", () => {
 	test("a healthy QMD at or above the floor: no sections, one background refresh", async () => {
 		const { deps, calls } = fakeDeps({});
 		assert.deepEqual(await sections(deps), []);
-		assert.equal(calls.detached, 1);
+		assert.equal(calls.detached.length, 1);
 	});
 
 	test("no QMD installed: no sections, no probe", async () => {
 		const { deps, calls } = fakeDeps({ entry: null });
 		assert.deepEqual(await sections(deps), []);
-		assert.deepEqual(calls, { sync: 0, detached: 0 });
+		assert.deepEqual(counts(calls), { sync: 0, detached: 0 });
 	});
 
 	test("a self-heal note and a version note each land in their own section, priority 0, in id order", async () => {
@@ -82,7 +65,7 @@ describe("the qmd extension", () => {
 	test("one probe run serves both sections: QMD's work runs once per hook", async () => {
 		const { deps, calls } = fakeDeps({ status: MISMATCH, version: "qmd 1.0.0\n" });
 		await sections(deps);
-		assert.deepEqual(calls, { sync: 3, detached: 1 }, "status, rebuild and version once each, one refresh");
+		assert.deepEqual(counts(calls), { sync: 3, detached: 1 }, "status, rebuild and version once each, one refresh");
 	});
 
 	test("load-bearing: on a resume or compact re-entry the notes still render in full", async () => {
@@ -93,7 +76,7 @@ describe("the qmd extension", () => {
 	test(`${QMD_SWITCH}=off: no sections, nothing run`, async () => {
 		const { deps, calls } = fakeDeps({ env: { [QMD_SWITCH]: "off" }, status: MISMATCH, version: "qmd 1.0.0\n" });
 		assert.deepEqual(await sections(deps), []);
-		assert.deepEqual(calls, { sync: 0, detached: 0 });
+		assert.deepEqual(counts(calls), { sync: 0, detached: 0 });
 	});
 
 	test("VAULT_EXTENSIONS=off turns it off too: QMD's work is no longer core (rule 6)", async () => {

@@ -5,44 +5,15 @@
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { join } from "node:path";
 import { manifestOf } from "../../lib/manifest.ts";
 import { EMPTY_STORE_BYTES, QMD_SWITCH, REFRESH_SWITCH, qmdSessionStartOf, type QmdDeps } from "./session.ts";
+import { VAULT, fakeDeps } from "./fakes.ts";
 
 /** The manifest's text, parsed the way openVault parses it, then the work. */
 const qmdSessionStart = (vaultRoot: string, json: string | null, script: string | undefined, deps: QmdDeps) =>
 	qmdSessionStartOf(vaultRoot, manifestOf(json), script, deps);
 
 const MANIFEST = JSON.stringify({ template: "wiki-mind", qmd_index: "", qmd_min_version: "2.0.0" });
-const VAULT = join("/", "vaults", "My Wiki");
-
-type Calls = { sync: string[]; detached: { cmd: string; args: readonly string[]; cwd: string }[] };
-
-function fakeDeps(opts: {
-	entry?: string | null;
-	status?: { status: number; stderr: string };
-	version?: string;
-	rebuild?: number;
-	storeBytes?: number | null;
-	env?: Record<string, string>;
-}): { deps: QmdDeps; calls: Calls } {
-	const calls: Calls = { sync: [], detached: [] };
-	const deps: QmdDeps = {
-		env: opts.env ?? {},
-		resolveEntry: () => (opts.entry === undefined ? join("/", "npm", "@tobilu", "qmd", "dist", "cli", "qmd.js") : opts.entry),
-		spawnSync: (cmd, args) => {
-			const line = [cmd, ...args].join(" ");
-			calls.sync.push(line);
-			if (line.includes("npm rebuild")) return { status: opts.rebuild ?? 0 };
-			if (line.includes("--version")) return { status: 0, stdout: opts.version ?? "qmd 2.1.0\n" };
-			return opts.status ?? { status: 0, stderr: "" };
-		},
-		spawnDetached: (cmd, args, o) => void calls.detached.push({ cmd, args, cwd: o.cwd }),
-		storeSize: () => (opts.storeBytes === undefined ? EMPTY_STORE_BYTES * 10 : opts.storeBytes),
-		home: join("/", "home", "u"),
-	};
-	return { deps, calls };
-}
 
 describe("QMD's session-start work", () => {
 	test("QMD absent: no probe, no spawn, no note", () => {

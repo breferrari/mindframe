@@ -585,7 +585,6 @@ export function parseQmdMinVersion(manifestJson: string | null): string | null {
 	return qmdMinVersionOf(manifestOf(manifestJson));
 }
 
-
 /**
  * True if a directory-entry name has a `.md` extension. Compared case-
  * insensitively so files saved as `.MD` or `.Md` (legal on case-insensitive
@@ -715,7 +714,6 @@ export function formatBrainIndex(
 		});
 	return lines.length > 0 ? lines.join("\n") : "(none)";
 }
-
 
 /**
  * Eager-layer injection mode (#107): on `resume`/`compact` the static bulk
