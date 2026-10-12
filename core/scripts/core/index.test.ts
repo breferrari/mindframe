@@ -9,9 +9,9 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import * as lib from "../lib/project-dir.ts";
+import * as instructionFiles from "../lib/instruction-files.ts";
 import * as core from "./index.ts";
-
-const { resolveProjectDir, writeFileAtomic } = core;
+import { resolveProjectDir, writeFileAtomic } from "./index.ts";
 
 describe("writeFileAtomic, through index.ts", () => {
 	let dir = "";
@@ -72,9 +72,10 @@ describe("instruction files, through index.ts", () => {
 	test("AGENTS.md is the instruction file; CLAUDE.md and GEMINI.md are retired", () => {
 		assert.equal(core.INSTRUCTION_FILE, "AGENTS.md");
 		assert.deepEqual([...core.RETIRED_INSTRUCTION_FILES], ["CLAUDE.md", "GEMINI.md"]);
-		assert.ok(Object.isFrozen(core.RETIRED_INSTRUCTION_FILES), "no extension can change the shared list");
-		assert.throws(() => (core.RETIRED_INSTRUCTION_FILES as string[]).push("AGENTS.md"));
-		assert.equal(core.isRetiredInstructionFile("AGENTS.md"), false);
+		assert.equal(core.RETIRED_INSTRUCTION_FILES, instructionFiles.RETIRED_INSTRUCTION_FILES, "the export is the list the check reads");
+		assert.ok(Object.isFrozen(instructionFiles.RETIRED_INSTRUCTION_FILES), "no extension can change the shared list");
+		assert.throws(() => (instructionFiles.RETIRED_INSTRUCTION_FILES as string[]).push("README.md"));
+		assert.equal(core.isRetiredInstructionFile("README.md"), false);
 	});
 
 	test("the size caps: the template stays under the flag, which stays under what Antigravity was seen to read", () => {
