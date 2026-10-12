@@ -19,8 +19,9 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { writeFileSync, copyFileSync, renameSync, unlinkSync, constants } from "node:fs";
+import { writeFileSync, copyFileSync, renameSync, statSync, unlinkSync, constants } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { performance } from "node:perf_hooks";
 
 /**
  * Per-module counter, so two in-flight writes cannot share a temp name. A
@@ -34,16 +35,21 @@ function tmpTag(): string {
 	return `${process.pid}-${++tmpSeq}-${randomBytes(4).toString("hex")}`;
 }
 
+/** How much of the note's name the temp name keeps, in characters. */
+const TEMP_NAME_CHARS = 40;
+
 /**
  * The temp file for a write to `path`: a dotted sibling, so a write killed
  * before its rename leaves nothing that shows in the vault, and Obsidian and
- * qmd never index a half-written note.
+ * qmd never index a half-written note. It keeps only the start of the
+ * note's name, so a note named near the filesystem's limit still gets one.
  */
 export function tempPathFor(path: string): string {
-	return join(dirname(path), `.${basename(path)}.${tmpTag()}.tmp`);
+	const name = [...basename(path)].slice(0, TEMP_NAME_CHARS).join("");
+	return join(dirname(path), `.${name}.${tmpTag()}.tmp`);
 }
 
-/** The longest a rename is retried in all, in milliseconds: hooks have tight time limits. */
+/** The longest a call is retried in all, in milliseconds: hooks have tight time limits. */
 export const RENAME_RETRY_MS = 1_000;
 
 /** The Windows codes for a file another process holds for a moment. */
@@ -55,37 +61,64 @@ const sleepSync = (ms: number): void => {
 	Atomics.wait(SLEEP_CELL, 0, 0, ms);
 };
 
-export type RenameDeps = {
-	readonly rename?: (from: string, to: string) => void;
+export type HeldDeps = {
 	readonly platform?: NodeJS.Platform;
 	readonly sleep?: (ms: number) => void;
+	readonly now?: () => number;
 };
 
 /**
- * Rename `from` to `to`. On Windows, a virus scanner or the search indexer
- * may hold the just-written file for a moment, and the rename then fails
- * with EACCES, EPERM or EBUSY: those are retried, waiting 10, 20, 40 ms and
- * so on (never more than 100 ms at a time), for at most RENAME_RETRY_MS in
- * all, then the last error is thrown. Anywhere else, or for any other code,
- * the first error is thrown at once.
+ * Run `op`. On Windows, a virus scanner or the search indexer may hold a
+ * just-written file for a moment, and the call then fails with EACCES,
+ * EPERM or EBUSY: those are retried, waiting 10, 20, 40 ms and so on (never
+ * more than 100 ms at a time), until RENAME_RETRY_MS after the first
+ * attempt, counting the calls' own time, then the last error is thrown.
+ * Anywhere else, for any other code, or when `lasting()` says the refusal
+ * won't pass, the first error is thrown at once.
  */
-export function renameWithRetry(
-	from: string,
-	to: string,
-	{ rename = renameSync, platform = process.platform, sleep = sleepSync }: RenameDeps = {},
+export function retryHeld(
+	op: () => void,
+	{ platform = process.platform, sleep = sleepSync, now = () => performance.now() }: HeldDeps = {},
+	lasting: () => boolean = () => false,
 ): void {
-	let waited = 0;
+	const deadline = now() + RENAME_RETRY_MS;
 	for (let wait = 10; ; wait = Math.min(wait * 2, 100)) {
 		try {
-			rename(from, to);
+			op();
 			return;
 		} catch (err) {
 			const code = (err as NodeJS.ErrnoException)?.code;
-			if (platform !== "win32" || code === undefined || !HELD.has(code) || waited + wait > RENAME_RETRY_MS) throw err;
+			if (platform !== "win32" || code === undefined || !HELD.has(code) || now() + wait > deadline || lasting()) throw err;
 			sleep(wait);
-			waited += wait;
 		}
 	}
+}
+
+type TargetStat = { isDirectory(): boolean; readonly mode: number };
+
+export type RenameDeps = HeldDeps & {
+	readonly rename?: (from: string, to: string) => void;
+	readonly stat?: (path: string) => TargetStat | null;
+};
+
+const statOrNull = (path: string): TargetStat | null => {
+	try {
+		return statSync(path);
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * Rename `from` to `to`, retrying a held file on Windows (retryHeld). A
+ * folder or a read-only file at `to` refuses for good, so it is thrown at
+ * once instead of costing the hook a second.
+ */
+export function renameWithRetry(from: string, to: string, { rename = renameSync, stat = statOrNull, ...held }: RenameDeps = {}): void {
+	retryHeld(() => rename(from, to), held, () => {
+		const target = stat(to);
+		return target !== null && (target.isDirectory() || (target.mode & 0o200) === 0);
+	});
 }
 
 export interface ClaimResult {
@@ -158,9 +191,10 @@ export function writeFileAtomic(path: string, text: string): void {
 		renameWithRetry(tmp, path);
 	} catch (err) {
 		try {
-			unlinkSync(tmp);
+			// The scanner holding the temp file may hold it for this too.
+			retryHeld(() => unlinkSync(tmp));
 		} catch {
-			/* nothing was written */
+			/* nothing was written, or the temp file is still held */
 		}
 		throw err;
 	}

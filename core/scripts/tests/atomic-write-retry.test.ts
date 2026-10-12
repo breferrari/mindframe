@@ -11,54 +11,102 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { RENAME_RETRY_MS, claimFile, renameWithRetry, tempPathFor } from "../lib/atomic-write.ts";
+import { performance } from "node:perf_hooks";
+import { RENAME_RETRY_MS, claimFile, renameWithRetry, retryHeld, tempPathFor } from "../lib/atomic-write.ts";
 
 const err = (code: string) => Object.assign(new Error(code), { code });
 
-describe("renameWithRetry", () => {
-	const failing = (codes: string[]) => {
-		let calls = 0;
-		const rename = () => {
-			const code = codes[calls++];
-			if (code !== undefined) throw err(code);
-		};
-		return { rename, calls: () => calls };
-	};
+/** A clock that moves only when the code under test sleeps, or when a call is said to take time. */
+function clock() {
+	let t = 0;
+	const slept: number[] = [];
+	return { slept, now: () => t, sleep: (ms: number) => { slept.push(ms); t += ms; }, spend: (ms: number) => { t += ms; } };
+}
 
-	test("on Windows, EPERM, EACCES and EBUSY are retried with a growing wait, then the rename lands", () => {
-		const r = failing(["EPERM", "EACCES", "EBUSY"]);
-		const slept: number[] = [];
-		renameWithRetry("a", "b", { rename: r.rename, platform: "win32", sleep: (ms) => slept.push(ms) });
-		assert.equal(r.calls(), 4);
-		assert.deepEqual(slept, [10, 20, 40]);
+/** A call that fails with each code in turn, then succeeds; `cost` is the time each attempt takes. */
+function failing(codes: string[], c?: ReturnType<typeof clock>, cost = 0) {
+	let calls = 0;
+	const op = () => {
+		c?.spend(cost);
+		const code = codes[calls++];
+		if (code !== undefined) throw err(code);
+	};
+	return { op, calls: () => calls };
+}
+
+describe("retryHeld", () => {
+	test("on Windows, EPERM, EACCES and EBUSY are retried with a growing wait, then the call lands", () => {
+		const c = clock();
+		const f = failing(["EPERM", "EACCES", "EBUSY"]);
+		retryHeld(f.op, { platform: "win32", sleep: c.sleep, now: c.now });
+		assert.equal(f.calls(), 4);
+		assert.deepEqual(c.slept, [10, 20, 40]);
 	});
 
-	test("on Windows, a rename that keeps failing throws its last error once the waits reach the bound", () => {
-		const r = failing(Array(1000).fill("EPERM"));
-		const slept: number[] = [];
-		assert.throws(() => renameWithRetry("a", "b", { rename: r.rename, platform: "win32", sleep: (ms) => slept.push(ms) }), { code: "EPERM" });
-		const total = slept.reduce((a, b) => a + b, 0);
-		assert.ok(total <= RENAME_RETRY_MS, `waited ${total} ms`);
-		assert.ok(total > RENAME_RETRY_MS - 100, `gave up early, after ${total} ms`);
-		assert.ok(slept.every((ms) => ms <= 100), "no single wait above 100 ms");
-		assert.equal(r.calls(), slept.length + 1);
+	test("a call that keeps failing throws its last error before the deadline, counting the calls' own time", () => {
+		for (const cost of [0, 50]) {
+			const c = clock();
+			const f = failing(Array(1000).fill("EPERM"), c, cost);
+			assert.throws(() => retryHeld(f.op, { platform: "win32", sleep: c.sleep, now: c.now }), { code: "EPERM" });
+			assert.ok(c.now() <= RENAME_RETRY_MS + cost, `cost ${cost}: ran ${c.now()} ms`);
+			assert.ok(c.now() > RENAME_RETRY_MS - 150, `cost ${cost}: gave up early, after ${c.now()} ms`);
+			assert.ok(c.slept.every((ms) => ms <= 100), "no single wait above 100 ms");
+		}
 	});
 
 	test("elsewhere, or for any other code, the first error is thrown at once", () => {
 		for (const [platform, code] of [["linux", "EPERM"], ["darwin", "EBUSY"], ["win32", "ENOENT"], ["win32", "EISDIR"]] as const) {
-			const r = failing([code]);
-			const slept: number[] = [];
-			assert.throws(() => renameWithRetry("a", "b", { rename: r.rename, platform, sleep: (ms) => slept.push(ms) }), { code });
-			assert.equal(r.calls(), 1, `${platform} ${code}`);
-			assert.deepEqual(slept, []);
+			const c = clock();
+			const f = failing([code]);
+			assert.throws(() => retryHeld(f.op, { platform, sleep: c.sleep, now: c.now }), { code });
+			assert.equal(f.calls(), 1, `${platform} ${code}`);
+			assert.deepEqual(c.slept, []);
 		}
 	});
 
+	test("an error the caller knows will last is thrown at once", () => {
+		const c = clock();
+		const f = failing(["EPERM"]);
+		assert.throws(() => retryHeld(f.op, { platform: "win32", sleep: c.sleep, now: c.now }, () => true), { code: "EPERM" });
+		assert.equal(f.calls(), 1);
+	});
+
 	test("the default sleep really waits", () => {
-		const r = failing(["EBUSY"]);
-		const started = Date.now();
-		renameWithRetry("a", "b", { rename: r.rename, platform: "win32" });
-		assert.ok(Date.now() - started >= 9, "waited about 10 ms");
+		const f = failing(["EBUSY"]);
+		const started = performance.now();
+		retryHeld(f.op, { platform: "win32" });
+		assert.ok(performance.now() - started >= 9, "waited about 10 ms");
+	});
+});
+
+describe("renameWithRetry", () => {
+	test("a folder or a read-only file at the target is a lasting refusal: no retry", () => {
+		const targets = [
+			{ isDirectory: () => true, mode: 0o40777 },
+			{ isDirectory: () => false, mode: 0o100444 },
+		];
+		for (const target of targets) {
+			const c = clock();
+			let calls = 0;
+			const rename = () => {
+				calls++;
+				throw err("EPERM");
+			};
+			assert.throws(() => renameWithRetry("a", "b", { rename, stat: () => target, platform: "win32", sleep: c.sleep, now: c.now }), { code: "EPERM" });
+			assert.equal(calls, 1);
+		}
+	});
+
+	test("a writable file at the target, or none, is retried", () => {
+		for (const target of [{ isDirectory: () => false, mode: 0o100666 }, null]) {
+			const c = clock();
+			let calls = 0;
+			const rename = () => {
+				if (++calls < 3) throw err("EPERM");
+			};
+			renameWithRetry("a", "b", { rename, stat: () => target, platform: "win32", sleep: c.sleep, now: c.now });
+			assert.equal(calls, 3);
+		}
 	});
 });
 
@@ -68,11 +116,17 @@ describe("tempPathFor", () => {
 		assert.match(name, /^\.note\.md\.\d+-\d+-[0-9a-f]{8}\.tmp$/);
 	});
 
-	test("two copies of the module, each counting from 1, never share a name", async () => {
-		const other = (await import(`../lib/atomic-write.ts?copy=${Date.now()}`)) as { tempPathFor: (p: string) => string };
-		const a = tempPathFor("/v/note.md");
-		const b = other.tempPathFor("/v/note.md");
-		assert.notEqual(a, b);
+	test("a long note name is cut, so the temp name stays well under 255 bytes", () => {
+		const name = basename(tempPathFor(`/v/${"é".repeat(120)}.md`));
+		assert.ok(Buffer.byteLength(name) < 120, `${Buffer.byteLength(name)} bytes`);
+		assert.match(name, /^\.é+\.\d+-\d+-[0-9a-f]{8}\.tmp$/);
+	});
+
+	test("two fresh copies of the module, each counting from 1, never share their first name", async () => {
+		type Mod = { tempPathFor: (p: string) => string };
+		const one = (await import(`../lib/atomic-write.ts?copy=a${performance.now()}`)) as Mod;
+		const two = (await import(`../lib/atomic-write.ts?copy=b${performance.now()}`)) as Mod;
+		assert.notEqual(one.tempPathFor("/v/note.md"), two.tempPathFor("/v/note.md"));
 	});
 });
 
