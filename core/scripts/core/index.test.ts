@@ -10,7 +10,8 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import * as lib from "../lib/project-dir.ts";
 import * as core from "./index.ts";
-import { resolveProjectDir, writeFileAtomic } from "./index.ts";
+
+const { resolveProjectDir, writeFileAtomic } = core;
 
 describe("writeFileAtomic, through index.ts", () => {
 	let dir = "";
@@ -70,13 +71,17 @@ describe("resolveProjectDir, through index.ts", () => {
 describe("instruction files, through index.ts", () => {
 	test("AGENTS.md is the instruction file; CLAUDE.md and GEMINI.md are retired", () => {
 		assert.equal(core.INSTRUCTION_FILE, "AGENTS.md");
-		assert.deepEqual([...core.RETIRED_INSTRUCTION_FILES], [core.CLAUDE_MD, core.GEMINI_MD]);
-		assert.deepEqual([core.CLAUDE_MD, core.GEMINI_MD, core.GEMINI_SETTINGS], ["CLAUDE.md", "GEMINI.md", ".gemini/settings.json"]);
+		assert.deepEqual([...core.RETIRED_INSTRUCTION_FILES], ["CLAUDE.md", "GEMINI.md"]);
+		assert.ok(Object.isFrozen(core.RETIRED_INSTRUCTION_FILES), "no extension can change the shared list");
+		assert.throws(() => (core.RETIRED_INSTRUCTION_FILES as string[]).push("AGENTS.md"));
+		assert.equal(core.isRetiredInstructionFile("AGENTS.md"), false);
 	});
 
 	test("the size caps: the template stays under the flag, which stays under what Antigravity was seen to read", () => {
 		assert.ok(core.AGENTS_MD_MAX_BYTES < core.AGENTS_MD_FLAG_BYTES);
-		assert.ok(core.AGENTS_MD_FLAG_BYTES < 23_860);
+		// The last byte Antigravity 1.3.0 was seen to read (obsidian-mind #321, recorded in lib/instruction-files.ts).
+		const ANTIGRAVITY_LAST_READ_BYTE = 23_860;
+		assert.ok(core.AGENTS_MD_FLAG_BYTES < ANTIGRAVITY_LAST_READ_BYTE);
 	});
 
 	test("a retired file is recognised in any case, as Windows and macOS resolve it, and nothing else is", () => {
