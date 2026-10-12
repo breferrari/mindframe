@@ -85,6 +85,12 @@ describe("migrationNotes: qmd set in the manifest, no qmd extension declared (#7
 		for (const extensions of ["qmd", { qmd }, [null, 3, "qmd", { id: 7 }]]) assert.equal(notes({ qmd_index: "", extensions }).length, 1, JSON.stringify(extensions));
 	});
 
+	test("a qmd declaration the registry refuses doesn't count: it would never load", () => {
+		for (const bad of [{ ...qmd, module: "/abs/qmd.ts" }, { ...qmd, events: [] }, { ...qmd, timeoutMs: -1 }]) {
+			assert.equal(notes({ qmd_index: "", extensions: [bad] }).length, 1, JSON.stringify(bad));
+		}
+	});
+
 	test("QMD_DECLARATION is a declaration the registry accepts", () => {
 		assert.deepEqual(parseDeclarations(Object.freeze({ extensions: [JSON.parse(QMD_DECLARATION)] })).failures, []);
 	});
