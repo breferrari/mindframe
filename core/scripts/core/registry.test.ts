@@ -379,7 +379,7 @@ describe("rule 5: effects run for their side effect alone", () => {
 	test("a write effect receives the target, a backslash path passed through as given", async () => {
 		const seen: EffectTrigger[] = [];
 		const ext: Extension = { id: "a", effects: [effect("w", ["write"], (t) => { seen.push(t); })] };
-		const trigger: EffectTrigger = { event: "write", target: { relPath: "notes\a.md", content: "c" } };
+		const trigger: EffectTrigger = { event: "write", target: { relPath: "notes\\a.md", content: "c" } };
 		await runEffects(fromLoaded([declared(ext, { events: all })]), trigger, ctx);
 		assert.deepEqual(seen, [trigger]);
 	});
