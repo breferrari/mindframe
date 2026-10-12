@@ -27,6 +27,9 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#10](https://github.com/breferrari/mindframe/issues/10) | `VENDOR.json` and the vendor drift check | ✅ |
 | [#11](https://github.com/breferrari/mindframe/issues/11) | Run the core contract scenarios in real sessions | 🔨 built; awaiting its live run |
 | [#12](https://github.com/breferrari/mindframe/issues/12) | Run the wiki-mind spec in real sessions | 🔨 built; awaiting its live run |
+| [#52](https://github.com/breferrari/mindframe/issues/52) | Let session-start's budget and QMD readers take the parsed manifest | ⬜ |
+| [#63](https://github.com/breferrari/mindframe/issues/63) | Find frontmatter by its delimiter lines, not every `---` | ✅ |
+| [#67](https://github.com/breferrari/mindframe/issues/67) | Make the CRLF frontmatter test fail when CRLF isn't parsed | ✅ |
 
 ## Phase 3: first-party extensions
 
