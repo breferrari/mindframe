@@ -12,7 +12,8 @@ import { frontmatterBlock, frontmatterLines } from "../lib/frontmatter-block.ts"
 import { countTicketIdWikilinks, shouldSkipFile, validateContent } from "../lib/frontmatter.ts";
 import { hardWrappedParagraphs, isVerbatim } from "../lib/prose-width.ts";
 import { extractFrontmatterField, stripFrontmatter } from "../lib/session-start.ts";
-import { extractAliases, lineRegions } from "../lib/wikilinks.ts";
+import { extractAliases, extractWikilinkTargets, lineRegions } from "../lib/wikilinks.ts";
+import * as core from "../core/index.ts";
 
 type Fixture = {
 	readonly name: string;
@@ -83,7 +84,6 @@ describe("frontmatter.ts's other readers (#82)", () => {
 	});
 
 	test("a fence-looking line inside a yaml value doesn't hide the body's links", () => {
-		const tick = "`";
 		const note = `---\ndescription: |\n  ${tick.repeat(3)}\n---\n${"Words. ".repeat(60)}\nSee [[Real Link]] and [[PROJ-12]].\n`;
 		assert.ok(!validateContent(note).some((w) => /No \[\[wikilinks\]\]/.test(w)), "the body's link is found");
 		assert.equal(countTicketIdWikilinks(note), 1);
@@ -98,4 +98,22 @@ describe("frontmatter.ts's other readers (#82)", () => {
 		assert.ok(validateContent(`---\ntitle: t\n---\n${body}`).some((w) => /wikilink/i.test(w)), "warned");
 		assert.ok(!validateContent(`---\ntitle: t\n---\n${body}[[Real]]\n`).some((w) => /wikilink/i.test(w)), "a real link counts");
 	});
+});
+
+describe("code in frontmatter", () => {
+	const tick = "`";
+	test("a fence-looking line in a yaml value opens no fence: extraction still finds the body's links", () => {
+		assert.deepEqual(extractWikilinkTargets(`---\ndescription: |\n  ${tick.repeat(3)}\n---\nSee [[Body Link]].\n`), ["Body Link"]);
+	});
+
+	test("a link inside inline code in a yaml value is no link", () => {
+		const note = `---\ndescription: write ${tick}[[PROJ-1]]${tick} as text\n---\nBody.\n`;
+		assert.equal(countTicketIdWikilinks(note), 0);
+		assert.deepEqual(extractWikilinkTargets(note), []);
+	});
+});
+
+test("frontmatterBlock is exported to extensions through core/index.ts", () => {
+	assert.equal(core.frontmatterBlock, frontmatterBlock);
+	assert.deepEqual(core.frontmatterBlock("---\na: 1\n---\nb"), { yaml: "a: 1", body: 13 });
 });

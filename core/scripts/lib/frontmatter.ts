@@ -209,8 +209,9 @@ export function validateContent(
 		}
 	}
 
-	// A link shown in code is no edge, so it doesn't count (#82).
-	if (content.length > 300 && !linkText(content).includes("[[")) {
+	// A link shown in code is no edge, so it doesn't count (#82). Code is stripped once.
+	const links = stripCodeRegions(content);
+	if (content.length > 300 && !links.includes("[[")) {
 		warnings.push(
 			"No [[wikilinks]] found — every note must link to at least one other note (vault convention)",
 		);
@@ -224,7 +225,7 @@ export function validateContent(
 		);
 	}
 
-	const ticketLinks = countTicketIdWikilinks(content);
+	const ticketLinks = ticketLinksIn(links);
 	if (ticketLinks > 0) {
 		warnings.push(
 			`${ticketLinks} ticket-ID wikilink(s) (e.g. [[PROJ-…]]) — ticket IDs are plain text or tracker links, never wikilinks (they are not notes)`,
@@ -232,17 +233,6 @@ export function validateContent(
 	}
 
 	return warnings;
-}
-
-/**
- * The text a link counts in: the frontmatter as it is, and the body with its
- * code removed. Code is read in the body only, because a fence-looking line
- * inside a yaml value would otherwise open a fence the closing `---` can't end,
- * and hide the whole body.
- */
-function linkText(content: string): string {
-	const block = frontmatterBlock(content);
-	return block === null ? stripCodeRegions(content) : `${block.yaml}\n${stripCodeRegions(content.slice(block.body))}`;
 }
 
 /**
@@ -254,7 +244,12 @@ function linkText(content: string): string {
  */
 export function countTicketIdWikilinks(content: string): number {
 	// A ticket link shown in code is an example, not a link (#82).
-	return linkText(content).match(/\[\[[A-Z]{2,10}-\d+(\\\||&#124;|\||\]\])/g)?.length ?? 0;
+	return ticketLinksIn(stripCodeRegions(content));
+}
+
+/** The ticket-ID wikilinks in text whose code is already stripped. */
+function ticketLinksIn(text: string): number {
+	return text.match(/\[\[[A-Z]{2,10}-\d+(\\\||&#124;|\||\]\])/g)?.length ?? 0;
 }
 
 /**

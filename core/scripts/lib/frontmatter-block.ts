@@ -20,6 +20,12 @@ const DELIMITER = /^---[ \t\r]*$/;
 /** The byte order mark an editor may put before the first line. */
 const BOM = "\uFEFF";
 
+/** Whether a first line opens frontmatter: `---`, after an optional BOM. */
+const opens = (line: string): boolean => DELIMITER.test(line.startsWith(BOM) ? line.slice(1) : line);
+
+/** Whether a later line closes it. */
+const closes = (line: string): boolean => DELIMITER.test(line);
+
 /**
  * The frontmatter in a list of lines (split on `\n`, so a line may keep its
  * `\r`): the index of the closing delimiter (the opener is line 0), or null when
@@ -27,8 +33,8 @@ const BOM = "\uFEFF";
  */
 export function frontmatterLines(lines: readonly string[]): { readonly close: number } | null {
 	const first = lines[0];
-	if (first === undefined || !DELIMITER.test(first.startsWith(BOM) ? first.slice(1) : first)) return null;
-	for (let i = 1; i < lines.length; i++) if (DELIMITER.test(lines[i] ?? "")) return { close: i };
+	if (first === undefined || !opens(first)) return null;
+	for (let i = 1; i < lines.length; i++) if (closes(lines[i] ?? "")) return { close: i };
 	return null;
 }
 
@@ -44,11 +50,11 @@ export function frontmatterBlock(content: string): { readonly yaml: string; read
 		return end === -1 ? { text: content.slice(start), next: content.length } : { text: content.slice(start, end), next: end + 1 };
 	};
 	const opener = lineAt(0);
-	if (!DELIMITER.test(opener.text.startsWith(BOM) ? opener.text.slice(1) : opener.text)) return null;
+	if (!opens(opener.text)) return null;
 	const yaml: string[] = [];
 	for (let at = opener.next; at < content.length; ) {
 		const line = lineAt(at);
-		if (DELIMITER.test(line.text)) return { yaml: yaml.join("\n"), body: line.next };
+		if (closes(line.text)) return { yaml: yaml.join("\n"), body: line.next };
 		yaml.push(line.text.replace(/\r$/, ""));
 		at = line.next;
 	}

@@ -55,7 +55,15 @@ const ASSET_EXTENSIONS = new Set([
 export function stripCodeRegions(content: string): string {
 	const out: string[] = [];
 	let open: OpenFence = null;
-	for (const line of content.split("\n")) {
+	const lines = content.split("\n");
+	// Frontmatter is yaml, not markdown: its inline code is removed, but a
+	// fence-looking line in a value opens no fence, or it would hide the body.
+	const close = frontmatterLines(lines)?.close ?? -1;
+	for (const [i, line] of lines.entries()) {
+		if (i <= close) {
+			out.push(line.replace(INLINE_CODE, ""));
+			continue;
+		}
 		const step = fenceStep(line, open);
 		open = step.open;
 		if (step.fenced) continue;
@@ -248,9 +256,8 @@ export function extractAliases(content: string): string[] {
 	if (block === null) return [];
 	// frontmatterBlock reads CRLF notes as LF (it drops each line's \r), which
 	// matters: Obsidian-on-Windows rewrites LF to CRLF on edit, and `.` doesn't
-	// match CR, so a CRLF block list used to read as empty.
-	// frontmatterBlock already drops each line's \r; the leading newline keeps the
-	// line indexes below as they were.
+	// match CR, so a CRLF block list used to read as empty. The leading newline
+	// keeps the line indexes below as they were.
 	const fm = `\n${block.yaml}`;
 	const lines = fm.split("\n");
 	const idx = lines.findIndex((l) => /^aliases:\s*(\[.*\])?\s*$/.test(l.trim()) || /^aliases:\s*\[/.test(l.trim()));
