@@ -12,8 +12,8 @@
 // are left out of the grade, and measures that read an answer or a tool
 // call record nothing.
 //
-// Every spawn gets the same environment a live session would (qmdEnv, the
-// spec's and the scenario's env), and the user's qmd folders are compared
+// Every spawn gets the same environment a live session would (qmdEnv,
+// VAULT_QMD_REFRESH=off, the spec's and the scenario's env), and the user's qmd folders are compared
 // before and after each scenario, exactly as in a live run.
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -36,8 +36,9 @@ export const DRY_SCRIPTS = {
 export const DRY_SKIPPED = new Set(['answer', 'shown', 'judge', 'modEvent'])
 
 // The environment a bed's spawns get, dry or live: the user's environment,
-// then the run's qmd redirect with session-start's detached refresh off, so
-// no qmd worker outlives a run (#94), then the spec's and the scenario's own.
+// then the run's qmd redirect, then session-start's detached qmd refresh
+// turned off for a vault that reads the switch (#94; a check that needs no
+// vault's help is #99), then the spec's and the scenario's own.
 export function bedEnv({ base = process.env, stateDir, spec, scenario }) {
   return { ...base, ...qmdEnv(stateDir), VAULT_QMD_REFRESH: 'off', ...spec.session.env, ...scenario.env }
 }

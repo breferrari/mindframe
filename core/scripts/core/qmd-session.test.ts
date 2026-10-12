@@ -133,6 +133,15 @@ describe("VAULT_QMD_REFRESH=off: no detached refresh (#94, as obsidian-mind #338
 		}
 	});
 
+	test("off: an ABI mismatch is still rebuilt, and its note still shows", () => {
+		const mismatch = { status: 1, stderr: "NODE_MODULE_VERSION 115" };
+		const { deps, calls } = fakeDeps({ env: { [REFRESH_SWITCH]: "off" }, status: mismatch, rebuild: 0 });
+		const result = qmdSessionStart(VAULT, MANIFEST, undefined, deps);
+		assert.ok(calls.sync.some((c) => c.includes("npm rebuild better-sqlite3")));
+		assert.deepEqual(result.notes.map((n) => n.header), ["### QMD Self-Heal"]);
+		assert.deepEqual(calls.detached, []);
+	});
+
 	test("only the exact value off turns the refresh off", () => {
 		for (const value of ["Off", "OFF", "0", "", "false", undefined]) {
 			const env = value === undefined ? {} : { [REFRESH_SWITCH]: value };
@@ -142,9 +151,11 @@ describe("VAULT_QMD_REFRESH=off: no detached refresh (#94, as obsidian-mind #338
 		}
 	});
 
-	test("with both off, VAULT_QMD=off wins: no probe and no note either", () => {
-		const { deps, calls } = fakeDeps({ env: { [QMD_SWITCH]: "off", [REFRESH_SWITCH]: "off" }, version: "qmd 1.0.0\n" });
-		assert.deepEqual(qmdSessionStart(VAULT, MANIFEST, undefined, deps), { notes: [], refresh: null });
-		assert.deepEqual(calls, { sync: [], detached: [] });
+	test("VAULT_QMD=off turns everything off, whatever VAULT_QMD_REFRESH says: no probe, no note, no spawn", () => {
+		for (const refresh of ["on", "off"]) {
+			const { deps, calls } = fakeDeps({ env: { [QMD_SWITCH]: "off", [REFRESH_SWITCH]: refresh }, version: "qmd 1.0.0\n" });
+			assert.deepEqual(qmdSessionStart(VAULT, MANIFEST, undefined, deps), { notes: [], refresh: null }, refresh);
+			assert.deepEqual(calls, { sync: [], detached: [] }, refresh);
+		}
 	});
 });

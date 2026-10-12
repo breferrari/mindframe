@@ -215,9 +215,10 @@ A bed vault with QMD writes an index store and a collection config named after t
 |----------|--------|---------------|
 | `INDEX_PATH` | `<out>/state/<scenario>-<arm>/qmd/index.sqlite` | `($XDG_CACHE_HOME or ~/.cache)/qmd/<index>.sqlite` |
 | `QMD_CONFIG_DIR` | `<out>/state/<scenario>-<arm>/qmd/config` | `($XDG_CONFIG_HOME or ~/.config)/qmd` |
-| `VAULT_QMD_REFRESH` | `off`: session-start launches no detached qmd update or bootstrap, so no worker outlives the run (#94) | a detached refresh each session start |
 
-The embedding models (`<cache>/qmd/models`) stay shared, because they are large. A spec's `session.env` or a scenario's `env` can still override any of these variables.
+The embedding models (`<cache>/qmd/models`) stay shared, because they are large. A spec's `session.env` or a scenario's `env` can still override either variable.
+
+Each session also runs with `VAULT_QMD_REFRESH=off`, a vault's switch rather than qmd's: a vault that reads it (mindframe's core from #94, obsidian-mind from its #338) launches no detached qmd refresh at session start, so no such worker outlives the run. A spec can set it back. A vault that ignores it can still leave a worker behind; failing the run for that is #99.
 
 Code that ignores those variables, such as a hard-coded config path, would still write to the user's folders. So the runner lists both folders before and after each session:
 - an entry the session created is a **leak**, and so is a changed entry named after the bed;
