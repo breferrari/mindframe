@@ -10,7 +10,13 @@ import { dirname, join, posix, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const IMPORT = /^\s*(?:import|export)\s[^;]*?from\s+["']([^"']+)["']/gm;
+// `import x from "s"`, `export { x } from "s"`, `import "s"`, and `import("s")`.
+const IMPORT = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
+
+/** Every module specifier a source names. */
+export function specifiers(source: string): string[] {
+	return [...source.matchAll(IMPORT)].flatMap(([, spec]) => (spec === undefined ? [] : [spec]));
+}
 
 function sources(dir: string): string[] {
 	return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -25,11 +31,24 @@ test("the extension's code imports only core/index.ts, its own files, and node:"
 	assert.ok(files.length >= 4, "index, session and the two libraries");
 	for (const file of files) {
 		const from = relative(HERE, dirname(file)).split(sep).join(posix.sep);
-		for (const [, spec] of readFileSync(file, "utf-8").matchAll(IMPORT)) {
-			if (spec === undefined || spec.startsWith("node:")) continue;
+		for (const spec of specifiers(readFileSync(file, "utf-8"))) {
+			if (spec.startsWith("node:")) continue;
 			const target = posix.normalize(posix.join(from, spec));
 			const inside = !target.startsWith("..");
 			assert.ok(inside || target === "../../core/index.ts", `${relative(HERE, file)} imports ${spec}`);
 		}
 	}
+});
+
+test("the rule reads every form of import, so none slips past it", () => {
+	const source = [
+		'import { a } from "./a.ts";',
+		'import type { B } from "../../core/index.ts";',
+		'export { c } from "./c.ts";',
+		'export * from "./d.ts";',
+		'import "../../lib/side-effect.ts";',
+		'const m = await import("../../lib/dynamic.ts");',
+		"const n = await import ( '../../lib/spaced.ts' );",
+	].join("\n");
+	assert.deepEqual(specifiers(source), ["./a.ts", "../../core/index.ts", "./c.ts", "./d.ts", "../../lib/side-effect.ts", "../../lib/dynamic.ts", "../../lib/spaced.ts"]);
 });

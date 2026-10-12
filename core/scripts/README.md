@@ -28,10 +28,12 @@ A vault vendors this folder by copying it onto its `.claude/scripts/`, byte for 
 2. runs `vendor update`, which brings in the extension's two libraries, because the core's re-exports import them;
 3. copies `extensions/qmd/index.ts`, `session.ts`, their tests and `test-fakes.ts` from mindframe at the same commit, and records them with `vendor record` and those paths;
 4. adds `QMD_DECLARATION` (in `core/context.ts`) to `extensions` in `vault-manifest.json`:
-   `{ "id": "qmd", "module": ".claude/scripts/extensions/qmd/index.ts", "events": ["session-start"], "timeoutMs": 30000 }`;
+   `{"id":"qmd","module":".claude/scripts/extensions/qmd/index.ts","events":["session-start"],"timeoutMs":30000}`;
 5. removes its session-start entry point's `qmdSessionStart` call, and passes `migrationNotes(manifest)` to the meter.
 
-An entry point that passes `migrationNotes` shows the missing declaration on the meter line, so a vault that does step 5 and misses step 4 sees what to add. These steps were run on a copy of wiki-mind 3de2fea: `vendor check` passed on all 37 files, the extension loaded from the declaration, and its tests passed in the vault. `VAULT_EXTENSIONS=off` now turns QMD's session-start work off too, because it is no longer core. `lib/qmd.ts` and the qmd helpers in `lib/session-start.ts` stay as re-exports of the extension's code until #96, because scripts vendored from obsidian-mind still import them there.
+An entry point that passes `migrationNotes` shows the missing declaration on the meter line, so a vault that does step 5 and misses step 4 sees what to add. These steps were run on a copy of wiki-mind 3de2fea: `vendor check` passed on all 37 files, the extension loaded from the declaration, and its tests passed in the vault. `VAULT_EXTENSIONS=off` now turns QMD's session-start work off too, because it is no longer core. `lib/qmd.ts` and the qmd helpers in `lib/session-start.ts` stay as re-exports of the extension's code until #96, because scripts vendored from obsidian-mind still import them there. So until #96 every vault carries the extension's two libraries, `extensions/qmd/lib/`, whether it declares the extension or not: the core imports them, and `vendor update` brings them in.
+
+The extension's two sections share one run of QMD's work, which also starts the background refresh. `disable` on a section hides its note and leaves the work running; `enabled: false` on the declaration, or `VAULT_QMD=off`, turns the work off.
 
 **`lib/session-start.ts` is not all core API.** It still carries three obsidian-mind formatters: `formatActiveWork`, `hasBrainContent` and `formatBrainIndex` (seam S2). They move out to obsidian-mind's own extensions when obsidian-mind adopts mindframe (Phase 4), not before, because obsidian-mind still calls them from this file. Don't build on them ([#46](https://github.com/breferrari/mindframe/issues/46)).
 

@@ -211,6 +211,20 @@ describe("rule 5: a throw or a timeout is isolated", () => {
 		assert.match(failures[0]?.message ?? "", /timed out after 100 ms/);
 	});
 
+	test("an item's limit counts from when its call starts: an earlier item that blocks doesn't spend it (#70)", async () => {
+		const busy = (ms: number) => {
+			const end = Date.now() + ms;
+			while (Date.now() < end) {
+				/* synchronous work, as QMD's spawnSync probes are */
+			}
+		};
+		const blocking: Extension = { id: "blocks", sections: [{ id: "sync", priority: 0, header: "### sync", render: () => (busy(300), "blocked") }] };
+		const waiting: Extension = { id: "waits", sections: [{ id: "io", priority: 1, header: "### io", render: () => new Promise<string>((r) => setTimeout(() => r("arrived"), 20)) }] };
+		const { result, failures } = await collectSections(fromLoaded([declared(blocking), declared(waiting, { timeoutMs: 100 })]), ctx, "full");
+		assert.deepEqual(failures, []);
+		assert.deepEqual(result.map((s) => s.body), ["blocked", "arrived"]);
+	});
+
 	test("an item with an invalid priority is a failure, not a guess", async () => {
 		const ext: Extension = { id: "a", sections: [section("nan", Number.NaN, "x"), section("ok", 1, "y")] };
 		const { result, failures } = await collectSections(fromLoaded([declared(ext)]), ctx, "full");

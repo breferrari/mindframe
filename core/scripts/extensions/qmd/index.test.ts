@@ -39,7 +39,7 @@ describe("the qmd extension", () => {
 			extension.sections?.map((s) => [s.id, s.header, s.priority, s.pointer]),
 			[["qmd-self-heal", SELF_HEAL_HEADER, 0, undefined], ["qmd-version", VERSION_HEADER, 0, undefined]],
 		);
-		assert.match(QMD_DECLARATION, /"module": "\.claude\/scripts\/extensions\/qmd\/index\.ts"/, "the vault path the core vendors it to");
+		assert.equal(JSON.parse(QMD_DECLARATION).module, ".claude/scripts/extensions/qmd/index.ts", "the vault path the core vendors it to");
 	});
 
 	test("a healthy QMD at or above the floor: no sections, one background refresh", async () => {

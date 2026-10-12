@@ -297,7 +297,8 @@ const isFindingList = (v: unknown): v is Finding[] =>
  * Run one extension call under its time limit, and check what it returned.
  * A throw, a rejection, a timeout, or a value of the wrong shape is recorded
  * as a Failure: nothing an extension returns reaches the hook's output
- * unchecked.
+ * unchecked. The limit counts from when the call starts, so an earlier
+ * call that blocks the event loop doesn't spend a later call's time.
  */
 async function isolated<R>(
 	entry: Entry<{ readonly id: string }>,
@@ -307,7 +308,7 @@ async function isolated<R>(
 	expected: string,
 ): Promise<{ ok: true; value: R } | { ok: false; failure: Failure }> {
 	try {
-		const value = await withTimeout(Promise.resolve().then(fn), entry.timeoutMs);
+		const value = await Promise.resolve().then(() => withTimeout(Promise.resolve(fn()), entry.timeoutMs));
 		if (!accept(value)) throw new Error(`returned ${describe(value)}, not ${expected}`);
 		return { ok: true, value };
 	} catch (err) {

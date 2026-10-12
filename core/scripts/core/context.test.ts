@@ -1,5 +1,6 @@
 import { describe, test } from "node:test";
 import { parseDeclarations } from "./registry.ts";
+import { INJECTION_CEILING_BYTES, METER_HEADROOM, formatInjectionSize } from "../lib/session-start.ts";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -83,6 +84,23 @@ describe("migrationNotes: qmd set in the manifest, no qmd extension declared (#7
 
 	test("a malformed extensions value declares nothing: the note still shows, and nothing throws", () => {
 		for (const extensions of ["qmd", { qmd }, [null, 3, "qmd", { id: 7 }]]) assert.equal(notes({ qmd_index: "", extensions }).length, 1, JSON.stringify(extensions));
+	});
+
+	test("a qmd declaration that doesn't run at session start doesn't count: QMD's work would never run", () => {
+		assert.equal(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop"] }] }).length, 1);
+		assert.deepEqual(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop", "session-start"] }] }), []);
+	});
+
+	test("the note and a full meter fit the room the budget keeps for the meter", () => {
+		const [note] = notes({ qmd_index: "" });
+		const meter = formatInjectionSize(INJECTION_CEILING_BYTES, {
+			budgetBytes: INJECTION_CEILING_BYTES,
+			clampedFrom: 99_000,
+			collapsed: ["Recent Changes", "Open Tasks"],
+			degraded: [{ section: "North Star", level: "headlines" }],
+			notes: [note ?? ""],
+		});
+		assert.ok(Buffer.byteLength(meter, "utf-8") <= METER_HEADROOM, `${Buffer.byteLength(meter, "utf-8")} bytes: ${meter}`);
 	});
 
 	test("a qmd declaration the registry refuses doesn't count: it would never load", () => {
