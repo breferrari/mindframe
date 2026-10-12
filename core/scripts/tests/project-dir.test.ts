@@ -7,7 +7,7 @@ import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { nearestVaultRoot, resolveProjectDir, VAULT_MARKER } from "../lib/project-dir.ts";
 
 describe("resolveProjectDir", () => {
@@ -99,4 +99,17 @@ describe("resolveProjectDir — finds the vault root above the named folder", ()
 			rmSync(vault, { recursive: true, force: true });
 		}
 	});
+});
+
+test("a relative name is walked from the working directory, and the root found is absolute", () => {
+	const root = mkdtempSync(join(tmpdir(), "pd-rel-"));
+	try {
+		writeFileSync(join(root, "vault-manifest.json"), "{}");
+		mkdirSync(join(root, "a", "b"), { recursive: true });
+		const rel = relative(process.cwd(), join(root, "a", "b"));
+		assert.equal(resolveProjectDir("/fb", { CLAUDE_PROJECT_DIR: rel }), root);
+		assert.equal(resolveProjectDir(rel, {}), root);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });

@@ -37,6 +37,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#79](https://github.com/breferrari/mindframe/issues/79) | Retry the atomic write's rename on Windows, and hide and uniquify its temp file | ✅ |
 | [#80](https://github.com/breferrari/mindframe/issues/80) | Export line regions and wikilink offsets to extensions | ✅ |
 | [#82](https://github.com/breferrari/mindframe/issues/82) | Read frontmatter by one rule everywhere in the core, as Obsidian does | ⬜ |
+| [#85](https://github.com/breferrari/mindframe/issues/85) | Export the vault-root walk-up to extensions | ✅ |
 
 ## Phase 3: first-party extensions
 

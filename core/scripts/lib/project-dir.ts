@@ -28,7 +28,7 @@
  */
 
 import { statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const PROJECT_DIR_VARS = [
 	"CLAUDE_PROJECT_DIR",
@@ -48,9 +48,17 @@ const holdsMarker = (dir: string): boolean => {
 	}
 };
 
+/**
+ * The vault root for the folder an agent or a caller names: the first
+ * non-empty of CLAUDE_PROJECT_DIR, CODEX_PROJECT_DIR and GEMINI_PROJECT_DIR,
+ * else `fallback`, walked up to the nearest folder holding
+ * vault-manifest.json. A relative name is walked from the working
+ * directory, and the root found is absolute. Outside a vault, the named
+ * folder comes back as given.
+ */
 export function resolveProjectDir(fallback: string, env: NodeJS.ProcessEnv = process.env): string {
 	const named = PROJECT_DIR_VARS.map((name) => env[name]).find(Boolean) ?? fallback;
-	return nearestVaultRoot(named) ?? named;
+	return nearestVaultRoot(resolve(named)) ?? named;
 }
 
 /** `dir` or the nearest ancestor that is a vault root, or null when none is. */

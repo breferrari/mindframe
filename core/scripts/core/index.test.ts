@@ -7,8 +7,9 @@ import { afterEach, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { writeFileAtomic } from "./index.ts";
+import { join, relative } from "node:path";
+import * as lib from "../lib/project-dir.ts";
+import { resolveProjectDir, writeFileAtomic } from "./index.ts";
 
 describe("writeFileAtomic, through index.ts", () => {
 	let dir = "";
@@ -41,5 +42,26 @@ describe("writeFileAtomic, through index.ts", () => {
 		const target = join(dir, "missing", "note.md");
 		assert.throws(() => writeFileAtomic(target, "text"), (err: NodeJS.ErrnoException) => err.code === "ENOENT" && err.syscall === "open");
 		assert.deepEqual(readdirSync(dir), []);
+	});
+});
+
+describe("resolveProjectDir, through index.ts", () => {
+	let root = "";
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "core-vault-"));
+		writeFileSync(join(root, "vault-manifest.json"), "{}");
+		mkdirSync(join(root, "notes", "deep"), { recursive: true });
+	});
+	afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+	test("is the core's own function", () => {
+		assert.equal(resolveProjectDir, lib.resolveProjectDir);
+	});
+
+	test("a runner in a nested folder finds the vault root above it, named absolutely or relative to the working directory", () => {
+		const nested = join(root, "notes", "deep");
+		assert.equal(resolveProjectDir(nested, {}), root);
+		const fromCwd = relative(process.cwd(), nested);
+		assert.equal(resolveProjectDir(fromCwd, {}), root);
 	});
 });
