@@ -28,7 +28,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#10](https://github.com/breferrari/mindframe/issues/10) | `VENDOR.json` and the vendor drift check | ✅ |
 | [#11](https://github.com/breferrari/mindframe/issues/11) | Run the core contract scenarios in real sessions | ✅ |
 | [#12](https://github.com/breferrari/mindframe/issues/12) | Run the wiki-mind spec in real sessions | ✅ |
-| [#52](https://github.com/breferrari/mindframe/issues/52) | Let session-start's budget and QMD readers take the parsed manifest | ⬜ |
+| [#52](https://github.com/breferrari/mindframe/issues/52) | Let session-start's budget and QMD readers take the parsed manifest | ✅ |
 | [#63](https://github.com/breferrari/mindframe/issues/63) | Find frontmatter by its delimiter lines, not every `---` | ✅ |
 | [#67](https://github.com/breferrari/mindframe/issues/67) | Make the CRLF frontmatter test fail when CRLF isn't parsed | ✅ |
 | [#75](https://github.com/breferrari/mindframe/issues/75) | Export an atomic write to extensions from the core | ✅ |
@@ -39,6 +39,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#82](https://github.com/breferrari/mindframe/issues/82) | Read frontmatter by one rule everywhere in the core, as Obsidian does | ⬜ |
 | [#85](https://github.com/breferrari/mindframe/issues/85) | Export the vault-root walk-up to extensions | ✅ |
 | [#89](https://github.com/breferrari/mindframe/issues/89) | Absorb obsidian-mind #333 into the core: the instruction files library and its comments | ✅ |
+| [#91](https://github.com/breferrari/mindframe/issues/91) | Match a retired instruction file the way the agent loads it: any case where the filesystem ignores case, exact case on Linux | ⬜ |
 
 ## Phase 3: first-party extensions
 

@@ -37,6 +37,7 @@
 
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { ManifestObject } from "../lib/manifest.ts";
 import type { BudgetSection } from "../lib/session-start.ts";
 import type {
 	ChecklistItem,
@@ -107,7 +108,7 @@ function isFinitePositive(value: unknown): value is number {
  * extension runs inside every hook, so it must live in the vault it serves.
  */
 export function parseDeclarations(
-	manifest: Readonly<Record<string, unknown>> | null,
+	manifest: ManifestObject,
 ): Dispatch<Declaration[]> {
 	const declared = manifest?.[EXTENSIONS_KEY];
 	if (declared === undefined) return { result: [], failures: [] };
@@ -168,7 +169,7 @@ export function fromLoaded(loaded: readonly Loaded[], failures: readonly Failure
  */
 export async function loadRegistry(
 	vaultRoot: string,
-	manifest: Readonly<Record<string, unknown>> | null,
+	manifest: ManifestObject,
 	event: HookEvent,
 	env: NodeJS.ProcessEnv = process.env,
 ): Promise<Registry> {
@@ -488,13 +489,5 @@ export function formatFailures(failures: readonly Failure[]): string[] {
 	);
 }
 
-/** The parsed manifest, or null when absent or malformed. */
-export function parseManifest(manifestJson: string | null): Readonly<Record<string, unknown>> | null {
-	if (manifestJson === null) return null;
-	try {
-		const parsed: unknown = JSON.parse(manifestJson);
-		return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
-	} catch {
-		return null;
-	}
-}
+/** The manifest source parsed, unfrozen, or null when absent or malformed. Kept by this name for vaults that call it (#52). */
+export { parseManifestJson as parseManifest } from "../lib/manifest.ts";
