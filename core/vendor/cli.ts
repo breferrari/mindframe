@@ -112,8 +112,8 @@ function ownerLookup(vault: string, recordFile: string): (file: string) => strin
 	const parts = path.resolve(recordFile).split(path.sep);
 	const at = parts.lastIndexOf(".claude");
 	const root = at > 0 ? parts.slice(0, at).join(path.sep) : (nearestVaultRoot(vault) ?? vault);
-	const owner = ownersOf(root, recordFile);
-	return (file) => owner(path.resolve(vault, file));
+	let owner: ((filePath: string) => string | null) | null = null; // read the records on first need
+	return (file) => (owner ??= ownersOf(root, recordFile))(path.resolve(vault, file));
 }
 
 export function main(
@@ -202,7 +202,15 @@ export function main(
 			const upstreamRoot = path.resolve(values.upstream);
 			const commit = cleanHead(run, upstreamRoot);
 			const record = readRecord(recordFile);
-			const plan = planUpdate({ vault, upstreamRoot, commit, record, patches: readPatchDir(patchDir), resolved: values.resolved ?? [], ownerOf: ownerLookup(vault, recordFile) });
+			const plan = planUpdate({ vault, upstreamRoot, commit, record, patches: readPatchDir(patchDir), resolved: values.resolved ?? [], ownerOf: ownerLookup(vault, recordFile),
+				oldUpstream: (p) => {
+					try {
+						return run("git", ["show", `${record.commit}:${p}`], upstreamRoot);
+					} catch {
+						return null; // not in the old commit, or not a git checkout
+					}
+				},
+			});
 			// Every target resolves before the first write, so a refusal writes nothing.
 			const writes = plan.files.map((f) => ({ target: resolveInside(vault, f.file), bytes: f.bytes }));
 			for (const w of writes) {

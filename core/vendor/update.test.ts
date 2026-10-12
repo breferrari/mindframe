@@ -403,7 +403,7 @@ test("import-like text in a string is not an import; template, require and .tsx 
 	for (const rel of ["t.ts", "r.cjs", "view.tsx", "util.ts"]) assert.ok(s.has(`.claude/scripts/${rel}`), rel);
 });
 
-test("a file recorded under another vault path is not added again", (t) => {
+test("an import lands where it resolves at runtime, even when the record holds the same upstream file at another path", (t) => {
 	const s = imports(t);
 	put(s.vault, ".claude/elsewhere/util.ts", "export const u = 1;\n");
 	const rec = JSON.parse(readFileSync(s.recFile, "utf8"));
@@ -412,12 +412,51 @@ test("a file recorded under another vault path is not added again", (t) => {
 	writeFileSync(s.recFile, JSON.stringify(rec, null, 2) + "\n");
 	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
 	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
-	assert.equal(s.has(".claude/scripts/util.ts"), false);
+	assert.ok(s.has(".claude/scripts/util.ts"), "./util.ts from .claude/scripts/lib.ts is .claude/scripts/util.ts");
 });
-
 test("a target two files import is refused once, and import refusals come with the others", (t) => {
 	const s = imports(t);
 	s.commit({ "lib.ts": 'import { g } from "./ghost.ts";\nimport { a } from "./a.ts";\n' + LIB, "a.ts": 'import { g } from "./ghost.ts";\nexport const a = 1;\n' });
 	assert.equal(s.cli("update", ...s.at()), 1);
 	assert.equal(s.lines.join("\n").match(/ghost\.ts, which upstream doesn't have/g)?.length, 1, s.lines.join("\n"));
+});
+
+test("a new import is followed after a conflict is resolved: new means new against the old upstream", (t) => {
+	const s = imports(t);
+	s.makePatch("bump", "export const v0 = 0", "export const v0 = 100");
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB.replace("export const v0 = 0", "export const v0 = 7"), "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 1, "the patch and upstream change one line: a conflict");
+	put(s.vault, LIB_PATH, 'import { u } from "./util.ts";\n' + LIB.replace("export const v0 = 0", "export const v0 = 100"));
+	assert.equal(s.cli("update", ...s.at("--resolved", LIB_PATH)), 0, s.lines.join("\n"));
+	assert.ok(s.has(".claude/scripts/util.ts"), s.lines.join("\n"));
+});
+
+test("an import a vault patch removed, and upstream still has, stays out", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": 'import { slow } from "./slow.ts";\n' + LIB, "slow.ts": "export const slow = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	const rec = JSON.parse(readFileSync(s.recFile, "utf8"));
+	delete rec.files[".claude/scripts/slow.ts"];
+	writeFileSync(s.recFile, JSON.stringify(rec, null, 2) + "\n");
+	rmSync(path.join(s.vault, ".claude", "scripts", "slow.ts"));
+	s.makePatch("no-slow", 'import { slow } from "./slow.ts";\n', "");
+	s.commit({ "lib.ts": 'import { slow } from "./slow.ts";\n' + LIB.replace("export const v19 = 19", "export const v19 = 190") });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.equal(s.has(".claude/scripts/slow.ts"), false);
+});
+
+test("a regex literal with a backtick or // doesn't hide the imports after it", (t) => {
+	const s = imports(t);
+	s.commit({ "lib.ts": "const fence = /^(`{3,}|~{3,})$/;\nconst url = /https?:\\/\\//;\nimport { u } from \"./util.ts\";\n" + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(s.has(".claude/scripts/util.ts"), s.lines.join("\n"));
+});
+
+test("a target that is a folder in the vault is refused, and nothing is written", (t) => {
+	const s = imports(t);
+	mkdirSync(path.join(s.vault, ".claude", "scripts", "util.ts"), { recursive: true });
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 1);
+	assert.match(s.lines.join("\n"), /\.claude\/scripts\/util\.ts is in the vault and isn't a file/);
+	assert.equal(s.vaultLib(), LIB);
 });
