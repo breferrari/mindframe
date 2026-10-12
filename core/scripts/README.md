@@ -16,6 +16,8 @@ This folder mirrors a vault's `.claude/scripts/`:
 
 The mod itself is still each vault's own; one template for every vault is [#47](https://github.com/breferrari/mindframe/issues/47).
 
+**Two switches turn QMD's session-start work off** (`core/qmd-session.ts`), each only with the exact value `off`: `VAULT_QMD` turns all of it off, and `VAULT_QMD_REFRESH` only the detached update or bootstrap, so a test run that sets it leaves no session-start refresh worker behind; the probes and their notes still run (#94, as obsidian-mind #338).
+
 **Entry points start from `core/context.ts`.** `openVault(vaultRoot, event)` reads and parses `vault-manifest.json` once and loads the registry for that event, so no entry point parses the manifest itself. `readManifest` never throws: a missing or malformed manifest means no extensions and the default budgets. `context.ts` is for entry points; extensions import only from `index.ts`.
 
 A vault vendors this folder by copying it onto its `.claude/scripts/`, byte for byte, and records the copy in its `VENDOR.json`. The paths and imports (`../lib/x.ts`) are the same on both sides, so updating a vault's copy is a source swap, never a merge. Extensions import only from `core/index.ts` (DESIGN.md rule 2, and the import rule wiki-mind recorded for the lift). Library internals may be renamed or split without breaking them.

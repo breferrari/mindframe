@@ -14,6 +14,7 @@ Status: ✅ done · 🔨 in progress · ⏳ blocked · ⬜ not started
 | [#4](https://github.com/breferrari/mindframe/issues/4) | Expectation spec format and grader | ✅ |
 | [#5](https://github.com/breferrari/mindframe/issues/5) | Run the obsidian-mind baseline spec in real sessions | 🔨 Windows done; POSIX leg pending |
 | [#74](https://github.com/breferrari/mindframe/issues/74) | Let expectations read the mod's delivery in dry runs, and dry-run it in CI | ✅ |
+| [#99](https://github.com/breferrari/mindframe/issues/99) | Fail a test bed run that leaves a detached process behind, and move the pins past VAULT_QMD_REFRESH | ⬜ |
 
 ## Phase 2: the core
 
@@ -49,7 +50,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#69](https://github.com/breferrari/mindframe/issues/69) | Let extensions run side effects, and add a pre-compact event | ✅ |
 | [#70](https://github.com/breferrari/mindframe/issues/70) | Move qmd out of the core into an optional extension | ⏳ after #69, and the obsidian-mind #321 absorb with #52 |
 | [#71](https://github.com/breferrari/mindframe/issues/71) | Ship the qmd MCP bridge with the qmd extension | ⏳ after #70 |
-| [#94](https://github.com/breferrari/mindframe/issues/94) | Skip session-start's detached qmd refresh when VAULT_QMD_REFRESH=off, as obsidian-mind #338 does | ⬜ |
+| [#94](https://github.com/breferrari/mindframe/issues/94) | Skip session-start's detached qmd refresh when VAULT_QMD_REFRESH=off, as obsidian-mind #338 does | ✅ |
 | [#95](https://github.com/breferrari/mindframe/issues/95) | Run qmd's index refresh as the qmd extension's effects | ⏳ after #70 |
 | [#96](https://github.com/breferrari/mindframe/issues/96) | Move qmd's bootstrap and model setup into the qmd extension | ⏳ after #95 |
 | [#14](https://github.com/breferrari/mindframe/issues/14) | Ship the memory MCP server as an optional extension | ⬜ |

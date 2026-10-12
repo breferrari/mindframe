@@ -18,6 +18,9 @@
  *
  * `VAULT_QMD=off` turns all of it off: tests set it so a session-start run
  * never reaches the QMD index store in the user's cache.
+ * `VAULT_QMD_REFRESH=off` turns off only the detached refresh, update or
+ * bootstrap, so a test run that sets it never leaves a worker behind (#94,
+ * the same switch as obsidian-mind #338). The probes and notes still run.
  */
 
 import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from "node:child_process";
@@ -39,6 +42,9 @@ export const EMPTY_STORE_BYTES = 500_000;
 
 /** The environment variable that turns QMD's session-start work off. */
 export const QMD_SWITCH = "VAULT_QMD";
+
+/** The environment variable that turns off only the detached refresh, with the exact value `off` (obsidian-mind #338). */
+export const REFRESH_SWITCH = "VAULT_QMD_REFRESH";
 
 type SpawnSyncResult = { readonly status: number | null; readonly stdout?: string; readonly stderr?: string };
 
@@ -134,6 +140,8 @@ export function qmdSessionStartOf(
 			});
 		}
 	}
+
+	if (deps.env[REFRESH_SWITCH] === "off") return { notes, refresh: null };
 
 	const size = index === null ? null : deps.storeSize(resolveIndexStorePath(index, deps.env, deps.home));
 	const empty = index !== null && (size === null || size < EMPTY_STORE_BYTES);
