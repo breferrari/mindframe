@@ -1,11 +1,13 @@
 /**
  * lineRegions and wikilinkSpans read a note line by line by the same rules
- * extractWikilinkTargets reads it whole: fences as stripCodeRegions finds
- * them, inline code masked the same way, and every target through
- * extractWikilinkTargets itself. The agreement case pins that.
+ * the core reads it whole: frontmatter as stripFrontmatter finds it, fences
+ * as stripCodeRegions finds them, inline code removed the same way, and
+ * every target read as extractWikilinkTargets reads it. The agreement cases
+ * pin that.
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { stripFrontmatter } from "../lib/session-start.ts";
 import { extractWikilinkTargets, lineRegions, wikilinkSpans } from "../lib/wikilinks.ts";
 import * as core from "../core/index.ts";
 
@@ -24,16 +26,13 @@ describe("lineRegions", () => {
 		assert.deepEqual(lineRegions(lines), ["frontmatter", "frontmatter", "frontmatter", "heading", "body", "body"]);
 	});
 
-	test("a BOM before the opening --- still opens frontmatter", () => {
-		assert.deepEqual(lineRegions(["﻿---", "a: 1", "---", "x"]), ["frontmatter", "frontmatter", "frontmatter", "body"]);
-	});
-
-	test("an unterminated block is not frontmatter, as frontmatter.ts reads it", () => {
+	test("an unterminated block is not frontmatter", () => {
 		assert.deepEqual(lineRegions(["---", "a: 1", "text"]), ["body", "body", "body"]);
 	});
 
-	test("a first line that is not exactly --- opens nothing", () => {
-		assert.deepEqual(lineRegions(["----", "a: 1", "---"]), ["body", "body", "body"]);
+	test("the opening line is read as stripFrontmatter reads it: one starting with --- opens, a BOM before it doesn't", () => {
+		assert.deepEqual(lineRegions(["----", "a: 1", "---", "x"]), ["frontmatter", "frontmatter", "frontmatter", "body"]);
+		assert.deepEqual(lineRegions(["﻿---", "a: 1", "---", "x"]), ["body", "body", "body", "body"]);
 	});
 
 	test("``` and ~~~ fences, a fence that never closes, and #s inside a fence", () => {
@@ -41,12 +40,13 @@ describe("lineRegions", () => {
 		assert.deepEqual(lineRegions(lines), ["fence", "fence", "fence", "fence", "fence", "fence", "fence", "body", "fence", "fence"]);
 	});
 
-	test("a heading needs a space after its #s, and at most six", () => {
-		assert.deepEqual(lineRegions(["#tag", "###### six", "####### seven"]), ["body", "heading", "body"]);
+	test("a heading is up to three spaces, one to six #s, then a space or the end of the line", () => {
+		const lines = ["#tag", "###### six", "####### seven", "   # indented", "#", "    # code-indented"];
+		assert.deepEqual(lineRegions(lines), ["body", "heading", "body", "heading", "heading", "body"]);
 	});
 
-	test("a fence-looking line inside frontmatter is frontmatter", () => {
-		assert.deepEqual(lineRegions(["---", fence, "---", "x"]), ["frontmatter", "frontmatter", "frontmatter", "body"]);
+	test("a fence-looking line inside frontmatter is frontmatter, and opens no fence", () => {
+		assert.deepEqual(lineRegions(["---", "x: |", "  " + fence, "---", "[[Body]]"]), ["frontmatter", "frontmatter", "frontmatter", "frontmatter", "body"]);
 	});
 });
 
@@ -76,6 +76,13 @@ describe("wikilinkSpans", () => {
 		assert.deepEqual(spans(`${tick}[[A]]${tick} and ${tick}${tick}x ${tick} [[B]]${tick}${tick} but [[C]]`), [["C", "[[C]]"]]);
 	});
 
+	test("inline code inside or between a link's brackets is removed, as extraction removes it, and the span covers it", () => {
+		assert.deepEqual(spans(`[[Si${tick}x${tick}x]] and [${tick}y${tick}[Joined]]`), [
+			["Six", `[[Si${tick}x${tick}x]]`],
+			["Joined", `[${tick}y${tick}[Joined]]`],
+		]);
+	});
+
 	test("a same-note heading link and a placeholder are not links", () => {
 		assert.deepEqual(spans("[[#Heading]] [[{{date}}]] [[D]]"), [["D", "[[D]]"]]);
 	});
@@ -85,28 +92,51 @@ describe("wikilinkSpans", () => {
 	});
 });
 
-test("agreement: the spans on body and heading lines are exactly extractWikilinkTargets' links", () => {
-	const note = [
-		"---",
-		"related: \"[[In frontmatter]]\"",
-		"---",
-		"# About [[Heading link]]",
-		"Body [[One]] and [[Two|two]] and `[[code]]`.",
-		fence,
-		"[[In a fence]]",
-		fence,
-		"| [[Three\\|3]] | ![[Four]] | [[#Self]] |",
-		"~~~",
-		"[[Also fenced]]",
-		"~~~",
-		"End [[Five#Part]] and [[Si`x`x]].",
-	].join("\r\n");
-	const lines = note.split("\n");
-	const regions = lineRegions(lines);
-	const fromSpans = lines.flatMap((line, i) => (regions[i] === "body" || regions[i] === "heading" ? wikilinkSpans(line).map((s) => s.target) : []));
-	const body = lines.filter((_, i) => regions[i] !== "frontmatter").join("\n");
-	assert.deepEqual(fromSpans, extractWikilinkTargets(body));
-	assert.deepEqual(fromSpans, ["Heading link", "One", "Two", "Three", "Four", "Five", "Six"]);
+describe("agreement with the whole-note readers", () => {
+	const notes = [
+		[
+			"---",
+			"related: \"[[In frontmatter]]\"",
+			"x: |",
+			"  " + fence,
+			"---",
+			"# About [[Heading link]]",
+			"Body [[One]] and [[Two|two]] and `[[code]]`.",
+			fence,
+			"[[In a fence]]",
+			fence,
+			"| [[Three\\|3]] | ![[Four]] | [[#Self]] |",
+			"~~~",
+			"[[Also fenced]]",
+			"~~~",
+			`End [[Five#Part]], [[Si${tick}x${tick}x]] and [${tick}y${tick}[Seven]].`,
+		].join("\r\n"),
+		["----", "a: [[X]]", "---", "[[Y]]"].join("\n"),
+		["---", "a: [[X]]", "[[Y]]"].join("\n"),
+		["﻿---", "a: 1", "---", "[[Z]]"].join("\n"),
+	];
+
+	test("the frontmatter lines are the ones stripFrontmatter removes", () => {
+		for (const note of notes) {
+			const lines = note.split("\n");
+			const kept = lineRegions(lines).filter((r) => r !== "frontmatter").length;
+			assert.equal(lines.length - kept, note.split("\n").length - stripFrontmatter(note).split("\n").length, JSON.stringify(note.slice(0, 20)));
+		}
+	});
+
+	test("the spans on body and heading lines are exactly extractWikilinkTargets' links in the note without its frontmatter", () => {
+		for (const note of notes) {
+			const lines = note.split("\n");
+			const regions = lineRegions(lines);
+			const fromSpans = lines.flatMap((line, i) => (regions[i] === "body" || regions[i] === "heading" ? wikilinkSpans(line).map((s) => s.target) : []));
+			assert.deepEqual(fromSpans, extractWikilinkTargets(stripFrontmatter(note)), JSON.stringify(note.slice(0, 20)));
+		}
+		const first = notes[0] ?? "";
+		const firstLines = first.split("\n");
+		const firstRegions = lineRegions(firstLines);
+		const found = firstLines.flatMap((line, i) => (firstRegions[i] === "body" || firstRegions[i] === "heading" ? wikilinkSpans(line).map((s) => s.target) : []));
+		assert.deepEqual(found, ["Heading link", "One", "Two", "Three", "Four", "Five", "Six", "Seven"]);
+	});
 });
 
 test("both are exported to extensions through core/index.ts", () => {

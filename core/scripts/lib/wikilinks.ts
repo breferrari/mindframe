@@ -87,8 +87,8 @@ function fenceStep(line: string, marker: string): { fenced: boolean; marker: str
 	return { fenced: false, marker: "" };
 }
 
-/** An ATX heading: one to six #s and a space. */
-const HEADING = /^#{1,6}\s/;
+/** An ATX heading: up to three spaces, one to six #s, then a space or the end of the line. */
+const HEADING = /^ {0,3}#{1,6}(\s|$)/;
 
 /** Which part of a note a line is in. */
 export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
@@ -97,20 +97,21 @@ export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
  * The region of each line of a note, for an extension that rewrites a note
  * line by line. Lines may keep a trailing \r (CRLF split on \n).
  *
- * - Frontmatter runs from a first line of exactly `---` (a BOM may precede
- *   it) to the first `---` line after it. It closes as frontmatter.ts
- *   reads it: a `---` inside a value doesn't end it, and an unterminated
- *   block is no frontmatter at all. A first line such as `----` opens
- *   nothing, as in Obsidian.
- * - Fences are the ones stripCodeRegions strips, so a link on a "fence"
- *   line is never one extractWikilinkTargets reads.
- * - A heading is one to six #s and a space.
+ * - Frontmatter is what stripFrontmatter removes: a first line starting
+ *   with `---`, to the first line after it that is exactly `---`. A `---`
+ *   inside a value doesn't end it, and an unterminated block is no
+ *   frontmatter at all.
+ * - Fences are the ones stripCodeRegions finds in the note without its
+ *   frontmatter, so the links on body and heading lines are exactly
+ *   extractWikilinkTargets(stripFrontmatter(note)).
+ * - A heading is up to three spaces, one to six #s, then a space or the
+ *   end of the line.
  */
 export function lineRegions(lines: readonly string[]): LineRegion[] {
 	const bare = lines.map((l) => l.replace(/\r$/, ""));
-	// The same rule as validateContent in frontmatter.ts, which exports no
-	// finder to share; the two join when that file next changes.
-	const close = bare[0]?.replace(/^\uFEFF/, "") === "---" ? bare.indexOf("---", 1) : -1;
+	// stripFrontmatter's rule, restated for lines: it and frontmatter.ts's
+	// validateContent each hold a copy, and none is exported to share.
+	const close = bare[0]?.startsWith("---") ? bare.indexOf("---", 1) : -1;
 	let marker = "";
 	return bare.map((line, i): LineRegion => {
 		if (i <= close) return "frontmatter";
@@ -133,16 +134,30 @@ export type WikilinkSpan = { readonly target: string; readonly start: number; re
  * drops has no span. Fences span lines; use lineRegions for them.
  */
 export function wikilinkSpans(line: string): WikilinkSpan[] {
-	const masked = line.replace(INLINE_CODE, (code) => " ".repeat(code.length));
+	// Remove inline code as stripCodeRegions does, and keep where each kept
+	// character came from: links are found in what's left, as extraction
+	// finds them (`[[A`x`B]]` reads as AB), and their offsets map back.
+	let kept = "";
+	const from: number[] = [];
+	let at = 0;
+	const keep = (to: number) => {
+		for (; at < to; at++) {
+			kept += line.charAt(at);
+			from.push(at);
+		}
+	};
+	for (const code of line.matchAll(INLINE_CODE)) {
+		keep(code.index);
+		at = code.index + code[0].length;
+	}
+	keep(line.length);
 	const spans: WikilinkSpan[] = [];
-	for (const m of masked.matchAll(WIKILINK)) {
-		const end = m.index + m[0].length;
-		// The target from the link as written, with its inline code removed
-		// as stripCodeRegions removes it: `[[A`x`B]]` reads as AB, as it does
-		// when extracted from the whole note.
-		const inner = /^!?\[\[([^]*)\]\]$/.exec(line.slice(m.index, end).replace(INLINE_CODE, ""))?.[1];
-		const target = inner === undefined ? null : targetOf(inner);
-		if (target !== null) spans.push({ target, start: m.index, end });
+	for (const m of kept.matchAll(WIKILINK)) {
+		const target = targetOf(m[1] ?? "");
+		if (target === null) continue;
+		const first = from[m.index] ?? 0;
+		const last = from[m.index + m[0].length - 1] ?? first;
+		spans.push({ target, start: first, end: last + 1 });
 	}
 	return spans;
 }
