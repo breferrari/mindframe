@@ -211,7 +211,7 @@ describe("rule 5: a throw or a timeout is isolated", () => {
 		assert.match(failures[0]?.message ?? "", /timed out after 100 ms/);
 	});
 
-	test("an item's limit counts from when its call starts: an earlier item that blocks doesn't spend it (#70)", async () => {
+	test("every call starts before any limit: a call that blocks spends no other call's time, before it or after it (#70)", async () => {
 		const busy = (ms: number) => {
 			const end = Date.now() + ms;
 			while (Date.now() < end) {
