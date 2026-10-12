@@ -358,6 +358,11 @@ describe("rule 7: slots are recorded, not dispatched", () => {
 		const registry = fromLoaded([declared({ id: "a", effects }, { events: ["session-start"] }), declared({ id: "b", effects }, { events: ["write"] })]);
 		assert.deepEqual(undispatched(registry), ["a: effects, with no write, pre-compact or stop in its events"]);
 	});
+
+	test("a getter that throws does not make undispatched throw", () => {
+		const ext = { id: "a", get effects(): Effect[] { throw new Error("getter"); } } as Extension;
+		assert.deepEqual(undispatched(fromLoaded([declared(ext, { events: ["session-start"] })])), []);
+	});
 });
 
 describe("rule 5: effects run for their side effect alone", () => {
@@ -385,9 +390,14 @@ describe("rule 5: effects run for their side effect alone", () => {
 	test("an effect whose `on` names an event its declaration does not list is a failure, not a silent skip", async () => {
 		let ran = false;
 		const ext: Extension = { id: "a", effects: [effect("pc", ["pre-compact", "stop"], () => { ran = true; })] };
-		const { failures } = await runEffects(fromLoaded([declared(ext, { events: ["write", "pre-compact"] })]), { event: "pre-compact" }, ctx);
+		const twice: Extension = { id: "b", effects: [effect("pc", ["pre-compact", "stop", "stop"], () => {})] };
+		const registry = fromLoaded([declared(ext, { events: ["write", "pre-compact"] }), declared(twice, { events: ["pre-compact"] })]);
+		const { failures } = await runEffects(registry, { event: "pre-compact" }, ctx);
 		assert.equal(ran, false);
-		assert.deepEqual(failures.map((f) => [f.item, f.message]), [["pc", "`on` lists stop, which the declaration's `events` do not"]]);
+		assert.deepEqual(failures.map((f) => [f.extension, f.message]), [
+			["a", "`on` lists stop, which the declaration's `events` do not"],
+			["b", "`on` lists stop, which the declaration's `events` do not"],
+		]);
 	});
 
 	test("a write effect receives the target, a backslash path passed through as given", async () => {
@@ -422,13 +432,13 @@ describe("rule 5: effects run for their side effect alone", () => {
 		let quickDone = 0;
 		const started = Date.now();
 		const registry = fromLoaded([
-			declared(one("hang-a", () => new Promise<void>(() => {})), { events: all, timeoutMs: 1_000 }),
-			declared(one("hang-b", () => new Promise<void>(() => {})), { events: all, timeoutMs: 1_000 }),
-			declared(one("quick", () => new Promise<void>((r) => setTimeout(() => { quickDone = Date.now(); r(); }, 10))), { events: all, timeoutMs: 3_000 }),
+			declared(one("hang-a", () => new Promise<void>(() => {})), { events: all, timeoutMs: 400 }),
+			declared(one("hang-b", () => new Promise<void>(() => {})), { events: all, timeoutMs: 400 }),
+			declared(one("quick", () => new Promise<void>((r) => setTimeout(() => { quickDone = Date.now(); r(); }, 10))), { events: all, timeoutMs: 2_000 }),
 		]);
 		const { failures } = await runEffects(registry, { event: "stop" }, ctx);
-		assert.ok(quickDone > 0 && quickDone - started < 1_000, "the quick effect finished before the others timed out");
-		assert.ok(Date.now() - started < 1_900, "the two 1000 ms limits ran together, not one after the other");
+		assert.ok(quickDone > 0 && quickDone - started < 400, "the quick effect finished before the others timed out");
+		assert.ok(Date.now() - started < 700, "the two 400 ms limits ran together: one after the other would take 800 ms");
 		assert.deepEqual(failures.map((f) => f.extension), ["hang-a", "hang-b"]);
 	});
 

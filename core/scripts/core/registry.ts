@@ -63,6 +63,9 @@ export const EXTENSIONS_KEY = "extensions";
 /** The environment variable that turns every extension off. */
 export const KILL_SWITCH = "VAULT_EXTENSIONS";
 
+/** The effect events as a message names them. */
+const EFFECT_EVENTS_TEXT = "write, pre-compact or stop";
+
 /** The per-call time limit when a declaration sets none. */
 export const DEFAULT_TIMEOUT_MS = 1_000;
 
@@ -191,6 +194,8 @@ export async function loadRegistry(
 
 type Entry<T> = {
 	readonly ext: string;
+	/** The events the extension's declaration lists. */
+	readonly events: readonly HookEvent[];
 	readonly item: T;
 	readonly priority: number;
 	readonly timeoutMs: number;
@@ -240,6 +245,7 @@ function ordered<T extends { readonly id: string; readonly priority?: number }>(
 			if (off.has(id)) continue;
 			entries.push({
 				ext: extension.id,
+				events: declaration.events,
 				item,
 				priority: (priority as number | undefined) ?? declaration.priority ?? Number.POSITIVE_INFINITY,
 				timeoutMs: declaration.timeoutMs ?? DEFAULT_TIMEOUT_MS,
@@ -313,11 +319,11 @@ async function each<T extends { readonly id: string }, R>(
 	entries: readonly Entry<T>[],
 	failures: Failure[],
 	point: Point,
-	fn: (item: T, entry: Entry<T>) => unknown,
+	fn: (item: T) => unknown,
 	accept: (value: unknown) => value is R,
 	expected: string,
 ): Promise<{ entry: Entry<T>; value: R }[]> {
-	const runs = await Promise.all(entries.map((entry) => isolated(entry, point, () => fn(entry.item, entry), accept, expected)));
+	const runs = await Promise.all(entries.map((entry) => isolated(entry, point, () => fn(entry.item), accept, expected)));
 	const out: { entry: Entry<T>; value: R }[] = [];
 	runs.forEach((run, i) => {
 		const entry = entries[i];
@@ -434,29 +440,42 @@ export async function runValidators(registry: Registry, target: WriteTarget, ctx
 export async function runEffects(registry: Registry, trigger: EffectTrigger, ctx: HookContext): Promise<Dispatch<null>> {
 	const failures: Failure[] = [];
 	const entries = ordered<Effect>(registry, trigger.event, "effect", (e) => e.effects, failures);
-	const declared = new Map(registry.loaded.map(({ declaration, extension }) => [extension.id, declaration.events]));
 	// `on` is checked inside the call, so its failure is reported in run order like any other.
-	const run = (item: Effect, entry: Entry<Effect>) => {
-		const on: unknown = item.on;
-		if (!Array.isArray(on) || on.length === 0 || !on.every((event) => EFFECT_EVENTS.includes(event))) {
-			throw new Error(`\`on\` must list some of ${EFFECT_EVENTS.join(", ")}`);
-		}
-		const undeclared = on.filter((event) => !declared.get(entry.ext)?.includes(event));
-		if (undeclared.length > 0) throw new Error(`\`on\` lists ${undeclared.join(", ")}, which the declaration's \`events\` do not`);
-		return on.includes(trigger.event) ? item.run(trigger, ctx) : undefined;
-	};
-	await each(entries, failures, "effect", run, (v): v is undefined => v === undefined, "nothing");
+	const calls = entries.map((entry) => ({
+		...entry,
+		item: {
+			id: entry.item.id,
+			call: () => {
+				const on: unknown = entry.item.on;
+				if (!Array.isArray(on) || on.length === 0 || !on.every((event) => EFFECT_EVENTS.includes(event))) {
+					throw new Error(`\`on\` must list some of ${EFFECT_EVENTS_TEXT}`);
+				}
+				const undeclared = [...new Set(on.filter((event) => !entry.events.includes(event)))];
+				if (undeclared.length > 0) throw new Error(`\`on\` lists ${undeclared.join(", ")}, which the declaration's \`events\` do not`);
+				return on.includes(trigger.event) ? entry.item.run(trigger, ctx) : undefined;
+			},
+		},
+	}));
+	await each(calls, failures, "effect", (item) => item.call(), (v): v is undefined => v === undefined, "nothing");
 	return { result: null, failures };
 }
 
 /** The slots an extension filled that the registry does not dispatch yet, and effects no declared event can run. */
 export function undispatched(registry: Registry): string[] {
 	const out: string[] = [];
+	// Reading a list runs extension code (a getter); a throw here is the dispatchers' to report, not this list's.
+	const filled = (pick: () => readonly unknown[] | undefined) => {
+		try {
+			return (pick()?.length ?? 0) > 0;
+		} catch {
+			return false;
+		}
+	};
 	for (const { declaration, extension } of registry.loaded) {
-		if ((extension.preToolGuards?.length ?? 0) > 0) out.push(`${extension.id}: pre-tool guards`);
-		if ((extension.mcpTools?.length ?? 0) > 0) out.push(`${extension.id}: MCP tools`);
-		if ((extension.effects?.length ?? 0) > 0 && !declaration.events.some((event) => EFFECT_EVENTS.includes(event as EffectTrigger["event"]))) {
-			out.push(`${extension.id}: effects, with no ${EFFECT_EVENTS.join(", ").replace(/, (?=[^,]*$)/, " or ")} in its events`);
+		if (filled(() => extension.preToolGuards)) out.push(`${extension.id}: pre-tool guards`);
+		if (filled(() => extension.mcpTools)) out.push(`${extension.id}: MCP tools`);
+		if (filled(() => extension.effects) && !declaration.events.some((event) => EFFECT_EVENTS.includes(event as EffectTrigger["event"]))) {
+			out.push(`${extension.id}: effects, with no ${EFFECT_EVENTS_TEXT} in its events`);
 		}
 	}
 	return out;
