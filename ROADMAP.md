@@ -12,7 +12,7 @@ Status: ✅ done · 🔨 in progress · ⏳ blocked · ⬜ not started
 | [#2](https://github.com/breferrari/mindframe/issues/2) | Roadmap and design rationale (`docs/DESIGN.md`) | ✅ |
 | [#3](https://github.com/breferrari/mindframe/issues/3) | Test bed runner: beds, paced sessions on both arms, per-hook results | ✅ |
 | [#4](https://github.com/breferrari/mindframe/issues/4) | Expectation spec format and grader | ✅ |
-| [#5](https://github.com/breferrari/mindframe/issues/5) | Run the obsidian-mind baseline spec in real sessions | ⬜ |
+| [#5](https://github.com/breferrari/mindframe/issues/5) | Run the obsidian-mind baseline spec in real sessions | 🔨 Windows done; POSIX leg pending |
 
 ## Phase 2: the core
 
@@ -25,8 +25,8 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#8](https://github.com/breferrari/mindframe/issues/8) | Vault-root discovery, the mod and the `om_mod` flag protocol | ✅ (the mod template: #47) |
 | [#9](https://github.com/breferrari/mindframe/issues/9) | Frontmatter and wikilink libraries | ✅ |
 | [#10](https://github.com/breferrari/mindframe/issues/10) | `VENDOR.json` and the vendor drift check | ✅ |
-| [#11](https://github.com/breferrari/mindframe/issues/11) | Run the core contract scenarios in real sessions | 🔨 built; awaiting its live run |
-| [#12](https://github.com/breferrari/mindframe/issues/12) | Run the wiki-mind spec in real sessions | 🔨 built; awaiting its live run |
+| [#11](https://github.com/breferrari/mindframe/issues/11) | Run the core contract scenarios in real sessions | ✅ |
+| [#12](https://github.com/breferrari/mindframe/issues/12) | Run the wiki-mind spec in real sessions | ✅ |
 | [#52](https://github.com/breferrari/mindframe/issues/52) | Let session-start's budget and QMD readers take the parsed manifest | ⬜ |
 | [#63](https://github.com/breferrari/mindframe/issues/63) | Find frontmatter by its delimiter lines, not every `---` | ✅ |
 | [#67](https://github.com/breferrari/mindframe/issues/67) | Make the CRLF frontmatter test fail when CRLF isn't parsed | ✅ |
