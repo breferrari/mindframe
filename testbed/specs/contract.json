@@ -11,7 +11,7 @@
       { "from": "../fixtures/contract/mf-getter.mjs", "path": ".claude/extensions/mf-getter/index.mjs" }
     ],
     "manifest": {
-      "set": { "eager_layer_budget_bytes": 4000 },
+      "set": { "eager_layer_budget_bytes": 4000, "eager_layer_instruction_budget_bytes": 4000 },
       "extensions": [
         { "id": "mf-order", "module": ".claude/extensions/mf-order/index.mjs", "events": ["session-start"] },
         { "id": "mf-order-decl", "module": ".claude/extensions/mf-order-decl/index.mjs", "events": ["session-start"], "priority": 15 },
