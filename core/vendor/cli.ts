@@ -38,7 +38,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { nearestVaultRoot } from "../scripts/lib/project-dir.ts";
-import { beginEdits, endEdits, vendoredAt } from "../scripts/vendor-guard.ts";
+import { beginEdits, endEdits, findRecords, vendoredAt } from "../scripts/vendor-guard.ts";
 import { applyFile, formatPatch } from "./patch.ts";
 import {
 	DEFAULT_RECORD,
@@ -102,6 +102,29 @@ const lastLine = (out: string): string => out.split("\n").pop()!.trim();
 
 /** "Give the meter a newline." as a PR title: "fix: give the meter a newline". */
 export const prTitle = (description: string): string => `fix: ${description.charAt(0).toLowerCase()}${description.slice(1).replace(/\.$/, "")}`;
+
+/**
+ * Every path another record in the vault owns, in this record's frame (relative
+ * to `vault`, forward slashes), mapped to that record. `.claude/VENDOR.json`'s
+ * paths are relative to the vault root, any other record's to its own folder.
+ */
+function ownedElsewhere(vault: string, recordFile: string): Map<string, string> {
+	const root = nearestVaultRoot(vault) ?? vault;
+	const owned = new Map<string, string>();
+	for (const other of findRecords(root)) {
+		if (path.resolve(other) === path.resolve(recordFile)) continue;
+		const base = path.resolve(other) === path.resolve(root, ".claude", "VENDOR.json") ? root : path.dirname(other);
+		let files: string[];
+		try {
+			files = Object.keys(readRecord(other).files);
+		} catch {
+			continue; // a record that can't be read owns nothing we can name; check reports it
+		}
+		const name = path.relative(root, other).split(path.sep).join("/");
+		for (const file of files) owned.set(path.relative(vault, path.resolve(base, file)).split(path.sep).join("/"), name);
+	}
+	return owned;
+}
 
 export function main(
 	argv: readonly string[],
@@ -189,8 +212,12 @@ export function main(
 			const upstreamRoot = path.resolve(values.upstream);
 			const commit = cleanHead(run, upstreamRoot);
 			const record = readRecord(recordFile);
-			const plan = planUpdate({ vault, upstreamRoot, commit, record, patches: readPatchDir(patchDir), resolved: values.resolved ?? [] });
-			for (const f of plan.files) writeFileSync(resolveInside(vault, f.file), f.bytes);
+			const plan = planUpdate({ vault, upstreamRoot, commit, record, patches: readPatchDir(patchDir), resolved: values.resolved ?? [], ownedElsewhere: ownedElsewhere(vault, recordFile) });
+			for (const f of plan.files) {
+				const target = resolveInside(vault, f.file);
+				mkdirSync(path.dirname(target), { recursive: true }); // an added file may sit in a new folder
+				writeFileSync(target, f.bytes);
+			}
 			if (plan.record === null) {
 				for (const file of plan.conflicts) log(`vendor: ${file}: conflict; resolve the markers, then run update again with --resolved ${file}`);
 				log(`vendor: nothing else written; the record still names ${record.commit.slice(0, 7)}`);
@@ -198,6 +225,7 @@ export function main(
 			}
 			for (const p of plan.patchFiles) writeFileSync(path.join(patchDir, p.name), p.text);
 			writeFileSync(recordFile, formatRecord(plan.record));
+			for (const a of plan.added) log(`vendor: added ${a.file} (imported by ${a.importedBy})`);
 			for (const name of plan.retired) log(`vendor: ${name}: upstream has it now; retired (Applied-Upstream: ${commit.slice(0, 7)})`);
 			log(`vendor: updated ${Object.keys(plan.record.files).length} files to ${record.repository} at ${commit.slice(0, 7)}`);
 			return 0;

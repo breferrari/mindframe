@@ -535,6 +535,8 @@ export type UpdateInput = {
 	readonly patches: PatchSet;
 	/** Files whose conflict markers have been resolved by hand; their vault bytes are taken as the result. */
 	readonly resolved?: readonly string[];
+	/** Paths, in this record's frame, that another record in the vault owns, mapped to that record. */
+	readonly ownedElsewhere?: ReadonlyMap<string, string>;
 };
 
 export type UpdatePlan = {
@@ -546,7 +548,21 @@ export type UpdatePlan = {
 	readonly patchFiles: ReadonlyArray<{ readonly name: string; readonly text: string }>;
 	readonly retired: readonly string[];
 	readonly conflicts: readonly string[];
+	/** Files the update brought in because an updated file imports them. */
+	readonly added: ReadonlyArray<{ readonly file: string; readonly importedBy: string }>;
 };
+
+/** The import specifiers in a module's source: `import … from`, `export … from`, `import "…"` and `import("…")`. */
+const SPECIFIERS = [/\bfrom\s*["']([^"'\r\n]+)["']/g, /\bimport\s*["']([^"'\r\n]+)["']/g, /\bimport\s*\(\s*["']([^"'\r\n]+)["']\s*\)/g];
+
+/** The relative import specifiers in a module's source. Package and node: specifiers are left out. */
+export function importsOf(source: string): string[] {
+	const found = new Set<string>();
+	for (const re of SPECIFIERS) for (const m of source.matchAll(re)) if (m[1]?.startsWith("./") || m[1]?.startsWith("../")) found.add(m[1]);
+	return [...found];
+}
+
+const MODULE = /\.(?:[cm]?[jt]s)$/;
 
 /**
  * Moves a vault's vendored files to a new upstream commit, carrying its
@@ -702,10 +718,54 @@ export function planUpdate(input: UpdateInput): UpdatePlan {
 		const done = carry(merged.text);
 		if (!("stuck" in done)) settle(done, text(done.at));
 	}
+	// Files the updated ones import that the record lacks come along, unpatched at
+	// the new commit: the update can't work without them (#78). One another record
+	// owns, or one upstream lacks, is refused, so nothing is written.
+	const added: Array<{ file: string; importedBy: string }> = [];
+	if (problems.length === 0 && conflicts.length === 0) {
+		const queue = files.map((f) => ({ file: f.file, upstream: entries[f.file]?.upstream ?? record.files[f.file]?.upstream ?? f.file, bytes: f.bytes }));
+		for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+			if (!MODULE.test(next.file)) continue;
+			for (const spec of importsOf(Buffer.from(next.bytes).toString("utf8"))) {
+				const upstream = path.posix.normalize(path.posix.join(path.posix.dirname(next.upstream), spec));
+				if (upstream === ".." || upstream.startsWith("../")) continue; // outside the record's root: the vault's own
+				const file = path.posix.normalize(path.posix.join(path.posix.dirname(next.file), spec));
+				if (record.files[file] !== undefined || entries[file] !== undefined) continue;
+				const owner = input.ownedElsewhere?.get(file);
+				if (owner !== undefined) {
+					problems.push(`${file} is owned by ${owner}, and ${next.file} now imports it; take it off that record, or update that record instead`);
+					continue;
+				}
+				let bytes: Uint8Array;
+				try {
+					bytes = readFileSync(resolveInside(input.upstreamRoot, typeof record.sourceRoot === "string" && record.sourceRoot !== "" ? `${record.sourceRoot}/${upstream}` : upstream));
+				} catch {
+					problems.push(`${next.file} imports ${file}, which upstream doesn't have at ${short}`);
+					continue;
+				}
+				const hash = contentHash(bytes);
+				let present: Uint8Array | null = null;
+				try {
+					present = readFileSync(resolveInside(input.vault, file));
+				} catch {
+					/* not in the vault yet: it is written */
+				}
+				if (present !== null && contentHash(present) !== hash) {
+					problems.push(`${file} is in the vault, unrecorded, and differs from upstream; ${next.file} now imports it. Move it aside, or record it, then update`);
+					continue;
+				}
+				entries[file] = { upstream, sha256: hash, upstreamSha256: hash };
+				files.push({ file, bytes });
+				added.push({ file, importedBy: next.file });
+				queue.push({ file, upstream, bytes });
+			}
+		}
+	}
+
 	if (problems.length) throw new VendorError(problems.join("\n"));
 
 	if (conflicts.length) {
-		return { record: null, files: files.filter((f) => conflicts.includes(f.file)), patchFiles: [], retired: [], conflicts };
+		return { record: null, files: files.filter((f) => conflicts.includes(f.file)), patchFiles: [], retired: [], conflicts, added: [] };
 	}
 
 	const patchFiles: Array<{ name: string; text: string }> = [];
@@ -721,7 +781,7 @@ export function planUpdate(input: UpdateInput): UpdatePlan {
 		}
 	}
 	const next = { ...record, commit: input.commit, files: entries } as VendorRecord;
-	return { record: next, files, patchFiles, retired, conflicts };
+	return { record: next, files, patchFiles, retired, conflicts, added };
 }
 
 // ---- check --------------------------------------------------------------------
