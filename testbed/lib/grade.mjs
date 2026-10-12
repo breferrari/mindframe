@@ -8,6 +8,8 @@ import { formatValue, measureAll, measureLabel } from './measure.mjs'
 // An expectation of any kind that reads the model's answer or what the user
 // was shown (order over the answer, linesCite, …) needs a live session.
 const readsModel = (e) => ['answer', 'shown'].includes(e[e.kind]?.in)
+// The mod's startup delivery exists only in a dry run with --deliver.
+const readsDeliver = (e) => e[e.kind]?.in === 'deliver'
 
 export function grade(record, spec, verdicts = {}) {
   const rows = []
@@ -17,6 +19,21 @@ export function grade(record, spec, verdicts = {}) {
   for (const s of spec.scenarios) {
     const ran = record.runs.some((r) => r.scenario === s.id)
     for (const e of s.expect ?? []) {
+      // The delivery is graded against the dry run that recorded it, as the
+      // mod arm it describes. With none recorded the row is left out and
+      // named, never failed for an empty source.
+      if (readsDeliver(e)) {
+        if (!ran) continue
+        if (!record.dry) {
+          notGraded.push({ scenario: s.id, id: e.id, why: 'dry only' })
+          continue
+        }
+        for (const run of record.runs.filter((r) => r.scenario === s.id)) {
+          if (run.deliver) rows.push({ scenario: s.id, ...evaluate(e, run, verdicts), arm: 'mod' })
+          else notGraded.push({ scenario: s.id, id: e.id, why: 'dry --deliver only' })
+        }
+        continue
+      }
       // A dry run has no model and no Claude Code: those rows aren't graded.
       if (record.dry && ran && !e.arms.includes('settings')) {
         notGraded.push({ scenario: s.id, id: e.id, why: 'mod arm' })
@@ -81,7 +98,10 @@ export function renderMarkdown(record, graded) {
   if (record.dry) out.push('**Dry run:** the hook scripts ran directly, with no model and no Claude Code, on the settings arm. Answers, what the user is shown, judged rows and mod events are not graded.', '')
   if (graded.notGraded?.length) {
     const by = (why) => graded.notGraded.filter((n) => n.why === why).length
-    out.push(`**${graded.notGraded.length} expectations not graded in dry** (${by('model layer')} model layer, ${by('mod arm')} mod arm only). A dry pass covers the rest:`, '')
+    const delivery = by('dry --deliver only') + by('dry only')
+    const where = record.dry ? 'in dry' : 'in a live run'
+    const counts = record.dry ? `${by('model layer')} model layer, ${by('mod arm')} mod arm only${delivery ? `, ${delivery} the mod's delivery` : ''}` : `${delivery} the mod's delivery`
+    out.push(`**${graded.notGraded.length} expectations not graded ${where}** (${counts}). A ${record.dry ? 'dry' : 'live'} pass covers the rest:`, '')
     for (const n of graded.notGraded) out.push(`- ${n.scenario}: ${esc(n.id)} (${n.why})`)
     out.push('')
   }

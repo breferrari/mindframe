@@ -171,10 +171,10 @@ const describe = (m) => (typeof m === 'string' ? JSON.stringify(m) : JSON.string
 
 // ---- validation -------------------------------------------------------------
 
-const SOURCE = /^(answer|shown|hook:[A-Za-z]+)$/
+const SOURCE = /^(answer|shown|deliver|hook:[A-Za-z]+)$/
 
 function checkSource(s, where) {
-  if (typeof s !== 'string' || !SOURCE.test(s)) throw new ExpectError(`${where}: source must be answer, shown or hook:<Event>`)
+  if (typeof s !== 'string' || !SOURCE.test(s)) throw new ExpectError(`${where}: source must be answer, shown, deliver or hook:<Event>`)
 }
 
 export function validateExpectation(e, { arms, turns }, where) {
@@ -191,6 +191,13 @@ export function validateExpectation(e, { arms, turns }, where) {
     const t = e.turn
     const ok = t === 'preamble' || t === 'any' || t === 'all' || (Number.isInteger(t) && t >= 1 && t <= turns)
     if (!ok) throw new ExpectError(`${where}.turn must be 1..${turns}, "preamble", "any" or "all"`)
+  }
+
+  // `deliver` is the mod's startup delivery, which only a dry run with
+  // --deliver records: it belongs to the preamble and the mod arm.
+  if (e[kind]?.in === 'deliver') {
+    if (e.turn !== 'preamble') throw new ExpectError(`${where}: in "deliver" reads the mod's startup delivery; use turn "preamble"`)
+    if (out.arms.length !== 1 || out.arms[0] !== 'mod') throw new ExpectError(`${where}: in "deliver" is the mod's delivery; set arms: ["mod"]`)
   }
 
   const v = e[kind]
@@ -260,9 +267,10 @@ export function validateExpectation(e, { arms, turns }, where) {
 
 // The turns an expectation reads. The preamble (hooks before the first
 // prompt) counts as a turn for hook expectations only: it has no answer,
-// nothing shown and no tools.
+// nothing shown and no tools. It carries the mod's delivery when a dry run
+// recorded one.
 function turnsFor(run, turn, kind) {
-  const preamble = { index: 'preamble', hooks: run.preamble, answer: '', informational: [], tools: [] }
+  const preamble = { index: 'preamble', hooks: run.preamble, answer: '', informational: [], tools: [], deliver: run.deliver?.output }
   if (turn === 'preamble') return [preamble]
   if (turn === 'any' || turn === 'all') return kind === 'hook' ? [preamble, ...run.turns] : run.turns
   return run.turns.filter((t) => t.index === turn)

@@ -183,3 +183,18 @@ test("'any' passes when one turn passes", () => {
   assert.equal(ev({ id: 'a', turn: 'any', shown: 'mod: line' }, r).pass, true)
   assert.equal(ev({ id: 'a', turn: 1, shown: 'mod: line' }, r).pass, false)
 })
+
+test('deliver: read only at the preamble on the mod arm, from the run\'s delivery, CRLF included', () => {
+  const meter = (v = {}) => ({ id: 'd', arms: ['mod'], turn: 'preamble', meter: { in: 'deliver', ...v } })
+  assert.doesNotThrow(() => validateExpectation(meter(), ctx, 'e'))
+  assert.doesNotThrow(() => validateExpectation({ id: 'b', arms: ['mod'], turn: 'preamble', budget: { in: 'deliver', maxBytes: 10 } }, ctx, 'e'))
+  assert.throws(() => validateExpectation({ ...meter(), turn: 1 }, ctx, 'e'), /deliver.*preamble/)
+  assert.throws(() => validateExpectation({ ...meter(), arms: ['settings'] }, ctx, 'e'), /deliver.*arms: \["mod"\]/)
+  assert.throws(() => validateExpectation({ id: 'd', turn: 'preamble', meter: { in: 'deliver' } }, ctx, 'e'), /deliver.*arms: \["mod"\]/, 'the default arms include settings')
+  const cut = 'MF-CORE\r\n_context injected: 0.1kB / 4.0kB budget — collapsed: MF low_\r\n'
+  const r = run({ arm: 'mod', deliver: { exitCode: 0, output: cut } })
+  assert.equal(ev(meter({ maxBytes: 4000, collapsed: ['MF low'] }), r).pass, true)
+  assert.equal(ev(meter({ collapsed: [] }), r).pass, false, 'the delivery is what the meter is held to')
+  assert.equal(ev(meter(), run({ arm: 'mod', deliver: { exitCode: 0, output: '' } })).pass, false, 'an empty delivery is not within budget')
+  assert.equal(ev(meter(), run({ arm: 'mod', deliver: { exitCode: 0, output: 'no meter here\n' } })).pass, false)
+})
