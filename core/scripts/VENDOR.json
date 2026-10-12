@@ -31,6 +31,11 @@
       "upstream": "core/types.ts",
       "upstreamSha256": "3416b8cf8fb7f1913ece0b16685eb3b7d4e1ceee89d40f821e1f5996ac01beb2"
     },
+    "lib/atomic-write.ts": {
+      "sha256": "05fb81b4f8562816d4ca2983801b58b1a7137123eeb3adf738fea5b75022ced8",
+      "upstream": "lib/atomic-write.ts",
+      "upstreamSha256": "05fb81b4f8562816d4ca2983801b58b1a7137123eeb3adf738fea5b75022ced8"
+    },
     "lib/frontmatter.ts": {
       "sha256": "cbfca1040a6866a83c4b6ac17519bd69f3ca050efbbf2ab6054e4b0d689570b8",
       "upstream": "lib/frontmatter.ts",

@@ -33,3 +33,6 @@ export { extractFrontmatterField, stripFrontmatter } from "../lib/session-start.
 
 /** The note names a body links to, with alias tails, fragments and embeds removed. */
 export { extractWikilinkTargets } from "../lib/wikilinks.ts";
+
+/** Write a whole file or none of it: a reader never sees half a note, and a crash leaves the old one. */
+export { writeFileAtomic } from "../lib/atomic-write.ts";
