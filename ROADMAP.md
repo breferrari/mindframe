@@ -31,6 +31,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#52](https://github.com/breferrari/mindframe/issues/52) | Let session-start's budget and QMD readers take the parsed manifest | ⬜ |
 | [#63](https://github.com/breferrari/mindframe/issues/63) | Find frontmatter by its delimiter lines, not every `---` | ✅ |
 | [#67](https://github.com/breferrari/mindframe/issues/67) | Make the CRLF frontmatter test fail when CRLF isn't parsed | ✅ |
+| [#75](https://github.com/breferrari/mindframe/issues/75) | Export an atomic write to extensions from the core | ✅ |
 
 ## Phase 3: first-party extensions
 
