@@ -249,28 +249,38 @@ export function formatCollapsedDir(posixPath: string, noteCount: number): string
 	return `./${posixPath}/ — ${noteCount} notes (listing collapsed — Glob or QMD on demand)`;
 }
 
-function parsePositiveIntField(
-	manifestJson: string | null,
-	field: string,
-): number | null {
+/**
+ * A parsed `vault-manifest.json`: the object, or null when the manifest is
+ * absent, malformed, or not an object. The same shape core/context.ts's
+ * readManifest returns, so an entry point that has opened the vault passes
+ * its manifest to the `…Of` readers below and parses nothing again (#52).
+ */
+export type ManifestObject = Readonly<Record<string, unknown>> | null;
+
+/** The manifest source parsed: the one place the readers below parse it. */
+export function manifestOf(manifestJson: string | null): ManifestObject {
 	if (manifestJson === null) return null;
 	try {
-		const parsed = JSON.parse(manifestJson) as unknown;
-		if (parsed !== null && typeof parsed === "object" && field in parsed) {
-			const value = (parsed as Record<string, unknown>)[field];
-			if (typeof value === "number" && Number.isInteger(value) && value > 0) {
-				return value;
-			}
-		}
+		const parsed: unknown = JSON.parse(manifestJson);
+		return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
 	} catch {
-		/* malformed manifest → treat as missing */
+		return null; // malformed manifest → treat as missing
 	}
-	return null;
 }
 
-/** `eager_layer_budget_bytes` from the manifest; null when unset or invalid. */
+function positiveIntFieldOf(manifest: ManifestObject, field: string): number | null {
+	const value = manifest?.[field];
+	return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/** `eager_layer_budget_bytes`; null when unset or invalid. */
+export function injectionBudgetOf(manifest: ManifestObject): number | null {
+	return positiveIntFieldOf(manifest, "eager_layer_budget_bytes");
+}
+
+/** `eager_layer_budget_bytes` from the manifest's text; null when unset or invalid. */
 export function parseInjectionBudget(manifestJson: string | null): number | null {
-	return parsePositiveIntField(manifestJson, "eager_layer_budget_bytes");
+	return injectionBudgetOf(manifestOf(manifestJson));
 }
 
 /** Room the closing meter line keeps beside the budgeted sections. */
@@ -312,17 +322,27 @@ export function effectiveInjectionBudget(configured: number | null): InjectionBu
  */
 export const DEFAULT_INSTRUCTION_BUDGET_BYTES = 20_000;
 
-/** `eager_layer_instruction_budget_bytes` from the manifest; null when unset or invalid. */
+/** `eager_layer_instruction_budget_bytes`; null when unset or invalid. */
+export function instructionBudgetOf(manifest: ManifestObject): number | null {
+	return positiveIntFieldOf(manifest, "eager_layer_instruction_budget_bytes");
+}
+
+/** `eager_layer_instruction_budget_bytes` from the manifest's text; null when unset or invalid. */
 export function parseInstructionBudget(manifestJson: string | null): number | null {
-	return parsePositiveIntField(manifestJson, "eager_layer_instruction_budget_bytes");
+	return instructionBudgetOf(manifestOf(manifestJson));
 }
 
 
-/** `listing_collapse_threshold` from the manifest; null when unset or invalid. */
+/** `listing_collapse_threshold`; null when unset or invalid. */
+export function listingCollapseThresholdOf(manifest: ManifestObject): number | null {
+	return positiveIntFieldOf(manifest, "listing_collapse_threshold");
+}
+
+/** `listing_collapse_threshold` from the manifest's text; null when unset or invalid. */
 export function parseListingCollapseThreshold(
 	manifestJson: string | null,
 ): number | null {
-	return parsePositiveIntField(manifestJson, "listing_collapse_threshold");
+	return listingCollapseThresholdOf(manifestOf(manifestJson));
 }
 
 /**
@@ -558,21 +578,13 @@ export function isValidQmdIndex(value: unknown): value is string {
  * backwards-compatible with forks that haven't adopted the field yet.
  */
 export function parseQmdIndex(manifestJson: string | null): string | null {
-	if (manifestJson === null) return null;
-	try {
-		const parsed = JSON.parse(manifestJson) as unknown;
-		if (
-			parsed !== null &&
-			typeof parsed === "object" &&
-			"qmd_index" in parsed
-		) {
-			const value = (parsed as Record<string, unknown>)["qmd_index"];
-			if (isValidQmdIndex(value)) return value;
-		}
-	} catch {
-		/* malformed manifest → treat as missing */
-	}
-	return null;
+	return qmdIndexOf(manifestOf(manifestJson));
+}
+
+/** `qmd_index`, when it is a valid index name; null otherwise (parseQmdIndex on the parsed manifest). */
+export function qmdIndexOf(manifest: ManifestObject): string | null {
+	const value = manifest?.["qmd_index"];
+	return isValidQmdIndex(value) ? value : null;
 }
 
 /**
@@ -609,18 +621,9 @@ export function deriveQmdIndex(vaultRoot: string): string | null {
  * package identity, and the last-resort index name when a vault has neither
  * a pin nor a derivable folder slug.
  */
-function parseTemplateName(manifestJson: string | null): string | null {
-	if (manifestJson === null) return null;
-	try {
-		const parsed = JSON.parse(manifestJson) as unknown;
-		if (parsed !== null && typeof parsed === "object") {
-			const value = (parsed as Record<string, unknown>)["template"];
-			if (isValidQmdIndex(value)) return value;
-		}
-	} catch {
-		/* malformed manifest → treat as missing */
-	}
-	return null;
+function templateNameOf(manifest: ManifestObject): string | null {
+	const value = manifest?.["template"];
+	return isValidQmdIndex(value) ? value : null;
 }
 
 /**
@@ -650,11 +653,12 @@ export function resolveQmdIndex(
 	manifestJson: string | null,
 	vaultRoot: string,
 ): string | null {
-	return (
-		parseQmdIndex(manifestJson) ??
-		deriveQmdIndex(vaultRoot) ??
-		parseTemplateName(manifestJson)
-	);
+	return resolveQmdIndexOf(manifestOf(manifestJson), vaultRoot);
+}
+
+/** resolveQmdIndex on the parsed manifest. */
+export function resolveQmdIndexOf(manifest: ManifestObject, vaultRoot: string): string | null {
+	return qmdIndexOf(manifest) ?? deriveQmdIndex(vaultRoot) ?? templateNameOf(manifest);
 }
 
 /**
@@ -718,21 +722,13 @@ export function qmdPackageRootFromEntry(entry: string | null): string | null {
  * opt-in, and qmd itself is optional).
  */
 export function parseQmdMinVersion(manifestJson: string | null): string | null {
-	if (manifestJson === null) return null;
-	try {
-		const parsed = JSON.parse(manifestJson) as unknown;
-		if (
-			parsed !== null &&
-			typeof parsed === "object" &&
-			"qmd_min_version" in parsed
-		) {
-			const value = (parsed as Record<string, unknown>)["qmd_min_version"];
-			if (typeof value === "string" && value.length > 0) return value;
-		}
-	} catch {
-		/* malformed manifest → treat as missing */
-	}
-	return null;
+	return qmdMinVersionOf(manifestOf(manifestJson));
+}
+
+/** `qmd_min_version`, when it is a non-empty string; null otherwise. */
+export function qmdMinVersionOf(manifest: ManifestObject): string | null {
+	const value = manifest?.["qmd_min_version"];
+	return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 /**
@@ -757,15 +753,12 @@ export function isMarkdownFilename(name: string): boolean {
 export function parseInfraRootFilenames(
 	manifestJson: string | null,
 ): readonly string[] {
-	if (manifestJson === null) return [];
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(manifestJson);
-	} catch {
-		return [];
-	}
-	if (parsed === null || typeof parsed !== "object") return [];
-	const infra = (parsed as Record<string, unknown>)["infrastructure"];
+	return infraRootFilenamesOf(manifestOf(manifestJson));
+}
+
+/** parseInfraRootFilenames on the parsed manifest. */
+export function infraRootFilenamesOf(manifest: ManifestObject): readonly string[] {
+	const infra = manifest?.["infrastructure"];
 	if (!Array.isArray(infra)) return [];
 	return infra.filter(
 		(e): e is string => typeof e === "string" && !e.includes("/"),

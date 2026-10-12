@@ -26,11 +26,13 @@ import { homedir, tmpdir } from "node:os";
 import { buildQmdCommand, qmdVersionAtLeast, resolveQmdEntry } from "../lib/qmd.ts";
 import {
 	isQmdNativeAbiMismatch,
-	parseQmdMinVersion,
+	manifestOf,
 	qmdArgsWithIndex,
+	qmdMinVersionOf,
 	qmdPackageRootFromEntry,
 	resolveIndexStorePath,
-	resolveQmdIndex,
+	resolveQmdIndexOf,
+	type ManifestObject,
 } from "../lib/session-start.ts";
 
 /** A store below this size holds no indexed notes: bootstrap rather than update. */
@@ -88,10 +90,20 @@ export function qmdSessionStart(
 	bootstrapScript = ".scripts/qmd-bootstrap.ts",
 	deps: QmdDeps = realDeps,
 ): QmdSessionResult {
+	return qmdSessionStartWith(vaultRoot, manifestOf(manifestJson), bootstrapScript, deps);
+}
+
+/** qmdSessionStart on the parsed manifest, as openVault returns it (#52). */
+export function qmdSessionStartWith(
+	vaultRoot: string,
+	manifest: ManifestObject,
+	bootstrapScript = ".scripts/qmd-bootstrap.ts",
+	deps: QmdDeps = realDeps,
+): QmdSessionResult {
 	if (deps.env[QMD_SWITCH] === "off") return { notes: [], refresh: null };
 	const entry = deps.resolveEntry();
 	if (entry === null) return { notes: [], refresh: null };
-	const index = resolveQmdIndex(manifestJson, vaultRoot);
+	const index = resolveQmdIndexOf(manifest, vaultRoot);
 	const notes: { header: string; body: string }[] = [];
 
 	if (index !== null) {
@@ -112,7 +124,7 @@ export function qmdSessionStart(
 		}
 	}
 
-	const minVersion = parseQmdMinVersion(manifestJson);
+	const minVersion = qmdMinVersionOf(manifest);
 	if (minVersion !== null) {
 		const cmd = buildQmdCommand(entry, ["--version"]);
 		const v = deps.spawnSync(cmd.cmd, cmd.args, { timeout: 5_000, shell: cmd.shell });
