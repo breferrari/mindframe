@@ -32,7 +32,10 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 
 | Issue | What | Status |
 |-------|------|--------|
-| [#13](https://github.com/breferrari/mindframe/issues/13) | Ship qmd as an optional extension | ⬜ |
+| [#13](https://github.com/breferrari/mindframe/issues/13) | Ship qmd as an optional extension (split into #69, #70, #71) | 🔨 |
+| [#69](https://github.com/breferrari/mindframe/issues/69) | Let extensions run side effects, and add a pre-compact event | ✅ |
+| [#70](https://github.com/breferrari/mindframe/issues/70) | Move qmd out of the core into an optional extension (after the obsidian-mind #321 absorb, with #52) | ⏳ |
+| [#71](https://github.com/breferrari/mindframe/issues/71) | Ship the qmd MCP bridge with the qmd extension | ⏳ |
 | [#14](https://github.com/breferrari/mindframe/issues/14) | Ship the memory MCP server as an optional extension | ⬜ |
 | [#15](https://github.com/breferrari/mindframe/issues/15) | Ship the guards as an optional extension | ⬜ |
 | [#16](https://github.com/breferrari/mindframe/issues/16) | Ship ripple as an optional extension | ⬜ |
