@@ -23,6 +23,7 @@
  * out.
  */
 
+import { frontmatterBlock, frontmatterLines } from "./frontmatter-block.ts";
 import { fenceStep, type OpenFence } from "./fences.ts";
 
 const LIST_ITEM = /^(?:[-*+]|\d+[.)])(?:\s|$)/;
@@ -51,11 +52,8 @@ function isStructure(line: string): boolean {
 
 /** Whether the note opts out with `verbatim: true` in its frontmatter. */
 export function isVerbatim(content: string): boolean {
-	const text = content.replace(/\r\n/g, "\n");
-	if (!text.startsWith("---\n")) return false;
-	const end = text.indexOf("\n---", 4);
-	if (end === -1) return false;
-	return /^verbatim:\s*true\s*$/m.test(text.slice(4, end));
+	const yaml = frontmatterBlock(content)?.yaml;
+	return yaml !== undefined && /^verbatim:\s*true\s*$/m.test(yaml);
 }
 
 /**
@@ -67,11 +65,7 @@ export function hardWrappedParagraphs(content: string): number[] {
 	const lines = content.replace(/\r\n/g, "\n").split("\n");
 	const out: number[] = [];
 
-	let i = 0;
-	if (lines[0] === "---") {
-		const close = lines.indexOf("---", 1);
-		i = close === -1 ? 0 : close + 1;
-	}
+	let i = (frontmatterLines(lines)?.close ?? -1) + 1;
 
 	let fence: OpenFence = null;
 	let inComment = false; // <!-- … -->

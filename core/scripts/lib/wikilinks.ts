@@ -24,6 +24,7 @@
  *    case-insensitive basename or alias.
  */
 
+import { frontmatterBlock, frontmatterLines } from "./frontmatter-block.ts";
 import { fenceStep, type OpenFence } from "./fences.ts";
 
 const ASSET_EXTENSIONS = new Set([
@@ -54,7 +55,15 @@ const ASSET_EXTENSIONS = new Set([
 export function stripCodeRegions(content: string): string {
 	const out: string[] = [];
 	let open: OpenFence = null;
-	for (const line of content.split("\n")) {
+	const lines = content.split("\n");
+	// Frontmatter is yaml, not markdown: its inline code is removed, but a
+	// fence-looking line in a value opens no fence, or it would hide the body.
+	const close = frontmatterLines(lines)?.close ?? -1;
+	for (const [i, line] of lines.entries()) {
+		if (i <= close) {
+			out.push(line.replace(INLINE_CODE, ""));
+			continue;
+		}
 		const step = fenceStep(line, open);
 		open = step.open;
 		if (step.fenced) continue;
@@ -85,10 +94,11 @@ export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
  * The region of each line of a note, for an extension that rewrites a note
  * line by line. Lines may keep a trailing \r (CRLF split on \n).
  *
- * - Frontmatter is what stripFrontmatter removes: a first line starting
- *   with `---`, to the first line after it that is exactly `---`. A `---`
- *   inside a value doesn't end it, and an unterminated block is no
- *   frontmatter at all.
+ * - Frontmatter is what lib/frontmatter-block.ts finds, the core's one rule
+ *   (#82): a first line of `---` (a BOM may precede it), to the first later
+ *   `---` line. A `---` inside a value or a `----` line doesn't end it, an
+ *   unterminated block is no frontmatter, and a first line of `----` or
+ *   `---x` opens nothing.
  * - Fences are the ones stripCodeRegions finds in the note without its
  *   frontmatter, so the links on body and heading lines are exactly
  *   extractWikilinkTargets(stripFrontmatter(note)).
@@ -97,9 +107,8 @@ export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
  */
 export function lineRegions(lines: readonly string[]): LineRegion[] {
 	const bare = lines.map((l) => l.replace(/\r$/, ""));
-	// stripFrontmatter's rule, restated for lines. The core holds several
-	// copies of the frontmatter rule, and they drift; #82 makes them one.
-	const close = bare[0]?.startsWith("---") ? bare.indexOf("---", 1) : -1;
+	// The core's one frontmatter rule (lib/frontmatter-block.ts, #82).
+	const close = frontmatterLines(bare)?.close ?? -1;
 	let open: OpenFence = null;
 	return bare.map((line, i): LineRegion => {
 		if (i <= close) return "frontmatter";
@@ -243,18 +252,13 @@ function splitInlineList(inner: string): string[] {
  * whole check, not one link.
  */
 export function extractAliases(content: string): string[] {
-	if (!content.startsWith("---")) return [];
-	// CRLF first, and before anything indexes or matches. Obsidian-on-Windows
-	// rewrites LF to CRLF on edit (the reason .gitattributes normalizes), and
-	// `.` does not match CR — it is a line terminator — while `$` without `m`
-	// anchors past it. The block-list item pattern therefore failed on item
-	// ONE of every CRLF note, and `break` read that as an empty list, so the
-	// file's whole alias set went missing with nothing to distinguish it from
-	// a note that declares none.
-	const text = content.replace(/\r\n/g, "\n");
-	const end = text.indexOf("\n---", 3);
-	if (end === -1) return [];
-	const fm = text.slice(3, end);
+	const block = frontmatterBlock(content);
+	if (block === null) return [];
+	// frontmatterBlock reads CRLF notes as LF (it drops each line's \r), which
+	// matters: Obsidian-on-Windows rewrites LF to CRLF on edit, and `.` doesn't
+	// match CR, so a CRLF block list used to read as empty. The leading newline
+	// keeps the line indexes below as they were.
+	const fm = `\n${block.yaml}`;
 	const lines = fm.split("\n");
 	const idx = lines.findIndex((l) => /^aliases:\s*(\[.*\])?\s*$/.test(l.trim()) || /^aliases:\s*\[/.test(l.trim()));
 	if (idx === -1) return [];
