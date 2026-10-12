@@ -24,6 +24,8 @@
  *    case-insensitive basename or alias.
  */
 
+import { fenceStep, type OpenFence } from "./fences.ts";
+
 const ASSET_EXTENSIONS = new Set([
 	"png",
 	"jpg",
@@ -44,17 +46,17 @@ const ASSET_EXTENSIONS = new Set([
 ]);
 
 /**
- * Remove fenced code blocks (``` / ~~~) and inline code spans so literal
+ * Remove fenced code blocks (lib/fences.ts) and inline code spans so literal
  * wikilink examples inside them never count as edges. Fence-aware line
  * scan (not a lazy regex) so an unclosed fence strips to EOF instead of
  * leaking the tail.
  */
 export function stripCodeRegions(content: string): string {
 	const out: string[] = [];
-	let marker = "";
+	let open: OpenFence = null;
 	for (const line of content.split("\n")) {
-		const step = fenceStep(line, marker);
-		marker = step.marker;
+		const step = fenceStep(line, open);
+		open = step.open;
 		if (step.fenced) continue;
 		out.push(line.replace(INLINE_CODE, ""));
 	}
@@ -72,20 +74,6 @@ const INLINE_CODE = /(`+)(?:(?!\1)[^\n])*?\1(?!`)/g;
 
 /** A wikilink or embed, `[[...]]` or `![[...]]`, on one line. */
 const WIKILINK = /!?\[\[([^\[\]\n]+?)\]\]/g;
-
-/**
- * One line of the fence scan: whether the line belongs to a fence, and the
- * open fence's marker after it ("" outside one). A ``` or ~~~ line opens a
- * fence, and the next line starting with the same three characters closes
- * it. stripCodeRegions and lineRegions both step through this, so they
- * agree on every line.
- */
-function fenceStep(line: string, marker: string): { fenced: boolean; marker: string } {
-	const trimmed = line.trimStart();
-	if (marker !== "") return { fenced: true, marker: trimmed.startsWith(marker) ? "" : marker };
-	if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) return { fenced: true, marker: trimmed.slice(0, 3) };
-	return { fenced: false, marker: "" };
-}
 
 /** An ATX heading: up to three spaces, one to six #s, then a space, a tab or the end of the line. */
 const HEADING = /^ {0,3}#{1,6}([ \t]|$)/;
@@ -112,11 +100,11 @@ export function lineRegions(lines: readonly string[]): LineRegion[] {
 	// stripFrontmatter's rule, restated for lines. The core holds several
 	// copies of the frontmatter rule, and they drift; #82 makes them one.
 	const close = bare[0]?.startsWith("---") ? bare.indexOf("---", 1) : -1;
-	let marker = "";
+	let open: OpenFence = null;
 	return bare.map((line, i): LineRegion => {
 		if (i <= close) return "frontmatter";
-		const step = fenceStep(line, marker);
-		marker = step.marker;
+		const step = fenceStep(line, open);
+		open = step.open;
 		if (step.fenced) return "fence";
 		return HEADING.test(line) ? "heading" : "body";
 	});

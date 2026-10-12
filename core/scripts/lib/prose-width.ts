@@ -23,7 +23,8 @@
  * out.
  */
 
-const FENCE = /^(```|~~~)/;
+import { fenceStep, type OpenFence } from "./fences.ts";
+
 const LIST_ITEM = /^(?:[-*+]|\d+[.)])(?:\s|$)/;
 /**
  * A line led by a closed bold run: field lines (`**Door:** …`,
@@ -72,7 +73,7 @@ export function hardWrappedParagraphs(content: string): number[] {
 		i = close === -1 ? 0 : close + 1;
 	}
 
-	let fence: string | null = null;
+	let fence: OpenFence = null;
 	let inComment = false; // <!-- … -->
 	let inObsidianComment = false; // %% … %%
 	let inMath = false; // $$ … $$
@@ -91,14 +92,9 @@ export function hardWrappedParagraphs(content: string): number[] {
 			previousProse = false;
 		};
 
-		if (fence !== null) {
-			if (line.trimStart().startsWith(fence)) fence = null;
-			notProse();
-			continue;
-		}
-		const fenceOpen = FENCE.exec(line.trimStart());
-		if (fenceOpen && !/^\s{4,}/.test(line)) {
-			fence = fenceOpen[1] ?? null;
+		const step = fenceStep(line, fence);
+		fence = step.open;
+		if (step.fenced) {
 			notProse();
 			continue;
 		}
