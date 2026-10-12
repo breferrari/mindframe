@@ -8,8 +8,10 @@
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { basename } from "node:path";
-import { RENAME_RETRY_MS, renameWithRetry, tempPathFor } from "../lib/atomic-write.ts";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
+import { RENAME_RETRY_MS, claimFile, renameWithRetry, tempPathFor } from "../lib/atomic-write.ts";
 
 const err = (code: string) => Object.assign(new Error(code), { code });
 
@@ -72,4 +74,16 @@ describe("tempPathFor", () => {
 		const b = other.tempPathFor("/v/note.md");
 		assert.notEqual(a, b);
 	});
+});
+
+test("claimFile leaves only the claimed file, its temp file gone", () => {
+	const dir = mkdtempSync(join(tmpdir(), "claim-"));
+	try {
+		const first = claimFile(dir, "a", (n) => (n === 1 ? "note.md" : `note-${n}.md`));
+		const second = claimFile(dir, "b", (n) => (n === 1 ? "note.md" : `note-${n}.md`));
+		assert.deepEqual([first.name, second.name], ["note.md", "note-2.md"]);
+		assert.deepEqual(readdirSync(dir).sort(), ["note-2.md", "note.md"]);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 });

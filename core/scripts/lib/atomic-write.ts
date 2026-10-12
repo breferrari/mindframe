@@ -49,9 +49,10 @@ export const RENAME_RETRY_MS = 1_000;
 /** The Windows codes for a file another process holds for a moment. */
 const HELD = new Set(["EACCES", "EPERM", "EBUSY"]);
 
-/** A synchronous wait, for the synchronous write. */
+/** A synchronous wait, for the synchronous write: nothing ever notifies this cell. */
+const SLEEP_CELL = new Int32Array(new SharedArrayBuffer(4));
 const sleepSync = (ms: number): void => {
-	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+	Atomics.wait(SLEEP_CELL, 0, 0, ms);
 };
 
 export type RenameDeps = {

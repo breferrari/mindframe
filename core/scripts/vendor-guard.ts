@@ -18,9 +18,10 @@
  * folder (`check --vault .claude/scripts --record VENDOR.json`).
  */
 
-import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeFileAtomic } from "./lib/atomic-write.ts";
 import { debug, readStdinJson } from "./lib/hook-io.ts";
 import { resolveProjectDir } from "./lib/project-dir.ts";
 
@@ -120,9 +121,7 @@ function writeWindows(vaultRoot: string, windows: Windows): void {
 	const dir = path.join(vaultRoot, BEGIN_DIR);
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(path.join(dir, ".gitignore"), "*\n");
-	const tmp = path.join(dir, `${BEGIN_FILE}.${process.pid}.tmp`);
-	writeFileSync(tmp, `${JSON.stringify(windows, null, 2)}\n`);
-	renameSync(tmp, path.join(dir, BEGIN_FILE));
+	writeFileAtomic(path.join(dir, BEGIN_FILE), `${JSON.stringify(windows, null, 2)}\n`);
 }
 
 /** Opens a window for each file (paths from the vault root), dropping any that have closed. */
