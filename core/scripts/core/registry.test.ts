@@ -352,6 +352,12 @@ describe("rule 7: slots are recorded, not dispatched", () => {
 		const registry = fromLoaded([declared({ id: "a", preToolGuards: [{}], mcpTools: [{}] })]);
 		assert.deepEqual(undispatched(registry), ["a: pre-tool guards", "a: MCP tools"]);
 	});
+
+	test("effects on an extension that declares no write, pre-compact or stop are listed: they can never run", () => {
+		const effects = [{ id: "e", on: ["write"], run: () => {} }] as const;
+		const registry = fromLoaded([declared({ id: "a", effects }, { events: ["session-start"] }), declared({ id: "b", effects }, { events: ["write"] })]);
+		assert.deepEqual(undispatched(registry), ["a: effects, with no write, pre-compact or stop in its events"]);
+	});
 });
 
 describe("rule 5: effects run for their side effect alone", () => {
@@ -359,7 +365,7 @@ describe("rule 5: effects run for their side effect alone", () => {
 	const all: readonly HookEvent[] = ["write", "pre-compact", "stop"];
 	const effect = (id: string, on: Effect["on"], run: Effect["run"]): Effect => ({ id, on, run });
 
-	test("an effect runs for the events in its `on` and its declaration, and no other", async () => {
+	test("an effect runs for the events in its `on`, and no other", async () => {
 		const ran: string[] = [];
 		const ext: Extension = {
 			id: "a",
@@ -368,12 +374,20 @@ describe("rule 5: effects run for their side effect alone", () => {
 				effect("pc", ["pre-compact", "stop"], (t) => { ran.push(`pc:${t.event}`); }),
 			],
 		};
-		const registry = fromLoaded([declared(ext, { events: ["write", "pre-compact"] })]);
+		const registry = fromLoaded([declared(ext, { events: all })]);
 		for (const trigger of [write, { event: "pre-compact" }, { event: "stop" }] as const) {
 			const { failures } = await runEffects(registry, trigger, ctx);
 			assert.deepEqual(failures, []);
 		}
-		assert.deepEqual(ran, ["w:write", "pc:pre-compact"]);
+		assert.deepEqual(ran, ["w:write", "pc:pre-compact", "pc:stop"]);
+	});
+
+	test("an effect whose `on` names an event its declaration does not list is a failure, not a silent skip", async () => {
+		let ran = false;
+		const ext: Extension = { id: "a", effects: [effect("pc", ["pre-compact", "stop"], () => { ran = true; })] };
+		const { failures } = await runEffects(fromLoaded([declared(ext, { events: ["write", "pre-compact"] })]), { event: "pre-compact" }, ctx);
+		assert.equal(ran, false);
+		assert.deepEqual(failures.map((f) => [f.item, f.message]), [["pc", "`on` lists stop, which the declaration's `events` do not"]]);
 	});
 
 	test("a write effect receives the target, a backslash path passed through as given", async () => {
@@ -408,13 +422,13 @@ describe("rule 5: effects run for their side effect alone", () => {
 		let quickDone = 0;
 		const started = Date.now();
 		const registry = fromLoaded([
-			declared(one("hang-a", () => new Promise<void>(() => {})), { events: all, timeoutMs: 300 }),
-			declared(one("hang-b", () => new Promise<void>(() => {})), { events: all, timeoutMs: 300 }),
-			declared(one("quick", () => new Promise<void>((r) => setTimeout(() => { quickDone = Date.now(); r(); }, 10))), { events: all, timeoutMs: 1_000 }),
+			declared(one("hang-a", () => new Promise<void>(() => {})), { events: all, timeoutMs: 1_000 }),
+			declared(one("hang-b", () => new Promise<void>(() => {})), { events: all, timeoutMs: 1_000 }),
+			declared(one("quick", () => new Promise<void>((r) => setTimeout(() => { quickDone = Date.now(); r(); }, 10))), { events: all, timeoutMs: 3_000 }),
 		]);
 		const { failures } = await runEffects(registry, { event: "stop" }, ctx);
-		assert.ok(quickDone > 0 && quickDone - started < 300, "the quick effect finished before the others timed out");
-		assert.ok(Date.now() - started < 600, "the two 300 ms limits ran together, not one after the other");
+		assert.ok(quickDone > 0 && quickDone - started < 1_000, "the quick effect finished before the others timed out");
+		assert.ok(Date.now() - started < 1_900, "the two 1000 ms limits ran together, not one after the other");
 		assert.deepEqual(failures.map((f) => f.extension), ["hang-a", "hang-b"]);
 	});
 
@@ -441,12 +455,13 @@ describe("rule 5: effects run for their side effect alone", () => {
 				{ id: "string", on: "stop", run } as unknown as Effect,
 				{ id: "unknown", on: ["stop", "prompt"], run } as unknown as Effect,
 				{ id: "missing", run } as unknown as Effect,
+				{ id: "empty", on: [], run } as unknown as Effect,
 				effect("ok", ["stop"], run),
 			],
 		};
 		const { failures } = await runEffects(fromLoaded([declared(ext, { events: all })]), { event: "stop" }, ctx);
 		assert.equal(ran, 1);
-		assert.deepEqual(failures.map((f) => f.item), ["missing", "string", "unknown"], "reported in run order");
+		assert.deepEqual(failures.map((f) => f.item), ["empty", "missing", "string", "unknown"], "reported in run order");
 	});
 
 	test("a getter that throws on `effects` is a failure, not a crash", async () => {

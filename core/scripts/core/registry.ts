@@ -313,11 +313,11 @@ async function each<T extends { readonly id: string }, R>(
 	entries: readonly Entry<T>[],
 	failures: Failure[],
 	point: Point,
-	fn: (item: T) => unknown,
+	fn: (item: T, entry: Entry<T>) => unknown,
 	accept: (value: unknown) => value is R,
 	expected: string,
 ): Promise<{ entry: Entry<T>; value: R }[]> {
-	const runs = await Promise.all(entries.map((entry) => isolated(entry, point, () => fn(entry.item), accept, expected)));
+	const runs = await Promise.all(entries.map((entry) => isolated(entry, point, () => fn(entry.item, entry), accept, expected)));
 	const out: { entry: Entry<T>; value: R }[] = [];
 	runs.forEach((run, i) => {
 		const entry = entries[i];
@@ -425,31 +425,39 @@ export async function runValidators(registry: Registry, target: WriteTarget, ctx
 
 /**
  * Run every effect set off by `trigger`, concurrently, and report each one
- * that fails in run order. An effect whose `on` is not a list of the effect
- * events is a failure; one that returns anything but undefined is too, so
- * nothing reaches the output through an effect.
+ * that fails in run order. An effect is a failure, and does not run, when its
+ * `on` is empty, is not a list of the effect events, or names an event its
+ * declaration does not list (it would be skipped in silence there). One that
+ * returns anything but undefined is a failure too, so nothing reaches the
+ * output through an effect.
  */
 export async function runEffects(registry: Registry, trigger: EffectTrigger, ctx: HookContext): Promise<Dispatch<null>> {
 	const failures: Failure[] = [];
 	const entries = ordered<Effect>(registry, trigger.event, "effect", (e) => e.effects, failures);
+	const declared = new Map(registry.loaded.map(({ declaration, extension }) => [extension.id, declaration.events]));
 	// `on` is checked inside the call, so its failure is reported in run order like any other.
-	const run = (item: Effect) => {
+	const run = (item: Effect, entry: Entry<Effect>) => {
 		const on: unknown = item.on;
-		if (!Array.isArray(on) || !on.every((event) => EFFECT_EVENTS.includes(event))) {
+		if (!Array.isArray(on) || on.length === 0 || !on.every((event) => EFFECT_EVENTS.includes(event))) {
 			throw new Error(`\`on\` must list some of ${EFFECT_EVENTS.join(", ")}`);
 		}
+		const undeclared = on.filter((event) => !declared.get(entry.ext)?.includes(event));
+		if (undeclared.length > 0) throw new Error(`\`on\` lists ${undeclared.join(", ")}, which the declaration's \`events\` do not`);
 		return on.includes(trigger.event) ? item.run(trigger, ctx) : undefined;
 	};
 	await each(entries, failures, "effect", run, (v): v is undefined => v === undefined, "nothing");
 	return { result: null, failures };
 }
 
-/** The slots an extension filled that the registry does not dispatch yet. */
+/** The slots an extension filled that the registry does not dispatch yet, and effects no declared event can run. */
 export function undispatched(registry: Registry): string[] {
 	const out: string[] = [];
-	for (const { extension } of registry.loaded) {
+	for (const { declaration, extension } of registry.loaded) {
 		if ((extension.preToolGuards?.length ?? 0) > 0) out.push(`${extension.id}: pre-tool guards`);
 		if ((extension.mcpTools?.length ?? 0) > 0) out.push(`${extension.id}: MCP tools`);
+		if ((extension.effects?.length ?? 0) > 0 && !declaration.events.some((event) => EFFECT_EVENTS.includes(event as EffectTrigger["event"]))) {
+			out.push(`${extension.id}: effects, with no ${EFFECT_EVENTS.join(", ").replace(/, (?=[^,]*$)/, " or ")} in its events`);
+		}
 	}
 	return out;
 }

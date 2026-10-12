@@ -130,8 +130,10 @@ export const EFFECT_EVENTS: readonly EffectTrigger["event"][] = ["write", "pre-c
 /**
  * A call made for its side effect alone, such as refreshing a search index.
  * It returns nothing, so it never adds to the hook's output; a failure is
- * reported like any other. Work that outlasts the time limit must be
- * detached by the effect itself: the hook does not wait for it.
+ * reported like any other. At the time limit the hook stops waiting, but the
+ * effect's work goes on in the hook's own process, which either keeps the
+ * hook alive or dies with it. Work that must outlast the limit goes to a
+ * detached process the effect starts itself.
  */
 export type Effect = Item & {
 	/** The events it runs on. The extension's declaration must list them too. */
