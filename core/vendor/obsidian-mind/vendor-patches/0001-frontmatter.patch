@@ -34,7 +34,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
  /**
   * Return true if the path is an auto-memory file in ~/.claude/ that should
   * be flagged (#81). Only MEMORY.md (the auto-loaded index) is allowed there
-- * — all durable knowledge goes to brain/ topic notes per CLAUDE.md.
+- * — all durable knowledge goes to brain/ topic notes per .claude/rules/memory.md.
 + * — all durable knowledge goes to brain/ topic notes, by the vault's memory rule.
   *
   * The path is lexically normalized first (separators unified, `.`/`..`
@@ -44,7 +44,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
  /**
   * Which note type a vault path is, by folder. The folder→type map is
 - * vault-specific; a future extension point. It mirrors the placement table
-- * in CLAUDE.md and /om-vault-audit's per-type rules, which are keyed by
+- * in AGENTS.md and /om-vault-audit's per-type rules, which are keyed by
 - * folder too. Tags cannot carry this: 1:1 notes are tagged `work-note`, yet
 + * vault-specific; a future extension point. It mirrors obsidian-mind's
 + * placement table in its AGENTS.md and its /om-vault-audit per-type rules,
@@ -52,7 +52,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
   * do not need a work note's `status`.
   */
  const NOTE_TYPE_BY_FOLDER: readonly (readonly [string, string])[] = [
-@@ -197,23 +193,25 @@
+@@ -197,28 +193,25 @@
  ): string[] {
  	const warnings: string[] = [];
  
@@ -63,9 +63,14 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
 +	if (block === null) {
  		warnings.push("Missing YAML frontmatter");
  	} else {
--		const parts = content.split("---");
--		if (parts.length >= 3) {
--			const { keys, tags } = readFrontmatterKeys(parts[1] ?? "");
+-		// The block ends at the next line that is exactly `---`, not at the next
+-		// `---` anywhere: a value holding one (`before --- after`) used to end the
+-		// block there and report every later key missing. The same rule as
+-		// prose-width.ts, so both readers agree on where frontmatter ends.
+-		const lines = content.split(/\r?\n/);
+-		const close = lines.indexOf("---", 1);
+-		if (close > 0) {
+-			const { keys, tags } = readFrontmatterKeys(lines.slice(1, close).join("\n"));
 -			for (const field of requiredFieldsFor(opts.required ?? {}, opts.relPath ?? null, tags)) {
 -				if (keys.has(field)) continue;
 -				warnings.push(
@@ -90,7 +95,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
  		warnings.push(
  			"No [[wikilinks]] found — every note must link to at least one other note (vault convention)",
  		);
-@@ -227,7 +225,7 @@
+@@ -232,7 +225,7 @@
  		);
  	}
  
@@ -99,7 +104,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
  	if (ticketLinks > 0) {
  		warnings.push(
  			`${ticketLinks} ticket-ID wikilink(s) (e.g. [[PROJ-…]]) — ticket IDs are plain text or tracker links, never wikilinks (they are not notes)`,
-@@ -245,9 +243,15 @@
+@@ -250,9 +243,15 @@
   * the same decision validateContent's prose comes from.
   */
  export function countTicketIdWikilinks(content: string): number {

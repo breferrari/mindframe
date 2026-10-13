@@ -1,0 +1,167 @@
+Description: mindframe: the test for the qmd extension's refresh: --vault and --index, the given environment, no resolveVaultRoot (#95)
+Forwarded: https://github.com/breferrari/mindframe/issues/19
+Last-Update: 2026-10-13
+
+diff --git a/core/scripts/extensions/qmd/refresh.test.ts b/core/scripts/extensions/qmd/refresh.test.ts
+--- a/core/scripts/extensions/qmd/refresh.test.ts
++++ b/core/scripts/extensions/qmd/refresh.test.ts
+@@ -1,22 +1,20 @@
+ /**
+- * Unit tests for lib/qmd-refresh.ts pure helpers.
++ * Unit tests for lib/refresh.ts, lifted from obsidian-mind 0a58edf's
++ * `tests/qmd-refresh.test.ts` (#95), with the worker's `--vault` and
++ * `--index` added and `resolveVaultRoot`'s cases gone with it.
+  *
+- * Locks the predicates and composition logic the PostToolUse hook, the
+- * Stop hook, and the detached worker all depend on. Pure tests run
+- * identically on every OS in the CI matrix, so argv drift (wrong order,
+- * missing `--index`, dropped subcommand) fails here before any live qmd
+- * invocation would notice on macOS/Linux only.
+- *
+- * Subprocess integration coverage for the hook entry script lives in
+- * `qmd-refresh.integration.test.ts` — both are exercised by
+- * `npm test` in the hook-scripts package.
++ * Locks the predicates and composition logic the refresh effect and the
++ * detached worker depend on. Pure tests run identically on every OS in the
++ * CI matrix, so argv drift (wrong order, missing `--index`, dropped
++ * subcommand) fails here before any live qmd invocation would notice on
++ * macOS/Linux only.
+  */
+ 
+ import { test, describe } from "node:test";
+ import assert from "node:assert/strict";
+ import { existsSync, mkdtempSync, statSync, utimesSync, writeFileSync } from "node:fs";
+ import { tmpdir } from "node:os";
+-import { join, resolve as resolvePath, sep as pathSep } from "node:path";
++import { join } from "node:path";
+ import {
+ 	CLOCK_SKEW_MS,
+ 	PENDING_GRACE_MS,
+@@ -26,13 +24,12 @@
+ 	parseWorkerArgs,
+ 	pendingPathFor,
+ 	planRefresh,
+-	resolveVaultRoot,
+ 	shouldRefreshForPath,
+ 	triggerDebouncedRefresh,
+-	REFRESH_SWITCH,
+-	refreshDisabled,
+-} from "../lib/qmd-refresh.ts";
+-import { rmTemp, waitFor } from "./_helpers.ts";
++	workerArgsFor,
++} from "./lib/refresh.ts";
++import { REFRESH_SWITCH, refreshDisabled } from "./lib/switches.ts";
++import { rmTemp, waitFor } from "./test-fakes.ts";
+ 
+ /**
+  * The debounce used to fire on the leading edge only: a note written inside
+@@ -270,7 +267,7 @@
+ 
+ describe("parseWorkerArgs", () => {
+ 	test("no trailing args → an immediate run", () => {
+-		assert.deepEqual(parseWorkerArgs([]), { trailing: null });
++		assert.deepEqual(parseWorkerArgs([]), { trailing: null, vault: null, index: null });
+ 	});
+ 	test("trailing args parse, and the delay is capped", () => {
+ 		const p = parseWorkerArgs(["--trailing=/v/s", "--delay-ms=999999", "--after=123"]);
+@@ -280,10 +277,61 @@
+ 		assert.equal(parseWorkerArgs(["--trailing=/v/s", "--delay-ms=5", "--after="]).trailing?.afterMs, null);
+ 	});
+ 	test("a malformed delay falls back to an immediate run", () => {
+-		assert.deepEqual(parseWorkerArgs(["--trailing=/v/s", "--delay-ms=abc"]), { trailing: null });
++		assert.deepEqual(parseWorkerArgs(["--trailing=/v/s", "--delay-ms=abc"]).trailing, null);
+ 	});
++	test("the vault and index the effect resolved round-trip, with or without a trailing flush (#95)", () => {
++		const vault = join("C:", "My Vaults", "wiki mind");
++		for (const index of ["my-wiki", null]) {
++			const args = workerArgsFor(vault, index);
++			assert.deepEqual(parseWorkerArgs(args), { trailing: null, vault, index });
++			const trailing = parseWorkerArgs(["--trailing=/v/s", "--delay-ms=5", "--after=1", ...args]);
++			assert.equal(trailing.vault, vault);
++			assert.equal(trailing.index, index);
++			assert.ok(trailing.trailing !== null);
++		}
++		assert.deepEqual(workerArgsFor("/v", null), ["--vault=/v"], "no index: qmd's global one, no --index");
++	});
++	test("no --vault, or an empty one, is no vault: the worker has nothing to refresh", () => {
++		assert.equal(parseWorkerArgs(["--index=x"]).vault, null);
++		assert.equal(parseWorkerArgs(["--vault=", "--index="]).vault, null);
++		assert.equal(parseWorkerArgs(["--vault=", "--index="]).index, null);
++	});
+ });
+ 
++describe("triggerDebouncedRefresh — every worker gets its vault and index (#95)", () => {
++	test("on the immediate path and on the trailing one", () => {
++		const dir = mkdtempSync(join(tmpdir(), "qmd-args-"));
++		try {
++			const sentinel = join(dir, ".qmd-refresh-sentinel");
++			const spawned: (readonly string[])[] = [];
++			const fire = () =>
++				triggerDebouncedRefresh({
++					sentinelPath: sentinel,
++					workerPath: "worker.ts",
++					debounceMs: 30_000,
++					logPrefix: "test",
++					workerArgs: workerArgsFor("/v", "idx"),
++					qmdAvailable: () => true,
++					spawnWorker: (_p, args) => spawned.push(args),
++				});
++			fire();
++			const t = (Date.now() - 10_000) / 1000;
++			utimesSync(sentinel, t, t);
++			fire();
++			assert.deepEqual(spawned[0], ["--vault=/v", "--index=idx"]);
++			assert.deepEqual(spawned[1]?.slice(-2), ["--vault=/v", "--index=idx"]);
++			assert.ok(spawned[1]?.some((a) => a.startsWith("--trailing=")));
++		} finally {
++			rmTemp(dir);
++		}
++	});
++
++	test("the switch is read from the environment the trigger is given", () => {
++		assert.equal(refreshDisabled({ [REFRESH_SWITCH]: "off" }), true);
++		assert.equal(refreshDisabled({}), false);
++	});
++});
++
+ describe("shouldRefreshForPath — accepts vault markdown", () => {
+ 	test("accepts a relative vault note", () => {
+ 		assert.equal(shouldRefreshForPath("work/active/project.md"), true);
+@@ -431,37 +479,6 @@
+ 	});
+ });
+ 
+-describe("resolveVaultRoot", () => {
+-	// These tests compare `resolveVaultRoot` output to the platform's own
+-	// `path.resolve` output on the expected vault root. Using resolvePath
+-	// on both sides dodges Windows's drive-letter prepending (e.g.
+-	// `/vault/.claude/scripts` becomes `D:\vault\.claude\scripts`) that
+-	// tripped up an earlier version of these tests on the CI matrix.
+-	test("strips the .claude/scripts suffix from an absolute input", () => {
+-		const result = resolveVaultRoot(
+-			resolvePath("/Users/me/vault/.claude/scripts"),
+-		);
+-		assert.equal(result, resolvePath("/Users/me/vault"));
+-	});
+-	test("handles a trailing separator gracefully", () => {
+-		const result = resolveVaultRoot(
+-			resolvePath("/vault/.claude/scripts") + pathSep,
+-		);
+-		assert.equal(result, resolvePath("/vault"));
+-	});
+-	test("always returns an absolute path (path.resolve guarantees this)", () => {
+-		// Relative inputs get resolved against cwd; we only assert
+-		// absoluteness here — the suffix-stripping semantics are locked
+-		// by the absolute-input test above.
+-		const result = resolveVaultRoot("a/b/.claude/scripts");
+-		const isAbsolute =
+-			/^[A-Za-z]:[\\/]/.test(result) ||
+-			result.startsWith("\\\\") ||
+-			result.startsWith("/");
+-		assert.ok(isAbsolute, `expected absolute path, got: ${result}`);
+-	});
+-});
+-
+ describe("composeWorkerInvocations", () => {
+ 	test("returns update, embed, and a tail-chase update in that order", () => {
+ 		const invs = composeWorkerInvocations(

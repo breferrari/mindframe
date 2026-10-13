@@ -1,0 +1,104 @@
+Description: mindframe: the worker takes its vault and index from --vault and --index, as the qmd extension's effect resolves them (#95)
+Forwarded: https://github.com/breferrari/mindframe/issues/19
+Last-Update: 2026-10-13
+
+diff --git a/core/scripts/extensions/qmd/refresh-run.ts b/core/scripts/extensions/qmd/refresh-run.ts
+--- a/core/scripts/extensions/qmd/refresh-run.ts
++++ b/core/scripts/extensions/qmd/refresh-run.ts
+@@ -1,9 +1,8 @@
+ #!/usr/bin/env node
+ /**
+- * Detached worker for the mid-session QMD refresh. Invoked by
+- * `qmd-refresh.ts` (PostToolUse hook) and `stop-checklist.ts` (Stop
+- * hook) as a backgrounded child so the hook itself returns in
+- * milliseconds.
++ * Detached worker for the mid-session QMD refresh. Spawned by the qmd
++ * extension's refresh effect (write, pre-compact and Stop) as a
++ * backgrounded child so the hook itself returns in milliseconds.
+  *
+  * Runs `qmd update` (BM25/FTS) followed by `qmd embed` (vector index)
+  * so mid-session writes become searchable through every retrieval arm,
+@@ -17,13 +16,11 @@
+  * and a flaky refresh must not pollute the next session's context or
+  * terminal.
+  *
+- * Cwd independence: the vault root is derived from the worker's own
+- * absolute script path (`<vault>/.claude/scripts/`), not from
+- * `process.cwd()` or env vars. This survives the case where the parent
+- * hook fires from a drifted shell cwd without CLAUDE_PROJECT_DIR set —
+- * without that anchor, the manifest read failed silently and the
+- * worker updated QMD's default global collection instead of the
+- * vault's named one.
++ * Its vault and index come from its arguments (`--vault`, `--index`), which
++ * the qmd extension's refresh effect resolves exactly as session start does
++ * (lifted from obsidian-mind 0a58edf's `qmd-refresh-run.ts`, #95, which
++ * derived them from its own path two folders below the vault; this one sits
++ * four deep). No `--vault`: nothing to refresh, so it exits.
+  *
+  * Multi-platform: delegates the spawn shape to `lib/qmd.ts`, which
+  * routes through `process.execPath qmd.js` on every OS, bypassing the
+@@ -31,39 +28,19 @@
+  */
+ 
+ import { spawnSync } from "node:child_process";
+-import { readFileSync } from "node:fs";
+-import { dirname, resolve as resolvePath } from "node:path";
+-import { fileURLToPath } from "node:url";
+-import { debug } from "./lib/hook-io.ts";
+-import { resolveQmdIndex } from "./lib/session-start.ts";
++import { debug } from "../../core/index.ts";
+ import { resolveQmdEntry } from "./lib/qmd.ts";
+-import {
+-	claimTrailingFlush,
+-	composeWorkerInvocations,
+-	parseWorkerArgs,
+-	resolveVaultRoot,
+-} from "./lib/qmd-refresh.ts";
++import { claimTrailingFlush, composeWorkerInvocations, parseWorkerArgs } from "./lib/refresh.ts";
+ 
+-const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+-const VAULT_ROOT = resolveVaultRoot(SCRIPT_DIR);
+-const MANIFEST_PATH = resolvePath(VAULT_ROOT, "vault-manifest.json");
+-
+-function readManifestRaw(): string | null {
+-	try {
+-		return readFileSync(MANIFEST_PATH, { encoding: "utf-8" });
+-	} catch {
+-		return null;
+-	}
++const { trailing, vault, index } = parseWorkerArgs(process.argv.slice(2));
++if (vault === null) {
++	debug("qmd-refresh-run: no --vault; nothing to refresh");
++	process.exit(0);
+ }
+ 
+-// Must resolve the index exactly as SessionStart, the MCP wrapper, and the
+-// bootstrap script do. This worker WRITES to the store; if it resolved
+-// differently it would index one store while search reads another, and the
+-// symptom is stale results rather than an error.
+ // Trailing flush: a trigger landed inside the debounce window, so this
+ // worker sleeps out the rest of it, then runs unless a newer refresh has
+ // already started (that refresh covers the same writes).
+-const { trailing } = parseWorkerArgs(process.argv.slice(2));
+ if (trailing !== null) {
+ 	await new Promise((r) => setTimeout(r, trailing.delayMs));
+ 	if (!claimTrailingFlush(trailing.sentinelPath, trailing.afterMs)) {
+@@ -72,8 +49,7 @@
+ 	}
+ }
+ 
+-const qmdIndex = resolveQmdIndex(readManifestRaw(), VAULT_ROOT);
+-const invocations = composeWorkerInvocations(qmdIndex, resolveQmdEntry());
++const invocations = composeWorkerInvocations(index, resolveQmdEntry());
+ 
+ for (const inv of invocations) {
+ 	const result = spawnSync(inv.cmd, inv.args as string[], {
+@@ -81,7 +57,7 @@
+ 		timeout: inv.timeoutMs,
+ 		shell: inv.shell,
+ 		windowsHide: true,
+-		cwd: VAULT_ROOT,
++		cwd: vault,
+ 	});
+ 	if (result.error) {
+ 		debug(`qmd-refresh-run: ${inv.args.join(" ")} — ${result.error.message}`);

@@ -10,6 +10,7 @@ How to work on the mindframe repo. What mindframe is and how it is laid out: [RE
 - Roadmap rows use their issue's title.
 - One issue per PR, based on `main`. No stacked PRs. Update the issue's roadmap row in the same PR.
 - Add or remove a top-level path only together with the README's layout section.
+- **A core file obsidian-mind is upstream of carries its change as a patch.** `core/vendor/obsidian-mind/VENDOR.json` lists them. A PR that changes one updates its patch: `npm run vendor -- patch new <slug> <file> --upstream <obsidian-mind checkout at the record's commit> --vault . --record core/vendor/obsidian-mind/VENDOR.json`, with a Description saying what changed and why, and `--forward` to #19, the route back. Each file keeps one patch, because `vendor update` won't fold a merge into a file with several (#57): fold a new change into the file's patch rather than adding a second: delete the file's patch and its name under `patches` in the record, then run `patch new` again, so the one patch covers every change, with the Description extended. CI's `vendor check` fails on an edit with no patch.
 
 ## Hard rules
 

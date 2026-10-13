@@ -14,7 +14,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
 +import { manifestOf, type ManifestObject } from "./manifest.ts";
 +import { qmdIndexOf, qmdMinVersionOf, resolveQmdIndexOf } from "../extensions/qmd/lib/index-name.ts";
  
- import { HOOK_OUTPUT_MAX_CHARS } from "./hook-io.ts";
+ import { envelopedLimit } from "./hook-io.ts";
  import { escapeRegex } from "./regex.ts";
 @@ -40,15 +42,19 @@
  		readonly cut?: boolean | undefined;
@@ -46,7 +46,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
  }
  
  /**
-@@ -249,28 +255,19 @@
+@@ -247,28 +253,19 @@
  	return `./${posixPath}/ — ${noteCount} notes (listing collapsed — Glob or QMD on demand)`;
  }
  
@@ -85,7 +85,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
  }
  
  /** Room the closing meter line keeps beside the budgeted sections. */
-@@ -312,17 +309,27 @@
+@@ -327,17 +324,27 @@
   */
  export const DEFAULT_INSTRUCTION_BUDGET_BYTES = 20_000;
  
@@ -117,7 +117,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
  }
  
  /**
-@@ -457,20 +464,6 @@
+@@ -472,20 +479,6 @@
  ];
  
  /**
@@ -138,7 +138,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
   * Extract a string value for `field` from YAML frontmatter at the top of
   * a markdown document. Supports quoted ("..."), single-quoted ('...'),
   * and bare values on the same line as the key. Returns null when the
-@@ -484,12 +477,11 @@
+@@ -499,12 +492,11 @@
  	content: string,
  	field: string,
  ): string | null {
@@ -155,7 +155,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
  		"m",
  	);
  	const m = fm.match(re);
-@@ -511,12 +503,8 @@
+@@ -526,12 +518,8 @@
   * Handles both LF and CRLF delimiters.
   */
  export function stripFrontmatter(content: string): string {
@@ -170,7 +170,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
  }
  
  /**
-@@ -529,25 +517,21 @@
+@@ -544,25 +532,21 @@
  	return /^[ \t]*[-*+][ \t]+\S.*$/m.test(body);
  }
  
@@ -209,7 +209,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
   * Extract the `qmd_index` string from a `vault-manifest.json` source. Returns
   * the configured named index (so QMD's storage is scoped to this vault) or
   * null when the manifest is absent, malformed, missing the field, or the
-@@ -558,72 +542,10 @@
+@@ -573,72 +557,10 @@
   * backwards-compatible with forks that haven't adopted the field yet.
   */
  export function parseQmdIndex(manifestJson: string | null): string | null {
@@ -283,7 +283,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
   * The index name this vault owns, in precedence order:
   *
   *   1. an explicit `qmd_index` pin,
-@@ -650,89 +572,17 @@
+@@ -665,89 +587,17 @@
  	manifestJson: string | null,
  	vaultRoot: string,
  ): string | null {
@@ -375,16 +375,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
  }
  
  /**
-@@ -747,7 +597,7 @@
- 
- /**
-  * Extract the root-level entries from `vault-manifest.json`'s `infrastructure`
-- * list — files like CLAUDE.md, README.*.md, Home.md that aren't user content
-+ * list — files like AGENTS.md, README.*.md, Home.md that aren't user content
-  * and therefore shouldn't be scanned for open tasks. Glob patterns with `/`
-  * (e.g. `.claude/**`) are excluded because they target subdirectories.
-  *
-@@ -757,15 +607,12 @@
+@@ -772,15 +622,12 @@
  export function parseInfraRootFilenames(
  	manifestJson: string | null,
  ): readonly string[] {
@@ -406,16 +397,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
  	if (!Array.isArray(infra)) return [];
  	return infra.filter(
  		(e): e is string => typeof e === "string" && !e.includes("/"),
-@@ -774,7 +621,7 @@
- 
- /**
-  * True if `filename` matches any of the given root-level infrastructure
-- * patterns. Patterns are literal filenames (`CLAUDE.md`) or globs with `*`
-+ * patterns. Patterns are literal filenames (`AGENTS.md`) or globs with `*`
-  * wildcards (`README.*.md`). Other regex metacharacters are escaped so a
-  * pattern like `foo.md` matches `foo.md`, not `fooXmd`.
-  */
-@@ -869,29 +716,6 @@
+@@ -884,29 +731,6 @@
  }
  
  /**

@@ -85,6 +85,13 @@ jobs:
         shell: bash
         run: npm test
 
+      - name: The core files obsidian-mind is upstream of are upstream plus patches
+        # Offline: each recorded file, with its patches undone, hashes to
+        # obsidian-mind's bytes at the recorded commit (DESIGN rule 11, #102).
+        if: hashFiles('core/vendor/obsidian-mind/VENDOR.json') != ''
+        shell: bash
+        run: node --disable-warning=ExperimentalWarning --experimental-strip-types core/vendor/cli.ts check --vault . --record core/vendor/obsidian-mind/VENDOR.json
+
       - name: Dry-run the shipped specs against pinned vaults
         # Deterministic: each vault's own hook scripts, at the commits in
         # testbed/ci/pins.json, replayed with no model and no Claude Code,

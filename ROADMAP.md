@@ -40,9 +40,10 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#82](https://github.com/breferrari/mindframe/issues/82) | Read frontmatter by one rule everywhere in the core, as Obsidian does | ✅ |
 | [#85](https://github.com/breferrari/mindframe/issues/85) | Export the vault-root walk-up to extensions | ✅ |
 | [#89](https://github.com/breferrari/mindframe/issues/89) | Absorb obsidian-mind #333 into the core: the instruction files library and its comments | ✅ |
-| [#102](https://github.com/breferrari/mindframe/issues/102) | Record obsidian-mind as upstream for the core libraries absorbed from it | ⬜ |
+| [#102](https://github.com/breferrari/mindframe/issues/102) | Record obsidian-mind as upstream for the core libraries absorbed from it | ✅ |
 | [#91](https://github.com/breferrari/mindframe/issues/91) | Match a retired instruction file the way the agent loads it: any case where the filesystem ignores case, exact case on Linux | ⏳ after #102 |
 | [#104](https://github.com/breferrari/mindframe/issues/104) | Retire GEMINI.md only where the vault points Gemini at AGENTS.md: a vault-aware retired-file predicate | ⏳ after #91 |
+| [#107](https://github.com/breferrari/mindframe/issues/107) | Read a heading on a note's first line after a BOM: lineRegions strips a line-0 BOM | ⬜ |
 
 ## Phase 3: first-party extensions
 
@@ -84,3 +85,4 @@ Parked issues, taken one at a time. The milestone's `Shelf:` description keeps `
 | [#65](https://github.com/breferrari/mindframe/issues/65) | Make the vendor guard's suggested commands work for a file in any record | ⬜ |
 | [#66](https://github.com/breferrari/mindframe/issues/66) | Let patch new --issue say what is wrong, not only show the diff | ⬜ |
 | [#92](https://github.com/breferrari/mindframe/issues/92) | Let a vault choose its instruction file | ⬜ |
+| [#108](https://github.com/breferrari/mindframe/issues/108) | Write a new frontmatter block after a note's BOM: the write side of #82's reader | ⬜ |

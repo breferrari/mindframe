@@ -14,7 +14,7 @@ diff --git a/core/scripts/tests/frontmatter.test.ts b/core/scripts/tests/frontma
  		const manifest = JSON.parse(readFileSync(join(VAULT, "vault-manifest.json"), "utf-8"));
  		const tpl = readFileSync(join(VAULT, "templates", "Work Note.md"), "utf-8");
  		const w = validateContent(tpl, { required: parseFrontmatterRequired(manifest), relPath: "work/active/New.md" });
-@@ -265,6 +265,17 @@
+@@ -291,6 +291,17 @@
  		// All three field checks should accept the alternate spacing.
  		assert.deepEqual(validateContent(c), []);
  	});

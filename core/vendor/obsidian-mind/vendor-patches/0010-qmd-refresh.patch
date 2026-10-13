@@ -1,0 +1,171 @@
+Description: mindframe: the refresh as the qmd extension's effects: imports from the extension and the core, the worker told its vault and index (--vault, --index), the switch from lib/switches.ts read from a given environment, a missing worker reported (#95)
+Forwarded: https://github.com/breferrari/mindframe/issues/19
+Last-Update: 2026-10-13
+
+diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extensions/qmd/lib/refresh.ts
+--- a/core/scripts/extensions/qmd/lib/refresh.ts
++++ b/core/scripts/extensions/qmd/lib/refresh.ts
+@@ -1,12 +1,18 @@
+ /**
+  * Mid-session QMD refresh — pure predicates, spawn composition, and the
+- * shared debounced-trigger flow. Consumed by the PostToolUse hook
+- * (`.claude/scripts/qmd-refresh.ts`), the Stop hook
+- * (`.claude/scripts/stop-checklist.ts`), and the detached worker
+- * (`.claude/scripts/qmd-refresh-run.ts`). Centralizing the lifecycle
+- * here guarantees both hook entries honor the same debounce contract
+- * and spawn shape — the only way to drift is to bypass this module.
++ * shared debounced-trigger flow. Consumed by the qmd extension's refresh
++ * effect (index.ts: write, pre-compact and Stop) and the detached worker
++ * (refresh-run.ts). Centralizing the lifecycle here guarantees every
++ * trigger honors the same debounce contract and spawn shape — the only way
++ * to drift is to bypass this module.
+  *
++ * Lifted from obsidian-mind 0a58edf's `.claude/scripts/lib/qmd-refresh.ts`
++ * (#95). Changed: the imports, the worker is told its vault and index
++ * (`--vault`, `--index`) instead of deriving them from its own path, and
++ * the switch reads an injected environment. A vault's own triggers that
++ * still call obsidian-mind's copy share this one's sentinel, so both
++ * debounce as one.
++ *
+  * The pure helpers at the top of this file (path filter, debounce math,
+  * vault-root resolver, invocation composer) run identically on Windows,
+  * macOS, and Linux and are exercised in the CI matrix without side
+@@ -15,11 +21,11 @@
+  */
+ 
+ import { spawn } from "node:child_process";
+-import { rmSync, statSync, writeFileSync } from "node:fs";
+-import { resolve as resolvePath } from "node:path";
+-import { buildQmdCommand, REFRESH_SWITCH, refreshDisabled, resolveQmdEntry } from "./qmd.ts";
+-import { debug } from "./hook-io.ts";
+-import { qmdArgsWithIndex } from "./session-start.ts";
++import { existsSync, rmSync, statSync, writeFileSync } from "node:fs";
++import { debug } from "../../../core/index.ts";
++import { REFRESH_SWITCH, refreshDisabled } from "./switches.ts";
++import { qmdArgsWithIndex } from "./index-name.ts";
++import { buildQmdCommand, resolveQmdEntry } from "./qmd.ts";
+ 
+ /**
+  * Path segments that must never trigger a QMD refresh — writes into these
+@@ -156,20 +162,34 @@
+ }
+ 
+ /**
+- * Parse the worker's trailing-flush arguments. Absent or malformed → an
+- * immediate run, exactly as before trailing flushes existed. The delay is
+- * capped so a bad value cannot park a detached process for long.
++ * The arguments the worker runs on: the vault (`--vault`, its cwd for qmd),
++ * the index (`--index`; absent means qmd's global one), both resolved by the
++ * effect that spawns it, exactly as session start resolves them.
+  */
++export function workerArgsFor(vaultRoot: string, qmdIndex: string | null): string[] {
++	return [`--vault=${vaultRoot}`, ...(qmdIndex === null ? [] : [`--index=${qmdIndex}`])];
++}
++
++/**
++ * Parse the worker's arguments. Trailing-flush arguments absent or
++ * malformed → an immediate run, exactly as before trailing flushes existed.
++ * The delay is capped so a bad value cannot park a detached process for
++ * long. No `--vault` → null: the worker has no vault to refresh.
++ */
+ export function parseWorkerArgs(argv: readonly string[]): {
+ 	readonly trailing: { readonly delayMs: number; readonly sentinelPath: string; readonly afterMs: number | null } | null;
++	readonly vault: string | null;
++	readonly index: string | null;
+ } {
+ 	const get = (name: string): string | null => {
+ 		const hit = argv.find((a) => a.startsWith(`--${name}=`));
+ 		return hit === undefined ? null : hit.slice(name.length + 3);
+ 	};
++	const vault = get("vault") || null;
++	const index = get("index") || null;
+ 	const sentinelPath = get("trailing");
+ 	const delay = Number(get("delay-ms"));
+-	if (!sentinelPath || !Number.isFinite(delay) || delay < 0) return { trailing: null };
++	if (!sentinelPath || !Number.isFinite(delay) || delay < 0) return { trailing: null, vault, index };
+ 	const afterRaw = get("after");
+ 	const after = afterRaw === null || afterRaw === "" ? Number.NaN : Number(afterRaw);
+ 	return {
+@@ -178,25 +198,12 @@
+ 			sentinelPath,
+ 			afterMs: Number.isFinite(after) ? after : null,
+ 		},
++		vault,
++		index,
+ 	};
+ }
+ 
+ /**
+- * Return the absolute vault root derived from a hook script's own
+- * directory. Hook scripts live at `<vault>/.claude/scripts/`, so going
+- * two segments up resolves the vault root irrespective of the invoking
+- * shell's cwd or whether any `*_PROJECT_DIR` env var is set.
+- *
+- * This anchor lets the worker read the manifest from a known-good
+- * absolute path, eliminating a class of silent bug where a drifted cwd
+- * caused the worker to update QMD's default global collection instead
+- * of the vault's named index.
+- */
+-export function resolveVaultRoot(scriptDirAbsolute: string): string {
+-	return resolvePath(scriptDirAbsolute, "..", "..");
+-}
+-
+-/**
+  * A single qmd subcommand spawn — cmd, args, shell flag (from
+  * `buildQmdCommand`) plus the per-step timeout budget. Pairing the
+  * timeout with its invocation keeps the worker's execution loop from
+@@ -276,10 +283,6 @@
+ 	}
+ }
+ 
+-// The switch lives in lib/qmd.ts beside the detached qmd spawn it guards
+-// (#347); re-exported here, where #338 defined it, so its importers hold.
+-export { REFRESH_SWITCH, refreshDisabled } from "./qmd.ts";
+-
+ /**
+  * Spawn the detached worker. `stdio: 'ignore'` + `.unref()` + `detached`
+  * survive parent exit without leaving file descriptors open, and
+@@ -330,6 +333,16 @@
+ 	readonly workerPath: string;
+ 	readonly debounceMs: number;
+ 	readonly logPrefix: string;
++	/** Arguments every worker this trigger spawns gets: its vault and index (workerArgsFor). */
++	readonly workerArgs?: readonly string[];
++	/** The environment the switch is read from; the process's own when unset. */
++	readonly env?: Readonly<Record<string, string | undefined>>;
++	/**
++	 * Throw, before any stamp, when the real spawner would run a worker that
++	 * isn't there: one spawned by path is never brought in by an import, and a
++	 * missing one would fail in silence.
++	 */
++	readonly requireWorker?: boolean;
+ 	/** Test seams; production uses the real resolver and spawn. */
+ 	readonly qmdAvailable?: () => boolean;
+ 	readonly spawnWorker?: (workerPath: string, args: readonly string[]) => void;
+@@ -357,13 +370,17 @@
+ 	// as usual, so the trigger's observable behaviour is unchanged (#337).
+ 	const spawnWorker =
+ 		opts.spawnWorker ??
+-		(refreshDisabled()
++		(refreshDisabled(opts.env)
+ 			? () => debug(`${opts.logPrefix}: refresh off (${REFRESH_SWITCH}=off); no worker spawned`)
+ 			: (path: string, args: readonly string[]) => spawnDetachedWorker(path, opts.logPrefix, args));
++	const always = opts.workerArgs ?? [];
++	if (opts.requireWorker === true && opts.spawnWorker === undefined && !refreshDisabled(opts.env) && !existsSync(opts.workerPath)) {
++		throw new Error(`the refresh worker is missing: ${opts.workerPath}`);
++	}
+ 
+ 	if (plan === "now") {
+ 		touchSentinel(opts.sentinelPath);
+-		spawnWorker(opts.workerPath, []);
++		spawnWorker(opts.workerPath, [...always]);
+ 		return;
+ 	}
+ 
+@@ -387,5 +404,6 @@
+ 		`--trailing=${opts.sentinelPath}`,
+ 		`--delay-ms=${remaining}`,
+ 		`--after=${mtime ?? ""}`,
++		...always,
+ 	]);
+ }

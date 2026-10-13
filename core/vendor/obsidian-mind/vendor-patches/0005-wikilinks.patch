@@ -5,15 +5,6 @@ Last-Update: 2026-10-13
 diff --git a/core/scripts/lib/wikilinks.ts b/core/scripts/lib/wikilinks.ts
 --- a/core/scripts/lib/wikilinks.ts
 +++ b/core/scripts/lib/wikilinks.ts
-@@ -11,7 +11,7 @@
-  *
-  * Rules:
-  *  - Fenced code blocks AND inline code spans are stripped before
-- *    extraction — CLAUDE.md and the skills carry literal `[[...]]`
-+ *    extraction — AGENTS.md and the skills carry literal `[[...]]`
-  *    syntax examples that are documentation, not edges.
-  *  - `!` embed prefix, `|alias` tails (including the table-escaped `\|`
-  *    form), `#heading` and `#^block` fragments are stripped from targets.
 @@ -24,6 +24,9 @@
   *    case-insensitive basename or alias.
   */
