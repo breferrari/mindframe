@@ -92,24 +92,25 @@ export function isInstructionFile(name: string, platform: NodeJS.Platform = proc
 /**
  * The context files the vault's `.gemini/settings.json` names
  * (`context.fileName`, or the older top-level `contextFileName` Gemini still
- * migrates; a string or a list), or [] when there is none. Gemini accepts
- * comments and a BOM in that file, so both are dropped before a strict
- * `JSON.parse`. A file that still doesn't parse names nothing, because Gemini
- * applies none of it either. Lifted from obsidian-mind's hygiene scan (#104),
- * which falls back to a narrow read of the raw text; dropping comments
- * instead, and the v1 key, are mindframe's.
+ * migrates; a string or a list), or [] when there is none. The file is read
+ * as gemini-cli 51617c1 reads it: comments are dropped by strip-json-comments'
+ * rules, then a strict `JSON.parse`. A file that doesn't parse names nothing,
+ * because Gemini applies none of it either. A BOM is kept, so a BOM'd file
+ * doesn't parse, as Gemini refuses it (#119). Lifted from obsidian-mind's
+ * hygiene scan (#104), which falls back to a narrow read of the raw text;
+ * dropping comments instead, and the v1 key, are mindframe's.
  */
 export function geminiContextFiles(vaultRoot: string): string[] {
 	const path = join(vaultRoot, GEMINI_SETTINGS);
 	try {
 		// Only a regular file: a FIFO at that path would block the hook on read.
 		if (statSync(path, { throwIfNoEntry: false })?.isFile() !== true) return [];
-		// Strings are matched first and kept, so a `//` inside one (a URL) is no
-		// comment; an unterminated block comment runs to the end, in one pass. A
-		// comment becomes a space, as Gemini's reader makes it, so `tr/**/ue`
-		// stays two tokens and fails to parse there and here alike.
+		// strip-json-comments 3.1.1's rules: only a double quote opens a string,
+		// and one escaped doesn't close it, so a `//` inside a string (a URL) is no
+		// comment; an unterminated block comment runs to the end, in one pass; a
+		// comment becomes a space, so `tr/**/ue` stays two tokens and fails to
+		// parse there and here alike. A BOM is kept, so a BOM'd file fails (#119).
 		const text = readFileSync(path, "utf8")
-			.replace(/^\uFEFF/, "")
 			.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g, (_, string: string | undefined) => string ?? " ");
 		const settings = JSON.parse(text) as { context?: { fileName?: unknown }; contextFileName?: unknown } | null;
 		const names = settings?.context?.fileName ?? settings?.contextFileName;

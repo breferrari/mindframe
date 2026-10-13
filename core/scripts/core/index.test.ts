@@ -166,10 +166,23 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "non-strings are dropped");
 	});
 
-	test("comments, a BOM and CRLF, as Gemini accepts them: the settings still parse", () => {
-		settings('\uFEFF{\r\n  // Gemini reads AGENTS.md\r\n  "context": { "fileName": ["AGENTS.md"] }\r\n}\r\n');
+	test("comments and CRLF, as Gemini accepts them: the settings still parse", () => {
+		settings('{\r\n  // Gemini reads AGENTS.md\r\n  "context": { "fileName": ["AGENTS.md"] }\r\n}\r\n');
 		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"]);
 		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), true);
+	});
+
+	test("a BOM'd settings file doesn't parse in Gemini, so it names nothing, and GEMINI.md stays (#119)", () => {
+		settings('\uFEFF{ "context": { "fileName": ["AGENTS.md"] } }');
+		assert.deepEqual(core.geminiContextFiles(root), []);
+		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), false);
+	});
+
+	test("comments as strip-json-comments 3.1.1 reads them: only a double quote opens a string (#119)", () => {
+		settings(`{ "context": { "fileName": "AGENTS.md" }, 'x': 1 // a comment after a single quote\n}`);
+		assert.deepEqual(core.geminiContextFiles(root), [], "a single-quoted key doesn't parse, as in Gemini");
+		settings('{ "a": "say \\"//\\" here", "context": { "fileName": "AGENTS.md" } }');
+		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "an escaped quote doesn't close the string, so its // is text");
 	});
 
 	test("a commented-out fileName doesn't count, and a // inside a string is no comment", () => {

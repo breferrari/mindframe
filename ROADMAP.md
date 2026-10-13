@@ -50,7 +50,8 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#114](https://github.com/breferrari/mindframe/issues/114) | Emit the session context from one core function, in place of each entry point's four paired delivery choices | ⬜ |
 | [#115](https://github.com/breferrari/mindframe/issues/115) | Give fitWithMeter's meter one size base, so the uncut figure needs no caller special case | ⬜ |
 | [#117](https://github.com/breferrari/mindframe/issues/117) | Accept a newly followed import whose target another record keeps, when the target is present | ✅ |
-| [#119](https://github.com/breferrari/mindframe/issues/119) | Read a BOM'd Gemini settings file as Gemini does: it doesn't parse, so it names nothing | ⬜ |
+| [#119](https://github.com/breferrari/mindframe/issues/119) | Read a BOM'd Gemini settings file as Gemini does: it doesn't parse, so it names nothing | ✅ |
+| [#117](https://github.com/breferrari/mindframe/issues/117) | Accept a newly followed import whose target another record keeps, when the target is present | ⬜ |
 
 ## Phase 3: first-party extensions
 
