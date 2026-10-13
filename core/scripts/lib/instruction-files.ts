@@ -2,8 +2,9 @@
  * The vault's instruction files (obsidian-mind #321). `AGENTS.md` is the one every agent
  * reads. A retired one left at the vault root goes wrong silently, each its
  * own way: Claude Code reads a `CLAUDE.md` in place of `AGENTS.md`, and
- * Gemini, which now reads `AGENTS.md` through `.gemini/settings.json`, never
- * loads a `GEMINI.md`, so whatever the user added there is lost. A vault's
+ * Gemini, where `.gemini/settings.json` points it at `AGENTS.md`, never loads
+ * a `GEMINI.md`, so whatever the user added there is lost; elsewhere
+ * `GEMINI.md` is still Gemini's manual (`retiredInVault`, #104). A vault's
  * hygiene scan and upgrade plan read this list (obsidian-mind's do), so a file
  * retired later is retired in one place.
  */
@@ -74,7 +75,9 @@ function opensAs(name: string, names: readonly string[], platform: NodeJS.Platfo
  * Whether a root file name is a retired instruction file, matched the way the
  * agent loads it (#91): in any case where the filesystem ignores case, as
  * Windows and macOS resolve `claude.md` as `CLAUDE.md`, and in exact case on
- * Linux, where the agent never loads a `claude.md`.
+ * Linux, where the agent never loads a `claude.md`. These are the names that
+ * can be retired; whether this vault has retired one is `retiredInVault`'s
+ * question (#104).
  */
 export function isRetiredInstructionFile(name: string, platform: NodeJS.Platform = process.platform): boolean {
 	return opensAs(name, RETIRED_INSTRUCTION_FILES, platform);
@@ -90,8 +93,9 @@ export function isInstructionFile(name: string, platform: NodeJS.Platform = proc
  * (`context.fileName`, a string or a list), or [] when there is none. Gemini
  * accepts comments and a BOM in that file, so the comments are dropped (a
  * commented-out fileName names nothing), then a strict `JSON.parse` is tried
- * and a narrow read of the fileName value second. Lifted from obsidian-mind's
- * hygiene scan (#104).
+ * and a narrow read of `context`'s fileName value second. Lifted from
+ * obsidian-mind's hygiene scan (#104), which reads the raw text: dropping the
+ * comments first, and reading only under `context`, are mindframe's.
  */
 export function geminiContextFiles(vaultRoot: string): string[] {
 	let text: string;
@@ -107,7 +111,7 @@ export function geminiContextFiles(vaultRoot: string): string[] {
 		const names = (JSON.parse(text) as { context?: { fileName?: unknown } } | null)?.context?.fileName;
 		return (Array.isArray(names) ? names : [names]).filter((n): n is string => typeof n === "string");
 	} catch {
-		const value = /"fileName"\s*:\s*(\[[^\]]*\]|"[^"]*")/.exec(text)?.[1] ?? "";
+		const value = /"context"\s*:\s*\{[^{}]*?"fileName"\s*:\s*(\[[^\]]*\]|"[^"]*")/.exec(text)?.[1] ?? "";
 		return [...value.matchAll(/"([^"]*)"/g)].map((m) => m[1]!);
 	}
 }

@@ -1,21 +1,23 @@
-Description: mindframe: RETIRED_INSTRUCTION_FILES frozen, and comments saying mindframe absorbed it from obsidian-mind #333 (#89, #90); retired and instruction files matched without case where the filesystem ignores it, win32 and darwin (#91); GEMINI.md retired only where the vault's Gemini settings read AGENTS.md, with the settings reader lifted from obsidian-mind's hygiene scan (#104)
+Description: mindframe: RETIRED_INSTRUCTION_FILES frozen, and comments saying mindframe absorbed it from obsidian-mind #333 (#89, #90); retired and instruction files matched without case where the filesystem ignores it, win32 and darwin (#91); GEMINI.md retired only where the vault's Gemini settings read AGENTS.md, with the settings reader lifted from obsidian-mind's hygiene scan, its comments dropped first and its narrow read under context only (#104)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
 diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instruction-files.ts
 --- a/core/scripts/lib/instruction-files.ts
 +++ b/core/scripts/lib/instruction-files.ts
-@@ -1,13 +1,16 @@
+@@ -1,13 +1,17 @@
  /**
 - * The vault's instruction files (#321). `AGENTS.md` is the one every agent
 + * The vault's instruction files (obsidian-mind #321). `AGENTS.md` is the one every agent
   * reads. A retired one left at the vault root goes wrong silently, each its
   * own way: Claude Code reads a `CLAUDE.md` in place of `AGENTS.md`, and
-  * Gemini, which now reads `AGENTS.md` through `.gemini/settings.json`, never
+- * Gemini, which now reads `AGENTS.md` through `.gemini/settings.json`, never
 - * loads a `GEMINI.md`, so whatever the user added there is lost. The hygiene
 - * scan and `upgrade-plan` both read this list, so a file retired later is
 - * retired in one place.
-+ * loads a `GEMINI.md`, so whatever the user added there is lost. A vault's
++ * Gemini, where `.gemini/settings.json` points it at `AGENTS.md`, never loads
++ * a `GEMINI.md`, so whatever the user added there is lost; elsewhere
++ * `GEMINI.md` is still Gemini's manual (`retiredInVault`, #104). A vault's
 + * hygiene scan and upgrade plan read this list (obsidian-mind's do), so a file
 + * retired later is retired in one place.
   */
@@ -26,7 +28,7 @@ diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instructio
  export const INSTRUCTION_FILE = "AGENTS.md";
  export const CLAUDE_MD = "CLAUDE.md";
  export const GEMINI_MD = "GEMINI.md";
-@@ -20,28 +23,114 @@
+@@ -20,28 +24,117 @@
  export const GEMINI_SETTINGS = ".gemini/settings.json";
  
  /**
@@ -91,7 +93,9 @@ diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instructio
 + * Whether a root file name is a retired instruction file, matched the way the
 + * agent loads it (#91): in any case where the filesystem ignores case, as
 + * Windows and macOS resolve `claude.md` as `CLAUDE.md`, and in exact case on
-+ * Linux, where the agent never loads a `claude.md`.
++ * Linux, where the agent never loads a `claude.md`. These are the names that
++ * can be retired; whether this vault has retired one is `retiredInVault`'s
++ * question (#104).
 + */
 +export function isRetiredInstructionFile(name: string, platform: NodeJS.Platform = process.platform): boolean {
 +	return opensAs(name, RETIRED_INSTRUCTION_FILES, platform);
@@ -107,8 +111,9 @@ diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instructio
 + * (`context.fileName`, a string or a list), or [] when there is none. Gemini
 + * accepts comments and a BOM in that file, so the comments are dropped (a
 + * commented-out fileName names nothing), then a strict `JSON.parse` is tried
-+ * and a narrow read of the fileName value second. Lifted from obsidian-mind's
-+ * hygiene scan (#104).
++ * and a narrow read of `context`'s fileName value second. Lifted from
++ * obsidian-mind's hygiene scan (#104), which reads the raw text: dropping the
++ * comments first, and reading only under `context`, are mindframe's.
 + */
 +export function geminiContextFiles(vaultRoot: string): string[] {
 +	let text: string;
@@ -124,7 +129,7 @@ diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instructio
 +		const names = (JSON.parse(text) as { context?: { fileName?: unknown } } | null)?.context?.fileName;
 +		return (Array.isArray(names) ? names : [names]).filter((n): n is string => typeof n === "string");
 +	} catch {
-+		const value = /"fileName"\s*:\s*(\[[^\]]*\]|"[^"]*")/.exec(text)?.[1] ?? "";
++		const value = /"context"\s*:\s*\{[^{}]*?"fileName"\s*:\s*(\[[^\]]*\]|"[^"]*")/.exec(text)?.[1] ?? "";
 +		return [...value.matchAll(/"([^"]*)"/g)].map((m) => m[1]!);
 +	}
 +}

@@ -179,6 +179,13 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "a // inside a string is no comment");
 	});
 
+	test("the narrow read takes context's fileName only, not one under another key", () => {
+		settings('{\n  "ui": { "fileName": "AGENTS.md" },\n  "context": { "fileName": "GEMINI.md", },\n}\n');
+		assert.deepEqual(core.geminiContextFiles(root), ["GEMINI.md"]);
+		settings('{ "ui": { "fileName": "AGENTS.md" }, }');
+		assert.deepEqual(core.geminiContextFiles(root), []);
+	});
+
 	test("names match by #91's rule: agents.md names AGENTS.md where the filesystem ignores case", () => {
 		fileName("agents.md");
 		assert.equal(core.geminiReadsAgentsMd(root, "win32"), true);
@@ -188,6 +195,7 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 		assert.equal(core.geminiReadsAgentsMd(root, "win32"), false, "gemini.md still names GEMINI.md there");
 		fileName("AGENTS.md");
 		assert.equal(core.retiredInVault(root, "win32")("gemini.md"), true);
+		assert.equal(core.retiredInVault(root, "darwin")("gemini.md"), true);
 		assert.equal(core.retiredInVault(root, "linux")("gemini.md"), false);
 	});
 
