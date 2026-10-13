@@ -10,19 +10,11 @@
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { extensionSources } from "./test-fakes.ts";
 
 const DIR = fileURLToPath(new URL(".", import.meta.url));
-
-function sources(dir: string): string[] {
-	return readdirSync(dir).flatMap((name) => {
-		const path = join(dir, name);
-		if (statSync(path).isDirectory()) return sources(path);
-		return name.endsWith(".ts") && !name.endsWith(".test.ts") && name !== "test-fakes.ts" ? [path] : [];
-	});
-}
 
 /** The text of each direct spawn call in `source`: from the name to its closing parenthesis. */
 export function spawnCalls(text: string): string[] {
@@ -50,7 +42,7 @@ describe("the qmd extension hides every console window it could open (#96)", () 
 	});
 
 	test("every direct spawn in the extension's code passes windowsHide", () => {
-		const missing = sources(DIR).flatMap((path) => spawnCalls(readFileSync(path, "utf8")).filter((call) => !call.includes("windowsHide")).map((call) => `${path}: ${call.slice(0, 80)}`));
+		const missing = extensionSources(DIR).flatMap((path) => spawnCalls(readFileSync(path, "utf8")).filter((call) => !call.includes("windowsHide")).map((call) => `${path}: ${call.slice(0, 80)}`));
 		assert.deepEqual(missing, []);
 	});
 });

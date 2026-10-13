@@ -55,6 +55,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#126](https://github.com/breferrari/mindframe/issues/126) | Give write hooks the payload's targets from the core, with removed files and one effect run per call | ⬜ |
 | [#128](https://github.com/breferrari/mindframe/issues/128) | Build openVault's migration notes from what the registry did: none under the kill switch, one for a refused qmd module | ⬜ |
 | [#133](https://github.com/breferrari/mindframe/issues/133) | Follow files a recorded file spawns by path in vendor update, as it follows imports | ⬜ |
+| [#136](https://github.com/breferrari/mindframe/issues/136) | Let a vendor record track a file outside its source root, inside the upstream repo | ⬜ |
 
 ## Phase 3: first-party extensions
 

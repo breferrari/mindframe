@@ -103,6 +103,7 @@ function spawnQmd(
 	subcommandArgs: readonly string[],
 ): SpawnOutcome {
 	const { cmd, args, shell } = buildQmdCommand(entry, subcommandArgs);
+	// windowsHide: upstream at obsidian-mind be9be2e (#385). Drop this note once #136 records the script.
 	const r = spawnSync(cmd, args as string[], { shell, encoding: "utf-8", windowsHide: true });
 	return {
 		status: r.status,

@@ -1,4 +1,4 @@
-Description: mindframe: obsidian-mind #333's comments (#90); readers of the parsed manifest (#52, #93); the one frontmatter rule (#82); qmd's helpers moved to the qmd extension, re-exported until #96 (#70); the meter's notes (#70)
+Description: mindframe: obsidian-mind #333's comments (#90); readers of the parsed manifest (#52, #93); the one frontmatter rule (#82); qmd's helpers moved to the qmd extension, re-exported until #135 (#70, #96); the meter's notes (#70)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
@@ -182,7 +182,7 @@ diff --git a/core/scripts/lib/session-start.ts b/core/scripts/lib/session-start.
 - * segments: alnum + dot + dash + underscore, must start with an alnum.
 - */
 -const QMD_INDEX_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-+// re-export, removed in #96: qmd's index-name helpers live in the qmd
++// re-export, removed in #135: qmd's index-name helpers live in the qmd
 +// extension (#70). Vendored scripts outside it still import them from here.
 +export {
 +	isValidQmdIndex,
