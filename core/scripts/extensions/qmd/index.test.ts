@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import type { EffectTrigger, HookContext } from "../../core/index.ts";
 import { QMD_DECLARATION } from "../../core/context.ts";
 import { collectSections, fromLoaded, loadRegistry, runEffects } from "../../core/registry.ts";
-import { SELF_HEAL_HEADER, VERSION_HEADER, extension, qmdExtension, sentinelPathFor } from "./index.ts";
+import { SELF_HEAL_HEADER, VERSION_HEADER, WORKER_PATH, extension, qmdExtension, sentinelPathFor } from "./index.ts";
 import { QMD_SWITCH, REFRESH_SWITCH } from "./lib/switches.ts";
 import { realDeps, type QmdDeps } from "./session.ts";
 import { VAULT, fakeDeps, rmTemp, waitFor, type Calls } from "./test-fakes.ts";
@@ -217,6 +217,11 @@ describe("the qmd extension's effects (#95)", () => {
 		} finally {
 			s.done();
 		}
+	});
+
+	test("the worker ships at WORKER_PATH under the name every leftover-worker guard matches (#125)", () => {
+		assert.ok(existsSync(WORKER_PATH), WORKER_PATH);
+		assert.equal(basename(WORKER_PATH), "qmd-refresh-run.ts");
 	});
 
 	test("a note written: one worker, told its vault and its index as session start resolves them", async () => {
