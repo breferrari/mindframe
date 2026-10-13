@@ -90,10 +90,11 @@ describe("migrationNotes: qmd set in the manifest, no qmd extension declared (#7
 		assert.deepEqual(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["session-start"], enabled: false }] }), []);
 	});
 
-	test("an entry that exists but runs partly is told so, not called off", () => {
-		const [note] = notes({ qmd_index: "", extensions: [{ ...qmd, events: ["session-start"] }] });
-		assert.doesNotMatch(note ?? "", /QMD off/);
-		assert.match(notes({ qmd_index: "" })[0] ?? "", /^QMD off/);
+	test("the note says off when QMD's work doesn't run at all, and fix when an entry runs it partly", () => {
+		assert.match(notes({ qmd_index: "" })[0] ?? "", /^QMD off: extensions needs /, "no entry");
+		assert.match(notes({ qmd_index: "", extensions: [{ ...qmd, module: "/abs/qmd.ts" }] })[0] ?? "", /^QMD off: fix qmd entry to /, "an entry the registry refuses");
+		assert.match(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop"] }] })[0] ?? "", /^QMD off: fix qmd entry to /, "an entry that never runs at session start");
+		assert.match(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["session-start"] }] })[0] ?? "", /^QMD: fix qmd entry to /, "an entry that runs partly");
 	});
 
 	test("a qmd entry from before #95, session start only, is told to list the refresh's events", () => {

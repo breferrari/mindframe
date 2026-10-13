@@ -21,7 +21,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { debug } from "../../../core/index.ts";
 import { REFRESH_SWITCH, refreshDisabled } from "./switches.ts";
 import { qmdArgsWithIndex } from "./index-name.ts";
@@ -337,6 +337,12 @@ export function triggerDebouncedRefresh(opts: {
 	readonly workerArgs?: readonly string[];
 	/** The environment the switch is read from; the process's own when unset. */
 	readonly env?: Readonly<Record<string, string | undefined>>;
+	/**
+	 * Throw, before any stamp, when the real spawner would run a worker that
+	 * isn't there: one spawned by path is never brought in by an import, and a
+	 * missing one would fail in silence.
+	 */
+	readonly requireWorker?: boolean;
 	/** Test seams; production uses the real resolver and spawn. */
 	readonly qmdAvailable?: () => boolean;
 	readonly spawnWorker?: (workerPath: string, args: readonly string[]) => void;
@@ -368,6 +374,9 @@ export function triggerDebouncedRefresh(opts: {
 			? () => debug(`${opts.logPrefix}: refresh off (${REFRESH_SWITCH}=off); no worker spawned`)
 			: (path: string, args: readonly string[]) => spawnDetachedWorker(path, opts.logPrefix, args));
 	const always = opts.workerArgs ?? [];
+	if (opts.requireWorker === true && opts.spawnWorker === undefined && !refreshDisabled(opts.env) && !existsSync(opts.workerPath)) {
+		throw new Error(`the refresh worker is missing: ${opts.workerPath}`);
+	}
 
 	if (plan === "now") {
 		touchSentinel(opts.sentinelPath);

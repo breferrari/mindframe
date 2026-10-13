@@ -169,9 +169,44 @@ describe("the qmd extension's effects (#95)", () => {
 		}
 	});
 
-	test("an empty QMD_REFRESH_SENTINEL is a path, as obsidian-mind's triggers read it: the override is unset only when absent (#95)", () => {
-		assert.equal(sentinelPathFor("/v", { QMD_REFRESH_SENTINEL: "" }), "");
-		assert.equal(sentinelPathFor("/v", {}), join("/v", ".claude", "scripts", ".qmd-refresh-sentinel"));
+	test("an empty QMD_REFRESH_SENTINEL is unset: an empty path would turn the debounce off (#95)", () => {
+		const fallback = join("/v", ".claude", "scripts", ".qmd-refresh-sentinel");
+		assert.equal(sentinelPathFor("/v", { QMD_REFRESH_SENTINEL: "" }), fallback);
+		assert.equal(sentinelPathFor("/v", {}), fallback);
+		assert.equal(sentinelPathFor("/v", { QMD_REFRESH_SENTINEL: "/t/s" }), "/t/s");
+	});
+
+	test("a missing worker is reported only where a worker would spawn: not without QMD, not with the refresh off, not inside a covered window (#95)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "qmd-noworker-quiet-"));
+		try {
+			const sentinel = join(dir, ".qmd-refresh-sentinel");
+			const quiet = async (opts: Parameters<typeof fakeDeps>[0]) => {
+				const { deps } = fakeDeps({ ...opts, env: { QMD_REFRESH_SENTINEL: sentinel, ...opts.env } });
+				const registry = fromLoaded([{ declaration, extension: qmdExtension(deps, { workerPath: join(dir, "gone.ts") }) }]);
+				return (await runEffects(registry, { event: "stop" }, { vaultRoot: dir, manifest: MANIFEST, now: 0 })).failures;
+			};
+			assert.deepEqual(await quiet({ entry: null }), [], "no QMD installed");
+			assert.deepEqual(await quiet({ env: { [REFRESH_SWITCH]: "off" } }), [], "the refresh off");
+			// Inside a window whose trailing flush is already owed: the trigger skips before any spawn.
+			writeFileSync(sentinel, "");
+			const t = (Date.now() - 10_000) / 1000;
+			utimesSync(sentinel, t, t);
+			writeFileSync(`${sentinel}.pending`, "");
+			assert.deepEqual(await quiet({}), [], "a covered window");
+		} finally {
+			rmTemp(dir);
+		}
+	});
+
+	test("session start's effect probes nothing with the refresh off, and a probe that throws is reported, with no update started (#95)", async () => {
+		const off = fakeDeps({ env: { [REFRESH_SWITCH]: "off" }, version: "qmd 1.0.0\n" });
+		await runEffects(fromLoaded([{ declaration, extension: qmdExtension(off.deps) }]), { event: "session-start" }, ctx());
+		assert.deepEqual(counts(off.calls), { sync: 0, detached: 0 });
+		const { deps, calls } = fakeDeps({});
+		const throwing: QmdDeps = { ...deps, spawnSync: () => { throw new Error("probe broke"); } };
+		const { failures } = await runEffects(fromLoaded([{ declaration, extension: qmdExtension(throwing) }]), { event: "session-start" }, ctx());
+		assert.deepEqual(failures.map((f) => [f.item, f.message]), [["qmd-session-refresh", "probe broke"]]);
+		assert.equal(calls.detached.length, 0);
 	});
 
 	test(`session start with ${REFRESH_SWITCH}=off: nothing detached`, async () => {

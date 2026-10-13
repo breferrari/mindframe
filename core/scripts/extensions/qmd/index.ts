@@ -21,13 +21,12 @@
  * extensions' time.
  */
 
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Effect, Extension, HookContext, Section } from "../../core/index.ts";
 import { resolveQmdIndexOf } from "./lib/index-name.ts";
 import { shouldRefreshForPath, triggerDebouncedRefresh, workerArgsFor } from "./lib/refresh.ts";
-import { qmdOff } from "./lib/switches.ts";
+import { qmdOff, refreshDisabled } from "./lib/switches.ts";
 import { SELF_HEAL_HEADER, VERSION_HEADER, qmdNotesOf, qmdSessionRefreshOf, realDeps, type QmdDeps, type QmdNote } from "./session.ts";
 
 export { SELF_HEAL_HEADER, VERSION_HEADER };
@@ -40,12 +39,12 @@ export const WORKER_PATH = fileURLToPath(new URL("./refresh-run.ts", import.meta
 
 /**
  * The refresh's sentinel: `QMD_REFRESH_SENTINEL`, or the file obsidian-mind's
- * hooks use, `.claude/scripts/.qmd-refresh-sentinel`, read as they read it
- * (unset only when absent). A vault that still triggers obsidian-mind's copy
- * shares it, so the two debounce as one.
+ * hooks use, `.claude/scripts/.qmd-refresh-sentinel`. Empty counts as unset:
+ * an empty path would stamp nothing and turn the debounce off. A vault that
+ * still triggers obsidian-mind's copy shares it, so the two debounce as one.
  */
 export function sentinelPathFor(vaultRoot: string, env: QmdDeps["env"]): string {
-	return env["QMD_REFRESH_SENTINEL"] ?? join(vaultRoot, ".claude", "scripts", ".qmd-refresh-sentinel");
+	return env["QMD_REFRESH_SENTINEL"] || join(vaultRoot, ".claude", "scripts", ".qmd-refresh-sentinel");
 }
 
 /** Test seams for the refresh effect: where the worker is, and how it is spawned. */
@@ -89,13 +88,11 @@ export function qmdExtension(deps: QmdDeps = realDeps, seams: RefreshSeams = {})
 		id: "qmd-session-refresh",
 		on: ["session-start"],
 		run: (_trigger, ctx) => {
+			if (qmdOff(deps.env) || refreshDisabled(deps.env)) return;
 			// The probes first, from the hook's one run: an ABI self-heal rebuilds the
-			// binding qmd update loads, so the update must not start before it.
-			try {
-				notesOf(ctx);
-			} catch {
-				/* reported by the sections; the refresh still runs */
-			}
+			// binding qmd update loads, so the update must not start before it. A probe
+			// that throws is this effect's failure, reported, and no update starts.
+			notesOf(ctx);
 			qmdSessionRefreshOf(ctx.vaultRoot, ctx.manifest, depsFor(ctx));
 		},
 	};
@@ -105,13 +102,12 @@ export function qmdExtension(deps: QmdDeps = realDeps, seams: RefreshSeams = {})
 		run: (trigger, ctx) => {
 			if (qmdOff(deps.env)) return;
 			if (trigger.event === "write" && !shouldRefreshForPath(trigger.target.relPath)) return;
-			// Spawned by path, so `vendor update` never brings it in: say so, rather than stamp and spawn nothing.
-			const workerPath = seams.workerPath ?? WORKER_PATH;
-			if (!existsSync(workerPath)) throw new Error(`the refresh worker is missing: ${workerPath}`);
 			const live = depsFor(ctx);
 			triggerDebouncedRefresh({
 				sentinelPath: sentinelPathFor(ctx.vaultRoot, deps.env),
-				workerPath,
+				workerPath: seams.workerPath ?? WORKER_PATH,
+				// Spawned by path, so `vendor update` never brings it in: a missing one is reported.
+				requireWorker: true,
 				debounceMs: REFRESH_DEBOUNCE_MS,
 				logPrefix: `qmd-refresh (${trigger.event})`,
 				workerArgs: workerArgsFor(ctx.vaultRoot, resolveQmdIndexOf(ctx.manifest, ctx.vaultRoot)),

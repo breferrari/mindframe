@@ -70,9 +70,11 @@ export const QMD_DECLARATION = JSON.stringify({ id: "qmd", module: ".claude/scri
 export function migrationNotes(manifest: Manifest): string[] {
 	const setsQmd = typeof manifest?.["qmd_index"] === "string" || typeof manifest?.["qmd_min_version"] === "string";
 	if (!setsQmd) return [];
-	const hasQmd = parseDeclarations(manifest).result.some((d) => d.id === "qmd" && (d.enabled === false || QMD_EVENTS.every((e) => d.events.includes(e))));
-	if (hasQmd) return [];
+	const accepted = parseDeclarations(manifest).result.filter((d) => d.id === "qmd");
+	if (accepted.some((d) => d.enabled === false || QMD_EVENTS.every((e) => d.events.includes(e)))) return [];
+	// Partly: an accepted entry that runs at session start, so the notes show, but misses a refresh event.
+	if (accepted.some((d) => d.events.includes("session-start"))) return [`QMD: fix qmd entry to ${QMD_DECLARATION}`];
 	const declared = manifest?.[EXTENSIONS_KEY];
 	const named = Array.isArray(declared) && declared.some((d: unknown) => typeof d === "object" && d !== null && (d as Record<string, unknown>)["id"] === "qmd");
-	return [named ? `QMD: fix qmd entry to ${QMD_DECLARATION}` : `QMD off: extensions needs ${QMD_DECLARATION}`];
+	return [`QMD off: ${named ? "fix qmd entry to" : "extensions needs"} ${QMD_DECLARATION}`];
 }
