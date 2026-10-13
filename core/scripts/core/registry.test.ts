@@ -486,7 +486,7 @@ describe("rule 5: effects run for their side effect alone", () => {
 		assert.match(failures[0]?.message ?? "", /returned number, not nothing/);
 	});
 
-	test("an `on` that is not a list of write, pre-compact and stop is a failure", async () => {
+	test("an `on` that is not a list of the effect events is a failure", async () => {
 		let ran = 0;
 		const run = () => { ran++; };
 		const ext: Extension = {

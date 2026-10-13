@@ -70,9 +70,9 @@ export const QMD_DECLARATION = JSON.stringify({ id: "qmd", module: ".claude/scri
 export function migrationNotes(manifest: Manifest): string[] {
 	const setsQmd = typeof manifest?.["qmd_index"] === "string" || typeof manifest?.["qmd_min_version"] === "string";
 	if (!setsQmd) return [];
-	const hasQmd = parseDeclarations(manifest).result.some((d) => d.id === "qmd" && QMD_EVENTS.every((e) => d.events.includes(e)));
+	const hasQmd = parseDeclarations(manifest).result.some((d) => d.id === "qmd" && (d.enabled === false || QMD_EVENTS.every((e) => d.events.includes(e))));
 	if (hasQmd) return [];
 	const declared = manifest?.[EXTENSIONS_KEY];
 	const named = Array.isArray(declared) && declared.some((d: unknown) => typeof d === "object" && d !== null && (d as Record<string, unknown>)["id"] === "qmd");
-	return [named ? `QMD off: fix qmd entry to ${QMD_DECLARATION}` : `QMD off: extensions needs ${QMD_DECLARATION}`];
+	return [named ? `QMD: fix qmd entry to ${QMD_DECLARATION}` : `QMD off: extensions needs ${QMD_DECLARATION}`];
 }

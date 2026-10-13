@@ -86,6 +86,16 @@ describe("migrationNotes: qmd set in the manifest, no qmd extension declared (#7
 		for (const extensions of ["qmd", { qmd }, [null, 3, "qmd", { id: 7 }]]) assert.equal(notes({ qmd_index: "", extensions }).length, 1, JSON.stringify(extensions));
 	});
 
+	test("a disabled qmd entry counts whatever its events: the vault chose that (#95)", () => {
+		assert.deepEqual(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["session-start"], enabled: false }] }), []);
+	});
+
+	test("an entry that exists but runs partly is told so, not called off", () => {
+		const [note] = notes({ qmd_index: "", extensions: [{ ...qmd, events: ["session-start"] }] });
+		assert.doesNotMatch(note ?? "", /QMD off/);
+		assert.match(notes({ qmd_index: "" })[0] ?? "", /^QMD off/);
+	});
+
 	test("a qmd entry from before #95, session start only, is told to list the refresh's events", () => {
 		const [note] = notes({ qmd_index: "", extensions: [{ ...qmd, events: ["session-start"] }] });
 		assert.match(note ?? "", /fix qmd entry to/);

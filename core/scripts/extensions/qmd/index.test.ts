@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import type { EffectTrigger, HookContext } from "../../core/index.ts";
 import { QMD_DECLARATION } from "../../core/context.ts";
 import { collectSections, fromLoaded, loadRegistry, runEffects } from "../../core/registry.ts";
-import { SELF_HEAL_HEADER, VERSION_HEADER, extension, qmdExtension } from "./index.ts";
+import { SELF_HEAL_HEADER, VERSION_HEADER, extension, qmdExtension, sentinelPathFor } from "./index.ts";
 import { QMD_SWITCH, REFRESH_SWITCH } from "./lib/switches.ts";
 import { realDeps, type QmdDeps } from "./session.ts";
 import { VAULT, fakeDeps, rmTemp, waitFor, type Calls } from "./test-fakes.ts";
@@ -136,6 +136,44 @@ describe("the qmd extension's effects (#95)", () => {
 		}
 	});
 
+	test("session start's refresh starts only after the self-heal's rebuild, whatever the entry point runs first (#95)", async () => {
+		const order: string[] = [];
+		const fake = fakeDeps({ status: MISMATCH, rebuild: 0 });
+		const deps: QmdDeps = {
+			...fake.deps,
+			spawnSync: (cmd, args, o) => (order.push([cmd, ...args].join(" ").includes("npm rebuild") ? "rebuild" : "probe"), fake.deps.spawnSync(cmd, args, o)),
+			spawnDetached: (cmd, args, o) => (order.push("refresh"), fake.deps.spawnDetached(cmd, args, o)),
+		};
+		const registry = fromLoaded([{ declaration, extension: qmdExtension(deps) }]);
+		await runEffects(registry, { event: "session-start" }, ctx());
+		assert.ok(order.lastIndexOf("rebuild") >= 0 && order.lastIndexOf("rebuild") < order.lastIndexOf("refresh"), `the rebuild finishes before the update starts: ${order.join(", ")}`);
+		const one = ctx();
+		await runEffects(registry, { event: "session-start" }, one);
+		const before = order.length;
+		await collectSections(registry, one, "full");
+		assert.equal(order.length, before, "the sections then read the run the effect made");
+	});
+
+	test("a missing worker is a reported failure, and nothing is stamped (#95)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "qmd-noworker-"));
+		try {
+			const sentinel = join(dir, ".qmd-refresh-sentinel");
+			const { deps } = fakeDeps({ env: { QMD_REFRESH_SENTINEL: sentinel } });
+			const registry = fromLoaded([{ declaration, extension: qmdExtension(deps, { workerPath: join(dir, "gone.ts") }) }]);
+			const { failures } = await runEffects(registry, { event: "stop" }, { vaultRoot: dir, manifest: MANIFEST, now: 0 });
+			assert.equal(failures.length, 1);
+			assert.match(failures[0]?.message ?? "", /refresh worker is missing/);
+			assert.equal(existsSync(sentinel), false);
+		} finally {
+			rmTemp(dir);
+		}
+	});
+
+	test("an empty QMD_REFRESH_SENTINEL is a path, as obsidian-mind's triggers read it: the override is unset only when absent (#95)", () => {
+		assert.equal(sentinelPathFor("/v", { QMD_REFRESH_SENTINEL: "" }), "");
+		assert.equal(sentinelPathFor("/v", {}), join("/v", ".claude", "scripts", ".qmd-refresh-sentinel"));
+	});
+
 	test(`session start with ${REFRESH_SWITCH}=off: nothing detached`, async () => {
 		const s = setup({ env: { [REFRESH_SWITCH]: "off" } });
 		try {
@@ -235,12 +273,15 @@ describe("no detached worker outlives the extension's effects under VAULT_QMD_RE
 	function fixture(env: Record<string, string>) {
 		const dir = mkdtempSync(join(tmpdir(), "qmd-guard-"));
 		const marker = (name: string) => join(dir, `${name}-ran`);
-		const writer = (name: string) => {
+		// Each marks only the refresh it stands for: the worker on any run, the qmd stand-in on an
+		// `update` (session start's synchronous probes run it too, and leave nothing behind).
+		const writer = (name: string, only = "") => {
 			const path = join(dir, `${name}.mjs`);
-			writeFileSync(path, `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker(name))}, "");\n`);
+			const when = only === "" ? "true" : `process.argv.includes(${JSON.stringify(only)})`;
+			writeFileSync(path, `import { writeFileSync } from "node:fs";\nif (${when}) writeFileSync(${JSON.stringify(marker(name))}, "");\n`);
 			return path;
 		};
-		const qmdEntry = writer("qmd");
+		const qmdEntry = writer("qmd", "update");
 		const workerPath = writer("worker");
 		const deps: QmdDeps = {
 			...realDeps,

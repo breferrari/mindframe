@@ -19,7 +19,7 @@
  * 5. Each call runs in its own try with its own time limit, and fails open:
  *    a throw or a timeout is recorded, the item is skipped, and the hook
  *    carries on and reports it. `VAULT_EXTENSIONS=off` turns every extension
- *    off, for debugging. Effects (write, pre-compact, Stop) are calls like
+ *    off, for debugging. Effects (session start, write, pre-compact, Stop) are calls like
  *    any other, made for their side effect: they return nothing.
  * 6. The core owns the output budget. Extensions return sections; the entry
  *    point assembles them and applyInjectionBudget gives up the highest
