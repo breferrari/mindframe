@@ -551,7 +551,50 @@ export type UpdatePlan = {
 	readonly conflicts: readonly string[];
 	/** Files the update brought in because an updated file imports them. */
 	readonly added: ReadonlyArray<{ readonly file: string; readonly importedBy: string }>;
+	/**
+	 * Files an updated file newly imports that another record keeps, present in
+	 * the vault: left as they are and not recorded here (#117). `missing` is the
+	 * names the importer imports that the kept copy doesn't export by name.
+	 */
+	readonly kept: ReadonlyArray<Kept>;
 };
+
+export type Kept = { readonly file: string; readonly importedBy: string; readonly owner: string; readonly missing: readonly string[] };
+
+/**
+ * The names `source` imports by name from `spec`: `import { a, b as c, type T }`
+ * and `export { a } from`, each by the name the target exports. A text scan:
+ * a namespace or default import names nothing here.
+ */
+export function namedImportsOf(source: string, spec: string): string[] {
+	const names: string[] = [];
+	for (const m of source.matchAll(/\b(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\s*(["'])([^"'\n]+)\2/g)) {
+		if (m[3] !== spec) continue;
+		for (const part of m[1]!.split(",")) {
+			const name = part.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]!.trim();
+			if (name !== "" && !names.includes(name)) names.push(name);
+		}
+	}
+	return names;
+}
+
+/**
+ * The names a module exports by name, as a text scan reads them: declarations
+ * (`export const`, `function`, `class`, `type`, `interface`, `enum`…) and
+ * `export { a, b as c }`. It can't see `export *`, so a name missing here is a
+ * warning, never a refusal (#117).
+ */
+export function exportedNamesOf(source: string): Set<string> {
+	const names = new Set<string>();
+	for (const m of source.matchAll(/\bexport\s+(?:declare\s+)?(?:default\s+)?(?:async\s+)?(?:abstract\s+)?(?:const|let|var|function\*?|class|type|interface|enum|namespace)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
+	for (const m of source.matchAll(/\bexport\s+(?:type\s+)?\{([^}]*)\}/g)) {
+		for (const part of m[1]!.split(",")) {
+			const name = part.trim().replace(/^type\s+/, "").split(/\s+as\s+/).pop()!.trim();
+			if (name !== "") names.add(name);
+		}
+	}
+	return names;
+}
 
 /**
  * The relative import specifiers in a module's source: `import … from`,
@@ -649,16 +692,20 @@ const readOrNull = (file: string): Uint8Array | null => {
  * upstream has it and its old upstream didn't, so an import an older commit
  * made, or one a vault patch adds or removes, is the vault's business, as
  * before. A target lands where the import resolves at runtime, beside its
- * importer. A target another record owns, one upstream lacks, or one already in
- * the vault that differs from upstream or isn't a file is a problem, named once,
- * and the update writes nothing. An import outside the record's root is the
- * vault's.
+ * importer. A target another record owns is that record's: present as a file,
+ * it is kept as it is, in `kept`, and its own imports are left to its record;
+ * missing, or not a file, it is a problem (#117). An update never writes or
+ * records a file another record owns. A target upstream lacks, or one already
+ * in the vault that differs from upstream or isn't a file, is a problem too.
+ * Each problem is named once, and the update writes nothing. An import outside
+ * the record's root is the vault's.
  */
 function closeImports(
 	input: UpdateInput,
 	files: Array<{ file: string; bytes: Uint8Array }>,
 	entries: Record<string, FileEntry>,
 	problems: string[],
+	kept: Kept[],
 ): Array<{ file: string; importedBy: string }> {
 	const { record } = input;
 	const short = input.commit.slice(0, 7);
@@ -683,16 +730,23 @@ function closeImports(
 			const file = path.posix.normalize(path.posix.join(path.posix.dirname(next.file), spec));
 			if (record.files[file] !== undefined || entries[file] !== undefined || seen.has(file)) continue;
 			seen.add(file);
-			const owner = input.ownerOf?.(file);
-			if (owner) {
-				problems.push(`${file} is owned by ${owner}, and ${next.file} now imports it; take it off that record, or update that record instead`);
-				continue;
-			}
 			let target: string;
 			try {
 				target = resolveInside(input.vault, file);
 			} catch (e) {
 				problems.push(`${file}, which ${next.file} now imports: ${(e as Error).message}`);
+				continue;
+			}
+			const owner = input.ownerOf?.(file);
+			if (owner) {
+				if (!existsSync(target)) {
+					problems.push(`${file} is owned by ${owner} and missing from the vault, and ${next.file} now imports it; restore it through that record, then update`);
+				} else if (!lstatSync(target).isFile()) {
+					problems.push(`${file} is owned by ${owner} and isn't a file, and ${next.file} now imports it; restore it through that record, then update`);
+				} else {
+					const exported = exportedNamesOf(readFileSync(target, "utf8"));
+					kept.push({ file, importedBy: next.file, owner, missing: namedImportsOf(next.fresh, spec).filter((name) => !exported.has(name)) });
+				}
 				continue;
 			}
 			const bytes = readOrNull(resolveInside(input.upstreamRoot, withSourceRoot(record, upstream)));
@@ -874,12 +928,13 @@ export function planUpdate(input: UpdateInput): UpdatePlan {
 		if (!("stuck" in done)) settle(done, text(done.at));
 	}
 	// Run even when other problems were found, so every refusal is named at once.
-	const added = conflicts.length === 0 ? closeImports(input, files, entries, problems) : [];
+	const kept: Kept[] = [];
+	const added = conflicts.length === 0 ? closeImports(input, files, entries, problems, kept) : [];
 
 	if (problems.length) throw new VendorError(problems.join("\n"));
 
 	if (conflicts.length) {
-		return { record: null, files: files.filter((f) => conflicts.includes(f.file)), patchFiles: [], retired: [], conflicts, added: [] };
+		return { record: null, files: files.filter((f) => conflicts.includes(f.file)), patchFiles: [], retired: [], conflicts, added: [], kept: [] };
 	}
 
 	const patchFiles: Array<{ name: string; text: string }> = [];
@@ -895,7 +950,7 @@ export function planUpdate(input: UpdateInput): UpdatePlan {
 		}
 	}
 	const next = { ...record, commit: input.commit, files: entries } as VendorRecord;
-	return { record: next, files, patchFiles, retired, conflicts, added };
+	return { record: next, files, patchFiles, retired, conflicts, added, kept };
 }
 
 // ---- check --------------------------------------------------------------------

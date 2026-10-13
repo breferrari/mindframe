@@ -225,6 +225,10 @@ export function main(
 			for (const p of plan.patchFiles) writeFileSync(path.join(patchDir, p.name), p.text);
 			writeFileSync(recordFile, formatRecord(plan.record));
 			for (const a of plan.added) log(`vendor: added ${a.file} (imported by ${a.importedBy})`);
+			for (const k of plan.kept) {
+				log(`vendor: ${k.importedBy} imports ${k.file}, kept by ${k.owner}`);
+				if (k.missing.length > 0) log(`vendor: warning: ${k.owner}'s ${k.file} doesn't export ${k.missing.join(", ")}, which ${k.importedBy} imports; update that record if the import fails`);
+			}
 			for (const name of plan.retired) log(`vendor: ${name}: upstream has it now; retired (Applied-Upstream: ${commit.slice(0, 7)})`);
 			log(`vendor: updated ${Object.keys(plan.record.files).length} files to ${record.repository} at ${commit.slice(0, 7)}`);
 			return 0;
