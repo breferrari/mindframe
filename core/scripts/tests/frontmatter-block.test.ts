@@ -104,6 +104,12 @@ describe("frontmatter.ts's other readers (#82)", () => {
 		}
 	});
 
+	test("a vault-relative path is read from the vault root, not the working directory (#91)", () => {
+		const root = resolve("elsewhere", "Vault");
+		assert.equal(shouldSkipFile("claude.md", { vaultRoot: root, platform: "win32" }), true);
+		assert.equal(shouldSkipFile(join("people", "claude.md"), { vaultRoot: root, platform: "win32" }), false);
+	});
+
 	test("a fence-looking line inside a yaml value doesn't hide the body's links", () => {
 		const note = `---\ndescription: |\n  ${tick.repeat(3)}\n---\n${"Words. ".repeat(60)}\nSee [[Real Link]] and [[PROJ-12]].\n`;
 		assert.ok(!validateContent(note).some((w) => /No \[\[wikilinks\]\]/.test(w)), "the body's link is found");

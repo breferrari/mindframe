@@ -58,7 +58,8 @@ export function isBlockedMemoryPath(filePath: string): boolean {
  * instruction file at the root is also matched the way the agent loads it
  * (#91): `claude.md` is skipped where the filesystem ignores case, and is a
  * note on Linux. Without the root, matching stays exact, so a nested note
- * named like one (`people/Claude.md`) is never skipped for its name.
+ * named like one (`people/Claude.md`) is never skipped for its name. A
+ * relative path is read from the vault root.
  */
 export function shouldSkipFile(
 	filePath: string,
@@ -70,7 +71,7 @@ export function shouldSkipFile(
 	const base = basename(normalized);
 
 	if (ROOT_FILES.has(base)) return true;
-	if (opts.vaultRoot !== undefined && isInstructionFile(base, opts.platform) && sameOnDisk(dirname(resolve(filePath)), resolve(opts.vaultRoot), opts.platform)) return true;
+	if (opts.vaultRoot !== undefined && isInstructionFile(base, opts.platform) && sameOnDisk(dirname(resolve(opts.vaultRoot, filePath)), resolve(opts.vaultRoot), opts.platform)) return true;
 
 	if (base.startsWith("README.") && base.endsWith(".md")) return true;
 

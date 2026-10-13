@@ -106,6 +106,13 @@ describe("instruction files, through index.ts", () => {
 		assert.equal(core.isInstructionFile("AGENTS.md", "linux"), true);
 		assert.equal(core.isInstructionFile("README.md", "win32"), false);
 	});
+
+	test("sameOnDisk: names and paths compared without case where the filesystem ignores it (#91)", () => {
+		assert.equal(core.sameOnDisk("C:\\Vault", "c:\\vault", "win32"), true);
+		assert.equal(core.sameOnDisk("/Vault", "/vault", "darwin"), true);
+		assert.equal(core.sameOnDisk("/Vault", "/vault", "linux"), false);
+		assert.equal(core.sameOnDisk("/Vault", "/Vault", "linux"), true);
+	});
 });
 
 test("debug, the HOOK_DEBUG trace, is exported to extensions: one home, so traces can't drift (#95)", () => {

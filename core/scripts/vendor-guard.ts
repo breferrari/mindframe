@@ -22,6 +22,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { debug, readStdinJson } from "./lib/hook-io.ts";
+import { filesystemIgnoresCase } from "./lib/instruction-files.ts";
 import { resolveProjectDir } from "./lib/project-dir.ts";
 
 export const GUARDED_TOOLS: ReadonlySet<string> = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
@@ -40,8 +41,9 @@ export const EXTENSIONS_HOW = "https://github.com/breferrari/mindframe/blob/main
 export type Vendored = { readonly rel: string };
 
 const posix = (p: string): string => p.replaceAll("\\", "/");
-// Windows paths compare without case: `C:/Vault/x` and `c:/vault/x` are one file.
-const fold = (p: string, platform: string): string => (platform === "win32" ? p.toLowerCase() : p);
+// Paths compare without case where the filesystem ignores it, as lib/instruction-files.ts's
+// one rule says: `C:/Vault/x` and `c:/vault/x` are one file on Windows and macOS (#91).
+const fold = (p: string, platform: string): string => (filesystemIgnoresCase(platform as NodeJS.Platform) ? p.toLowerCase() : p);
 
 /** Every `VENDOR.json` under `.claude/`, nearest first, skipping dot folders and node_modules. */
 export function findRecords(vaultRoot: string): string[] {
