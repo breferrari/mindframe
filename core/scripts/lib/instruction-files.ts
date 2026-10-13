@@ -92,25 +92,24 @@ export function isInstructionFile(name: string, platform: NodeJS.Platform = proc
 /**
  * The context files the vault's `.gemini/settings.json` names
  * (`context.fileName`, or the older top-level `contextFileName` Gemini still
- * migrates; a string or a list), or [] when there is none. Gemini accepts
- * comments and a BOM in that file, so both are dropped before a strict
- * `JSON.parse`. A file that still doesn't parse names nothing, because Gemini
- * applies none of it either. Lifted from obsidian-mind's hygiene scan (#104),
- * which falls back to a narrow read of the raw text; dropping comments
- * instead, and the v1 key, are mindframe's.
+ * migrates; a string or a list), or [] when there is none. The file is parsed
+ * as gemini-cli 51617c1 parses it: comments are dropped by strip-json-comments'
+ * scan (`stripJsonComments`), then a strict `JSON.parse`. A file that doesn't
+ * parse names nothing, because Gemini applies none of it either. A BOM is
+ * kept, so a BOM'd file doesn't parse, as Gemini refuses it (#119). What Gemini
+ * does after parsing is left out: `$VAR` expansion in values, skipping an
+ * untrusted folder's settings, and merging the user, system and
+ * system-default settings. Lifted from obsidian-mind's
+ * hygiene scan (#104), which falls back to a narrow read of the raw text at
+ * the recorded commit; dropping comments instead, the v1 key, and keeping the
+ * BOM are mindframe's changes to it (obsidian-mind #377 keeps the BOM too).
  */
 export function geminiContextFiles(vaultRoot: string): string[] {
 	const path = join(vaultRoot, GEMINI_SETTINGS);
 	try {
 		// Only a regular file: a FIFO at that path would block the hook on read.
 		if (statSync(path, { throwIfNoEntry: false })?.isFile() !== true) return [];
-		// Strings are matched first and kept, so a `//` inside one (a URL) is no
-		// comment; an unterminated block comment runs to the end, in one pass. A
-		// comment becomes a space, as Gemini's reader makes it, so `tr/**/ue`
-		// stays two tokens and fails to parse there and here alike.
-		const text = readFileSync(path, "utf8")
-			.replace(/^\uFEFF/, "")
-			.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g, (_, string: string | undefined) => string ?? " ");
+		const text = stripJsonComments(readFileSync(path, "utf8"));
 		const settings = JSON.parse(text) as { context?: { fileName?: unknown }; contextFileName?: unknown } | null;
 		const names = settings?.context?.fileName ?? settings?.contextFileName;
 		// Gemini trims each name, so " AGENTS.md" names AGENTS.md there too.
@@ -118,6 +117,39 @@ export function geminiContextFiles(vaultRoot: string): string[] {
 	} catch {
 		return [];
 	}
+}
+
+/**
+ * A settings file's text with its comments gone, by strip-json-comments 3.1.1's
+ * scan, as gemini-cli reads settings through it: a double quote with an even
+ * run of backslashes before it opens or closes a string, so `\"` stays inside
+ * one and `\\"` closes it; outside a string, a line comment runs to the line's
+ * end and a block comment to its close, or to the end of the file; each comment
+ * becomes a space, so `true` split by an empty block comment stays two tokens.
+ * A string that never closes runs to the end. One pass, so a damaged file costs
+ * no more than a sound one.
+ */
+function stripJsonComments(text: string): string {
+	let out = "";
+	let from = 0;
+	let inString = false;
+	for (let i = 0; i < text.length; i++) {
+		if (text[i] === '"') {
+			let slashes = 0;
+			for (let j = i - 1; j >= from && text[j] === "\\"; j--) slashes++;
+			if (slashes % 2 === 0) inString = !inString;
+			continue;
+		}
+		if (inString) continue;
+		const two = text.slice(i, i + 2);
+		if (two !== "//" && two !== "/*") continue;
+		const close = two === "//" ? text.indexOf("\n", i) : text.indexOf("*/", i + 2);
+		const end = close === -1 ? text.length : two === "//" ? close : close + 2;
+		out += `${text.slice(from, i)} `;
+		from = end;
+		i = end - 1;
+	}
+	return out + text.slice(from);
 }
 
 /**
