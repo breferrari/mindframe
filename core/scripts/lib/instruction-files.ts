@@ -8,6 +8,9 @@
  * retired later is retired in one place.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 export const INSTRUCTION_FILE = "AGENTS.md";
 export const CLAUDE_MD = "CLAUDE.md";
 export const GEMINI_MD = "GEMINI.md";
@@ -80,4 +83,50 @@ export function isRetiredInstructionFile(name: string, platform: NodeJS.Platform
 /** Whether a root file name is `AGENTS.md` or a retired instruction file, by the same rule (#91). */
 export function isInstructionFile(name: string, platform: NodeJS.Platform = process.platform): boolean {
 	return opensAs(name, INSTRUCTION_FILES, platform);
+}
+
+/**
+ * The context files the vault's `.gemini/settings.json` names
+ * (`context.fileName`, a string or a list), or [] when there is none. Gemini
+ * accepts comments and a BOM in that file, so a strict `JSON.parse` is tried
+ * first and a narrow read of the fileName value second. Lifted from
+ * obsidian-mind's hygiene scan (#104).
+ */
+export function geminiContextFiles(vaultRoot: string): string[] {
+	let text: string;
+	try {
+		text = readFileSync(join(vaultRoot, GEMINI_SETTINGS), "utf8").replace(/^\uFEFF/, "");
+	} catch {
+		return [];
+	}
+	try {
+		const names = (JSON.parse(text) as { context?: { fileName?: unknown } } | null)?.context?.fileName;
+		return (Array.isArray(names) ? names : [names]).filter((n): n is string => typeof n === "string");
+	} catch {
+		const value = /"fileName"\s*:\s*(\[[^\]]*\]|"[^"]*")/.exec(text)?.[1] ?? "";
+		return [...value.matchAll(/"([^"]*)"/g)].map((m) => m[1]!);
+	}
+}
+
+/**
+ * Whether the vault's Gemini settings point Gemini at `AGENTS.md` and not at
+ * `GEMINI.md`, the names matched as Gemini opens them (#91): only then is a
+ * `GEMINI.md` retired. Without settings, or with a user's own that name no
+ * context file, `GEMINI.md` is still Gemini's manual (#104).
+ */
+export function geminiReadsAgentsMd(vaultRoot: string, platform: NodeJS.Platform = process.platform): boolean {
+	const names = geminiContextFiles(vaultRoot);
+	return opensAs(INSTRUCTION_FILE, names, platform) && !opensAs(GEMINI_MD, names, platform);
+}
+
+/**
+ * Whether a root file name is retired in this vault: `CLAUDE.md` always, and
+ * `GEMINI.md` only where Gemini reads `AGENTS.md` (#104), each matched by
+ * #91's rule. The settings are read once, when this is called; the returned
+ * check reads nothing. `isRetiredInstructionFile` stays vault-free: the
+ * frozen list of the names that can be retired.
+ */
+export function retiredInVault(vaultRoot: string, platform: NodeJS.Platform = process.platform): (name: string) => boolean {
+	const retired = geminiReadsAgentsMd(vaultRoot, platform) ? RETIRED_INSTRUCTION_FILES : RETIRED_INSTRUCTION_FILES.filter((f) => f !== GEMINI_MD);
+	return (name) => opensAs(name, retired, platform);
 }

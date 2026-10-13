@@ -115,6 +115,82 @@ describe("instruction files, through index.ts", () => {
 	});
 });
 
+describe("a vault's retired instruction files: GEMINI.md only where Gemini reads AGENTS.md (#104)", () => {
+	let root = "";
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "core-gemini-"));
+	});
+	afterEach(() => rmSync(root, { recursive: true, force: true }));
+	const settings = (text: string) => {
+		mkdirSync(join(root, ".gemini"), { recursive: true });
+		writeFileSync(join(root, core.GEMINI_SETTINGS), text);
+	};
+	const fileName = (value: unknown) => settings(JSON.stringify({ context: { fileName: value } }));
+
+	test("no settings: CLAUDE.md is retired, GEMINI.md is Gemini's manual", () => {
+		const retired = core.retiredInVault(root, "linux");
+		assert.equal(retired(core.CLAUDE_MD), true);
+		assert.equal(retired(core.GEMINI_MD), false);
+		assert.equal(retired(core.INSTRUCTION_FILE), false);
+		assert.deepEqual(core.geminiContextFiles(root), []);
+	});
+
+	test("malformed settings, or a directory where the file should be: no context files, GEMINI.md kept", () => {
+		settings("{ not json at all");
+		assert.deepEqual(core.geminiContextFiles(root), []);
+		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), false);
+		rmSync(join(root, ".gemini"), { recursive: true });
+		mkdirSync(join(root, core.GEMINI_SETTINGS), { recursive: true });
+		assert.deepEqual(core.geminiContextFiles(root), []);
+		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), false);
+	});
+
+	test("fileName as a string or a list: GEMINI.md is retired only when AGENTS.md is named and GEMINI.md isn't", () => {
+		const cases: [unknown, boolean][] = [
+			["AGENTS.md", true],
+			[["AGENTS.md"], true],
+			[["AGENTS.md", "GEMINI.md"], false],
+			["GEMINI.md", false],
+			[["NOTES.md"], false],
+			[42, false],
+			[["AGENTS.md", 7], true],
+		];
+		for (const [value, retired] of cases) {
+			fileName(value);
+			assert.equal(core.geminiReadsAgentsMd(root, "linux"), retired, JSON.stringify(value));
+			assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), retired, JSON.stringify(value));
+			assert.equal(core.retiredInVault(root, "linux")(core.CLAUDE_MD), true, "CLAUDE.md is retired whatever Gemini reads");
+		}
+		fileName(["AGENTS.md", 7]);
+		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "non-strings are dropped");
+	});
+
+	test("comments, a BOM and CRLF, as Gemini accepts them: the narrow read finds fileName", () => {
+		settings('﻿{\r\n  // Gemini reads AGENTS.md\r\n  "context": { "fileName": ["AGENTS.md"] }\r\n}\r\n');
+		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"]);
+		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), true);
+	});
+
+	test("names match by #91's rule: agents.md names AGENTS.md where the filesystem ignores case", () => {
+		fileName("agents.md");
+		assert.equal(core.geminiReadsAgentsMd(root, "win32"), true);
+		assert.equal(core.geminiReadsAgentsMd(root, "darwin"), true);
+		assert.equal(core.geminiReadsAgentsMd(root, "linux"), false);
+		fileName(["AGENTS.md", "gemini.md"]);
+		assert.equal(core.geminiReadsAgentsMd(root, "win32"), false, "gemini.md still names GEMINI.md there");
+		fileName("AGENTS.md");
+		assert.equal(core.retiredInVault(root, "win32")("gemini.md"), true);
+		assert.equal(core.retiredInVault(root, "linux")("gemini.md"), false);
+	});
+
+	test("retiredInVault reads the settings once: its answer holds after the file changes", () => {
+		fileName("AGENTS.md");
+		const retired = core.retiredInVault(root, "linux");
+		rmSync(join(root, ".gemini"), { recursive: true });
+		assert.equal(retired(core.GEMINI_MD), true);
+	});
+});
+
 test("debug, the HOOK_DEBUG trace, is exported to extensions: one home, so traces can't drift (#95)", () => {
 	assert.equal(debug, hookDebug);
 });
