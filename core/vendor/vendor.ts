@@ -555,9 +555,10 @@ export type UpdatePlan = {
 	 * Files an updated file newly imports that another record keeps, present in
 	 * the vault: left as they are and not recorded here (#117), one entry per
 	 * importer. `unexported` is the names the importer imports from the file,
-	 * by any specifier, that the kept copy doesn't export by name.
+	 * by any specifier, that the kept copy doesn't export by name: null when the
+	 * kept copy can't be read, so its names went unchecked.
 	 */
-	readonly kept: ReadonlyArray<{ readonly file: string; readonly importedBy: string; readonly owner: string; readonly unexported: readonly string[] }>;
+	readonly kept: ReadonlyArray<{ readonly file: string; readonly importedBy: string; readonly owner: string; readonly unexported: readonly string[] | null }>;
 };
 
 type Kept = UpdatePlan["kept"][number];
@@ -583,15 +584,18 @@ function namesIn(list: string, side: "imported" | "exported"): string[] {
 		.filter((name) => name !== "");
 }
 
+/** An identifier, as JavaScript reads one: `café` is one name, not `caf`. */
+const ID = String.raw`[\p{ID_Start}_$][\p{ID_Continue}$\u200C\u200D]*`;
+
 /**
- * The names `source` imports by name from the specifiers `from` accepts:
+ * The names lexed `code` imports by name from the specifiers `from` accepts:
  * `import { a, b as c, type T }`, `import D, { a }` and `export { a } from`,
  * each by the name the target exports. A namespace or default import names
  * nothing here.
  */
-function namedImportsOf(source: string, from: (spec: string) => boolean): string[] {
+function namedImportsIn(code: string, from: (spec: string) => boolean): string[] {
 	const names = new Set<string>();
-	for (const m of codeOf(source).matchAll(/\b(?:import|export)\s+(?:type\s+)?(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*(["'])([^"'\n]+)\2/g)) {
+	for (const m of code.matchAll(new RegExp(String.raw`\b(?:import|export)\s+(?:type\s+)?(?:${ID}\s*,\s*)?\{([^}]*)\}\s*from\s*(["'])([^"'\n]+)\2`, "gu"))) {
 		if (from(m[3]!)) for (const name of namesIn(m[1]!, "imported")) names.add(name);
 	}
 	return [...names];
@@ -599,26 +603,37 @@ function namedImportsOf(source: string, from: (spec: string) => boolean): string
 
 /**
  * The names a module exports by name, as a text scan reads its code:
- * declarations (`export const`, `function`, `class`, `type`, `interface`,
- * `enum`…) and `export { a, b as c }`. It can't see `export *`, so a name
- * missing here is a warning, never a refusal (#117).
+ * - declarations: `export const enum`, `function` (and `function*`), `class`,
+ *   `type`, `interface`, `enum`, `namespace`, `module`, `export import X =`;
+ * - variable statements, each binding: `export const a = 1, b`, `let x!: T`,
+ *   and destructuring, `export const { a, b: c } = …`;
+ * - `export { a, b as c }`, `export * as ns` and `export type * as ns`;
+ * - `default`, for any `export default`.
+ * It can't see `export *`, so a name missing here is a warning, never a refusal
+ * (#117). Where it can't tell, it reads too many names rather than too few:
+ * too many only misses a warning, too few would raise a false one.
  */
 function exportedNamesOf(source: string): Set<string> {
 	const code = codeOf(source);
 	const names = new Set<string>();
 	if (/\bexport\s+default\b/.test(code)) names.add("default");
-	for (const m of code.matchAll(/\bexport\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(?:const\s+enum|function\s*\*?|class|type|interface|enum|namespace|module)\s*([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
-	// A variable statement can bind several names, destructured too: every
-	// identifier before an `=` or inside the binding pattern counts. Reading too
-	// many names only misses a warning; reading too few would raise a false one.
+	const declared = new RegExp(String.raw`\bexport\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(?:const\s+enum|function\s*\*?|class|type|interface|enum|namespace|module|import)\s*(${ID})`, "gu");
+	for (const m of code.matchAll(declared)) names.add(m[1]!);
+	// A variable statement runs to its semicolon, or to the next line that starts another export.
 	for (const m of code.matchAll(/\bexport\s+(?:declare\s+)?(?:const|let|var)\s+(?!enum\b)([^;]*?)(?=;|\n\s*export\b|$)/g)) {
-		for (const id of m[1]!.matchAll(/(?:^|[,{[]|\.\.\.)\s*([A-Za-z_$][\w$]*)\s*(?=[,=}\]:]|$)|:\s*([A-Za-z_$][\w$]*)\s*(?=[,=}\]])/g)) names.add((id[2] ?? id[1])!);
+		const binding = new RegExp(String.raw`(?:^|[,{[]|\.\.\.)\s*(${ID})(?=\s*(?:[,=}\]:!;]|\n|$))|:\s*(${ID})(?=\s*[,=}\]])`, "gu");
+		for (const id of m[1]!.matchAll(binding)) names.add((id[2] ?? id[1])!);
 	}
-	for (const m of code.matchAll(/\bexport\s+\*\s+as\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
-	for (const m of code.matchAll(/\bexport\s+import\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
+	for (const m of code.matchAll(new RegExp(String.raw`\bexport\s+(?:type\s+)?\*\s+as\s+(${ID})`, "gu"))) names.add(m[1]!);
 	for (const m of code.matchAll(/\bexport\s+(?:type\s+)?\{([^}]*)\}/g)) for (const name of namesIn(m[1]!, "exported")) names.add(name);
 	return names;
 }
+
+/** Whether a specifier names a file beside its importer, as the update follows it. */
+const isRelative = (spec: string): boolean => spec.startsWith("./") || spec.startsWith("../");
+
+/** The vault path a relative specifier in `importer` names. */
+const resolveFrom = (importer: string, spec: string): string => path.posix.normalize(path.posix.join(path.posix.dirname(importer), spec));
 
 /**
  * The relative import specifiers in a module's source: `import … from`,
@@ -633,7 +648,7 @@ export function importsOf(source: string): string[] {
 	const found = new Set<string>();
 	lex(source, (text, before, plain) => {
 		const placed = /(?:\bfrom|\bimport)$/.test(before) || /\b(?:import|require)\s*\($/.test(before);
-		if (placed && plain && (text.startsWith("./") || text.startsWith("../"))) found.add(text);
+		if (placed && plain && isRelative(text)) found.add(text);
 		return false;
 	});
 	return [...found];
@@ -648,45 +663,60 @@ export function importsOf(source: string): string[] {
  * Linear however long the file.
  */
 function lex(source: string, keep: (text: string, before: string, plain: boolean) => boolean): string {
-	// The code, in pieces joined once at the end, and its last stretch: enough to
-	// see what precedes a string or a slash, so each step costs the same.
+	// The code, in pieces joined once at the end: runs of plain code whole, so a
+	// large file is a few pieces per token, not one per character.
 	const pieces: string[] = [];
-	let tail = "";
-	const add = (piece: string) => {
-		pieces.push(piece);
-		tail = (tail + piece).slice(-64);
+	let run = 0;
+	const flush = (i: number) => {
+		if (i > run) pieces.push(source.slice(run, i));
 	};
-	for (let i = 0; i < source.length; ) {
+	// The last stretch of code: enough to see what precedes a string or a slash.
+	const tail = (): string => {
+		let t = "";
+		for (let k = pieces.length - 1; k >= 0 && t.length < 64; k--) t = pieces[k] + t;
+		return t.slice(-64);
+	};
+	let i = 0;
+	while (i < source.length) {
 		const ch = source[i]!;
 		const two = source.slice(i, i + 2);
 		if (two === "//") {
+			flush(i);
 			const end = source.indexOf("\n", i);
-			i = end === -1 ? source.length : end;
+			i = run = end === -1 ? source.length : end;
 			continue;
 		}
 		if (two === "/*") {
+			flush(i);
 			const end = source.indexOf("*/", i + 2);
-			i = end === -1 ? source.length : end + 2;
-			add(" ");
+			i = run = end === -1 ? source.length : end + 2;
+			pieces.push(" ");
 			continue;
 		}
 		// A slash where a value starts opens a regex literal: skip to its closing
 		// slash, past escapes and character classes.
-		if (ch === "/" && /(?:^|[(,=:[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bin|\bof)\s*$/.test(tail)) {
-			let j = i + 1;
-			let inClass = false;
-			while (j < source.length && source[j] !== "\n") {
-				if (source[j] === "\\") j += 2;
-				else if (source[j] === "[") (inClass = true), j++;
-				else if (source[j] === "]") (inClass = false), j++;
-				else if (source[j] === "/" && !inClass) break;
-				else j++;
+		if (ch === "/") {
+			flush(i);
+			run = i;
+			if (/(?:^|[(,=:[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bin|\bof)\s*$/.test(tail())) {
+				let j = i + 1;
+				let inClass = false;
+				while (j < source.length && source[j] !== "\n") {
+					if (source[j] === "\\") j += 2;
+					else if (source[j] === "[") (inClass = true), j++;
+					else if (source[j] === "]") (inClass = false), j++;
+					else if (source[j] === "/" && !inClass) break;
+					else j++;
+				}
+				i = run = j + 1;
+				pieces.push(" _ ");
+				continue;
 			}
-			i = j + 1;
-			add(" _ ");
+			i++;
 			continue;
 		}
 		if (ch === '"' || ch === "'" || ch === "`") {
+			flush(i);
 			let j = i + 1;
 			let text = "";
 			let plain = true; // a template with no ${…}
@@ -701,13 +731,13 @@ function lex(source: string, keep: (text: string, before: string, plain: boolean
 				text += source[j];
 				j++;
 			}
-			add(keep(text, tail.trimEnd(), plain) ? JSON.stringify(text) : '""');
-			i = j + 1;
+			pieces.push(keep(text, tail().trimEnd(), plain) ? JSON.stringify(text) : '""');
+			i = run = j + 1;
 			continue;
 		}
-		add(ch);
 		i++;
 	}
+	flush(Math.min(i, source.length));
 	return pieces.join("");
 }
 
@@ -753,6 +783,7 @@ function closeImports(
 	const added: Array<{ file: string; importedBy: string }> = [];
 	const kept: Kept[] = [];
 	const exportsOf = new Map<string, Set<string> | null>();
+	const codes = new Map<string, string>();
 	const queue: Array<{ file: string; upstream: string; fresh: string; was: string }> = [];
 	for (const f of files) {
 		if (!MODULE_FILE.test(f.file)) continue;
@@ -766,9 +797,9 @@ function closeImports(
 		const had = new Set(importsOf(next.was));
 		for (const spec of importsOf(next.fresh)) {
 			if (had.has(spec)) continue;
-			const upstream = path.posix.normalize(path.posix.join(path.posix.dirname(next.upstream), spec));
+			const upstream = resolveFrom(next.upstream, spec);
 			if (upstream === ".." || upstream.startsWith("../")) continue;
-			const file = path.posix.normalize(path.posix.join(path.posix.dirname(next.file), spec));
+			const file = resolveFrom(next.file, spec);
 			if (record.files[file] !== undefined || entries[file] !== undefined) continue;
 			// A kept file is checked against each importer's names; anything else is decided once.
 			const first = !seen.has(file);
@@ -786,19 +817,20 @@ function closeImports(
 				if (stat?.isFile()) {
 					if (!kept.some((k) => k.file === file && k.importedBy === next.file)) {
 						if (!exportsOf.has(file)) {
-							// The names are a warning's evidence, so a file that can't be read is checked against nothing.
-							let source: string | null = null;
+							// The names are a warning's evidence: a file that can't be read is reported, and its names go unchecked.
+							let exported: Set<string> | null;
 							try {
-								source = readFileSync(target, "utf8");
+								exported = exportedNamesOf(readFileSync(target, "utf8"));
 							} catch {
-								source = null;
+								exported = null;
 							}
-							exportsOf.set(file, source === null ? null : exportedNamesOf(source));
+							exportsOf.set(file, exported);
 						}
 						const exported = exportsOf.get(file)!;
+						if (!codes.has(next.file)) codes.set(next.file, codeOf(next.fresh));
 						// Every relative specifier of this importer's that resolves to the file: `./util.ts` and `./sub/../util.ts` are one.
-						const names = namedImportsOf(next.fresh, (s) => (s.startsWith("./") || s.startsWith("../")) && path.posix.normalize(path.posix.join(path.posix.dirname(next.file), s)) === file);
-						kept.push({ file, importedBy: next.file, owner, unexported: exported === null ? [] : names.filter((name) => !exported.has(name)) });
+						const names = namedImportsIn(codes.get(next.file)!, (s) => isRelative(s) && resolveFrom(next.file, s) === file);
+						kept.push({ file, importedBy: next.file, owner, unexported: exported === null ? null : names.filter((name) => !exported.has(name)) });
 					}
 				} else if (first) {
 					problems.push(`${file} is owned by ${owner} and ${stat === undefined ? "missing from the vault" : "isn't a file"}, and ${next.file} now imports it; restore it through that record, then update`);
