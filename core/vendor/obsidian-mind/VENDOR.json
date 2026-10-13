@@ -1,11 +1,43 @@
 {
   "commit": "9bf60818559dc3e70e346fe61891afd9e33b48e6",
   "files": {
+    "core/scripts/extensions/qmd/lib/main-guard.ts": {
+      "patches": [
+        "0039-main-guard.patch"
+      ],
+      "sha256": "f2e1160383969539ab10d5245eb015c9058e9d4df16660c7f7d2416c4abece94",
+      "upstream": "lib/main-guard.ts",
+      "upstreamSha256": "e76f8a95c5ee9c015f8afe455707660db40e3494405697d528aae5cf6965244c"
+    },
+    "core/scripts/extensions/qmd/lib/qmd-bootstrap.ts": {
+      "patches": [
+        "0041-qmd-bootstrap.patch"
+      ],
+      "sha256": "ecc2594f7ffa6c1cb14e14fb3bc4f9d17af103cdc80124d08e973d1db31dd9fe",
+      "upstream": "lib/qmd-bootstrap.ts",
+      "upstreamSha256": "8e138c5afdd9bfcb41abf4803e8736185f0de0cfe82d12fea93cf388e88268d6"
+    },
+    "core/scripts/extensions/qmd/lib/qmd-ignore.ts": {
+      "patches": [
+        "0031-qmd-ignore.patch"
+      ],
+      "sha256": "7dc9e4454dad53ca0290177bcaf11a2cc579a65367b83a8b3ce36f75eb3c621d",
+      "upstream": "lib/qmd-ignore.ts",
+      "upstreamSha256": "55805df8717370491a65d5a1761f401dacbe90f8894a333e63ad1a50d20ed5cc"
+    },
+    "core/scripts/extensions/qmd/lib/qmd-models.ts": {
+      "patches": [
+        "0030-qmd-models.patch"
+      ],
+      "sha256": "cba0cf7a7052fdef3d942a1f8b18b8844e75f5e3d5be946b70dce2508b309b04",
+      "upstream": "lib/qmd-models.ts",
+      "upstreamSha256": "b5c6348de27515f16c33dd21a76eb7dc02354421ac3b368923ec5e81da3a9acc"
+    },
     "core/scripts/extensions/qmd/lib/qmd.ts": {
       "patches": [
-        "0013-qmd-extension.patch"
+        "0042-qmd-extension.patch"
       ],
-      "sha256": "6032ae8466fa4da4e6fe1435645abd17a473a1c5483e3279d42a4764ad6e6a8d",
+      "sha256": "8f01c8f8faddbca855a3bbe5327545325020647613eb94ff67260877a9b95bb5",
       "upstream": "lib/qmd.ts",
       "upstreamSha256": "03cdc7cf64f0779157818f4048c0803d95b493bf879e7a34bb34fb91c4618067"
     },
@@ -16,6 +48,38 @@
       "sha256": "02e84f9aacabf52915bded46c4d4064cb9ff7d76697a05b811bc22861f8f445d",
       "upstream": "lib/qmd-refresh.ts",
       "upstreamSha256": "7b48b64e26100151e0083e6f164c2643dfd4a664a2567b9b1385a96d904da00e"
+    },
+    "core/scripts/extensions/qmd/main-guard.test.ts": {
+      "patches": [
+        "0040-main-guard-test.patch"
+      ],
+      "sha256": "dcb269c134e1215f07ee2e5382449f8d43c4c8a61e2a1003457b7e35f23f9464",
+      "upstream": "tests/main-guard.test.ts",
+      "upstreamSha256": "11c030c708423358a78248fc7a4f308584c1b7e808985cf85de6a8ea83d74ff5"
+    },
+    "core/scripts/extensions/qmd/qmd-bootstrap.test.ts": {
+      "patches": [
+        "0033-qmd-bootstrap-test.patch"
+      ],
+      "sha256": "5f43b84f1764b02381b65e29cc8f5b17387cceddaf1d91412f3e7d4f383a64a8",
+      "upstream": "tests/qmd-bootstrap.test.ts",
+      "upstreamSha256": "7e73090b04c9891bc63d9462a5f295c21883f2a8fff1eea6035886f6627d0083"
+    },
+    "core/scripts/extensions/qmd/qmd-ignore.test.ts": {
+      "patches": [
+        "0034-qmd-ignore-test.patch"
+      ],
+      "sha256": "b8107aec895ad244546adb0e21dd4a0f62d57c131cc5244413e4ed278a8e423a",
+      "upstream": "tests/qmd-ignore.test.ts",
+      "upstreamSha256": "b3051c74b655ae9c88b6a38f01396b63759fcecbc47d3a43307224c64be02a56"
+    },
+    "core/scripts/extensions/qmd/qmd-models.test.ts": {
+      "patches": [
+        "0035-qmd-models-test.patch"
+      ],
+      "sha256": "ff20cd0a5fe7f41c952baabcaf87d4671df4b1ec5ed37760d6c786d76f6529f8",
+      "upstream": "tests/qmd-models.test.ts",
+      "upstreamSha256": "14b32f5cd0c684953ead688a1260cf82d36937bbea7b2216da8e426db65fa44e"
     },
     "core/scripts/extensions/qmd/qmd-refresh-run.ts": {
       "patches": [
@@ -82,9 +146,9 @@
     },
     "core/scripts/lib/session-start.ts": {
       "patches": [
-        "0004-session-start.patch"
+        "0038-session-start.patch"
       ],
-      "sha256": "005e7c87fb392af352c6541e211f7b88ec19d8a8fd32fb706faeaf000e3d3d2e",
+      "sha256": "242281d4a020673b74746b44a7eaffc1db1e9461c009d9ff9bbf4bbc63f62ec0",
       "upstream": "lib/session-start.ts",
       "upstreamSha256": "9e1d1041c32740fd5200b2f343c97be17d1ea207a6e98fe6a1459b2b14a43c33"
     },

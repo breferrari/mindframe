@@ -532,7 +532,7 @@ export function hasBrainContent(body: string): boolean {
 	return /^[ \t]*[-*+][ \t]+\S.*$/m.test(body);
 }
 
-// re-export, removed in #96: qmd's index-name helpers live in the qmd
+// re-export, removed in #135: qmd's index-name helpers live in the qmd
 // extension (#70). Vendored scripts outside it still import them from here.
 export {
 	isValidQmdIndex,

@@ -1,7 +1,7 @@
 /**
  * The core's old qmd import paths (#70): lib/qmd.ts and the qmd helpers in
  * lib/session-start.ts re-export the qmd extension's own code, so vendored
- * scripts that still import them keep working until #96 removes them. Each
+ * scripts that still import them keep working until #135 removes them. Each
  * must be the very binding the extension exports, so the two can't drift.
  */
 import { test } from "node:test";
@@ -40,9 +40,9 @@ test("the text forms stay in lib/session-start.ts, over the moved functions", ()
 	assert.equal(sessionStart.resolveQmdIndex(null, "/v/My Wiki"), "my-wiki");
 });
 
-test("each re-export is marked for removal in #96", async () => {
+test("each re-export is marked for removal in #135", async () => {
 	const { readFileSync } = await import("node:fs");
 	for (const file of ["../lib/qmd.ts", "../lib/session-start.ts"]) {
-		assert.match(readFileSync(new URL(file, import.meta.url), "utf-8"), /re-export, removed in #96/, file);
+		assert.match(readFileSync(new URL(file, import.meta.url), "utf-8"), /re-export, removed in #135/, file);
 	}
 });

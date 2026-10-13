@@ -1,7 +1,7 @@
 /**
  * qmd's index name, version floor and store path, read from the manifest
  * and the environment. Moved here from the core's lib/session-start.ts
- * (#70), which re-exports them until #96.
+ * (#70), which re-exports them until #135.
  */
 
 import { basename, join, resolve } from "node:path";

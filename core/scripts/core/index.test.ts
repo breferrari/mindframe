@@ -13,7 +13,9 @@ import * as lib from "../lib/project-dir.ts";
 import * as instructionFiles from "../lib/instruction-files.ts";
 import * as core from "./index.ts";
 import { debug, resolveProjectDir, writeFileAtomic } from "./index.ts";
-import { debug as hookDebug } from "../lib/hook-io.ts";
+import { debug as hookDebug, warn as hookWarn } from "../lib/hook-io.ts";
+import { escapeRegex as libEscapeRegex } from "../lib/regex.ts";
+import { manifestOf as libManifestOf } from "../lib/manifest.ts";
 
 describe("writeFileAtomic, through index.ts", () => {
 	let dir = "";
@@ -274,4 +276,12 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 
 test("debug, the HOOK_DEBUG trace, is exported to extensions: one home, so traces can't drift (#95)", () => {
 	assert.equal(debug, hookDebug);
+});
+
+test("warn, escapeRegex and manifestOf are exported to extensions, each the core's own (#96)", () => {
+	assert.equal(core.warn, hookWarn);
+	assert.equal(core.escapeRegex, libEscapeRegex);
+	assert.equal(core.manifestOf, libManifestOf);
+	assert.equal(core.escapeRegex("a.b*"), "a\\.b\\*");
+	assert.deepEqual(core.manifestOf('{"qmd_index":"notes"}'), { qmd_index: "notes" });
 });

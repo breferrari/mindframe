@@ -2,8 +2,8 @@
  * Test-only. A QMD that isn't there: the side effects of session.ts,
  * recorded, for the extension's tests. Nothing here runs QMD or touches a QMD store.
  */
-import { rmSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { EMPTY_STORE_BYTES, type QmdDeps } from "./session.ts";
 
 export const VAULT = join("/", "vaults", "My Wiki");
@@ -17,6 +17,7 @@ export function fakeDeps(opts: {
 	rebuild?: number;
 	storeBytes?: number | null;
 	env?: Record<string, string>;
+	exists?: (path: string) => boolean;
 }): { deps: QmdDeps; calls: Calls } {
 	const calls: Calls = { sync: [], detached: [] };
 	const deps: QmdDeps = {
@@ -32,6 +33,7 @@ export function fakeDeps(opts: {
 		spawnDetached: (cmd, args, o) => void calls.detached.push({ cmd, args, cwd: o.cwd }),
 		storeSize: () => (opts.storeBytes === undefined ? EMPTY_STORE_BYTES * 10 : opts.storeBytes),
 		home: join("/", "home", "u"),
+		exists: opts.exists ?? (() => true),
 	};
 	return { deps, calls };
 }
@@ -52,4 +54,18 @@ export async function waitFor(condition: () => boolean, timeoutMs = 5_000, inter
 		if (Date.now() >= deadline) return;
 		await new Promise((r) => setTimeout(r, intervalMs));
 	}
+}
+
+/** A host path from a literal, as obsidian-mind's test helpers make one: resolved on this OS. */
+export function hostPath(literal: string): string {
+	return resolve(literal);
+}
+
+/** The extension's code under `dir`: every .ts file but the tests and these fakes, which the scan tests read. */
+export function extensionSources(dir: string): string[] {
+	return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+		const path = join(dir, e.name);
+		if (e.isDirectory()) return extensionSources(path);
+		return e.name.endsWith(".ts") && !e.name.endsWith(".test.ts") && e.name !== "test-fakes.ts" ? [path] : [];
+	});
 }

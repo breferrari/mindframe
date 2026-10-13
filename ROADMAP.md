@@ -55,6 +55,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#126](https://github.com/breferrari/mindframe/issues/126) | Give write hooks the payload's targets from the core, with removed files and one effect run per call | ⬜ |
 | [#128](https://github.com/breferrari/mindframe/issues/128) | Build openVault's migration notes from what the registry did: none under the kill switch, one for a refused qmd module | ⬜ |
 | [#133](https://github.com/breferrari/mindframe/issues/133) | Follow files a recorded file spawns by path in vendor update, as it follows imports | ⬜ |
+| [#136](https://github.com/breferrari/mindframe/issues/136) | Let a vendor record track a file outside its source root, inside the upstream repo | ⬜ |
 
 ## Phase 3: first-party extensions
 
@@ -66,7 +67,8 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#71](https://github.com/breferrari/mindframe/issues/71) | Ship the qmd MCP bridge with the qmd extension | ⏳ after #70 |
 | [#94](https://github.com/breferrari/mindframe/issues/94) | Skip session-start's detached qmd refresh when VAULT_QMD_REFRESH=off, as obsidian-mind #338 does | ✅ |
 | [#95](https://github.com/breferrari/mindframe/issues/95) | Run qmd's index refresh as the qmd extension's effects | ✅ |
-| [#96](https://github.com/breferrari/mindframe/issues/96) | Move qmd's bootstrap and model setup into the qmd extension | ⏳ after #95 |
+| [#96](https://github.com/breferrari/mindframe/issues/96) | Move qmd's bootstrap and model setup into the qmd extension | ✅ |
+| [#135](https://github.com/breferrari/mindframe/issues/135) | Remove the core's qmd re-exports once no vendored file outside the extension imports them | ⏳ after breferrari/wiki-mind#112 |
 | [#101](https://github.com/breferrari/mindframe/issues/101) | Add the contract-spec row for effects (DESIGN rule 10) once a vault calls runEffects | ✅ |
 | [#123](https://github.com/breferrari/mindframe/issues/123) | Find a global qmd where npm keeps it, without spawning npm root -g | ⬜ |
 | [#125](https://github.com/breferrari/mindframe/issues/125) | Name the qmd extension's refresh worker qmd-refresh-run, so obsidian-mind's leftover-worker guard sees it | ✅ |

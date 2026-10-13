@@ -25,8 +25,9 @@
  */
 
 import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from "node:child_process";
-import { statSync as nodeStatSync } from "node:fs";
+import { existsSync, statSync as nodeStatSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import type { ManifestObject } from "../../core/index.ts";
 import { buildQmdCommand, qmdVersionAtLeast, resolveQmdEntry } from "./lib/qmd.ts";
 import { qmdOff, refreshDisabled } from "./lib/switches.ts";
@@ -46,8 +47,17 @@ export const VERSION_HEADER = "### QMD Version";
 /** A store below this size holds no indexed notes: bootstrap rather than update. */
 export const EMPTY_STORE_BYTES = 500_000;
 
-/** The bootstrap a missing or near-empty store gets, vault-relative, run with the vault as cwd. */
-export const BOOTSTRAP_SCRIPT = ".scripts/qmd-bootstrap.ts";
+/** The bootstrap a missing or near-empty store gets: the extension's own script (#96), run with the vault as cwd. */
+export const BOOTSTRAP_PATH = fileURLToPath(new URL("./qmd-bootstrap.ts", import.meta.url));
+
+/**
+ * The bootstrap and the libraries it imports: every file it needs that the hook's own imports don't
+ * reach, so `vendor update` doesn't bring them in (#133), and a vault copies them by hand.
+ */
+export const BOOTSTRAP_FILES: readonly string[] = [
+	BOOTSTRAP_PATH,
+	...["lib/qmd-bootstrap.ts", "lib/qmd-models.ts", "lib/qmd-ignore.ts", "lib/main-guard.ts"].map((f) => fileURLToPath(new URL(`./${f}`, import.meta.url))),
+];
 
 type SpawnSyncResult = { readonly status: number | null; readonly stdout?: string; readonly stderr?: string };
 
@@ -59,6 +69,8 @@ export type QmdDeps = {
 	readonly spawnDetached: (cmd: string, args: readonly string[], opts: { cwd: string; shell: boolean }) => void;
 	readonly storeSize: (path: string) => number | null;
 	readonly home: string;
+	/** Whether a file the bootstrap needs is there (BOOTSTRAP_FILES). */
+	readonly exists: (path: string) => boolean;
 };
 
 export const realDeps: QmdDeps = {
@@ -79,6 +91,7 @@ export const realDeps: QmdDeps = {
 		}
 	},
 	home: homedir(),
+	exists: existsSync,
 };
 
 /** A load-bearing note for the session context, as heading and body. */
@@ -131,7 +144,7 @@ export function qmdNotesOf(vaultRoot: string, manifest: ManifestObject, deps: Qm
 /**
  * QMD's session-start refresh for the vault at `vaultRoot`, the extension's
  * session-start effect (#95): a detached `qmd update` on this vault's index,
- * or the idempotent bootstrap (BOOTSTRAP_SCRIPT) when the store is missing or
+ * or the idempotent bootstrap (BOOTSTRAP_PATH) when the store is missing or
  * implausibly small. Returns what it started.
  */
 export function qmdSessionRefreshOf(vaultRoot: string, manifest: ManifestObject, deps: QmdDeps = realDeps): "update" | "bootstrap" | null {
@@ -142,7 +155,11 @@ export function qmdSessionRefreshOf(vaultRoot: string, manifest: ManifestObject,
 	const size = index === null ? null : deps.storeSize(resolveIndexStorePath(index, deps.env, deps.home));
 	const empty = index !== null && (size === null || size < EMPTY_STORE_BYTES);
 	if (empty) {
-		deps.spawnDetached(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", BOOTSTRAP_SCRIPT], { cwd: vaultRoot, shell: false });
+		// Spawned by path, so `vendor update` doesn't bring them in (#133): a vault that missed a file is told,
+		// as a missing refresh worker is, rather than a detached node dying on an import with no one to see it.
+		const missing = BOOTSTRAP_FILES.filter((f) => !deps.exists(f));
+		if (missing.length > 0) throw new Error(`the qmd bootstrap is missing ${missing.join(", ")}; copy the bootstrap and its libraries from mindframe and record them (core/scripts/README.md)`);
+		deps.spawnDetached(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", BOOTSTRAP_PATH], { cwd: vaultRoot, shell: false });
 	} else {
 		// cwd is the OS temp folder, so a lingering QMD process never holds the vault folder open on Windows.
 		const update = buildQmdCommand(entry, qmdArgsWithIndex(index, ["update"]));

@@ -1,0 +1,19 @@
+Description: mindframe: beside the lifted library in the qmd extension, with the extension's test helpers (#96)
+Forwarded: https://github.com/breferrari/mindframe/issues/19
+Last-Update: 2026-10-13
+
+diff --git a/core/scripts/extensions/qmd/qmd-models.test.ts b/core/scripts/extensions/qmd/qmd-models.test.ts
+--- a/core/scripts/extensions/qmd/qmd-models.test.ts
++++ b/core/scripts/extensions/qmd/qmd-models.test.ts
+@@ -19,9 +19,9 @@
+ 	QMD_DEFAULT_EMBED_MODEL,
+ 	upsertEmbedModelInYaml,
+ 	writeQmdEmbedModel,
+-} from "../lib/qmd-models.ts";
++} from "./lib/qmd-models.ts";
+ 
+-import { rmTemp } from "./_helpers.ts";
++import { rmTemp } from "./test-fakes.ts";
+ 
+ const CONFIG = (embed: string) =>
+ 	`collections:\n  vault:\n    path: /somewhere\n    pattern: "**/*.md"\nmodels:\n  embed: ${embed}\n  generate: hf:some/generate.gguf\n  rerank: hf:some/rerank.gguf\n`;

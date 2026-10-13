@@ -5,9 +5,10 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join, posix, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { extensionSources } from "./test-fakes.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // `import x from "s"`, `export { x } from "s"`, `import "s"`, `import("s")` and `require("s")`, quoted or in backticks.
@@ -18,16 +19,8 @@ export function specifiers(source: string): string[] {
 	return [...source.matchAll(IMPORT)].flatMap(([, spec]) => (spec === undefined ? [] : [spec]));
 }
 
-function sources(dir: string): string[] {
-	return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-		const path = join(dir, e.name);
-		if (e.isDirectory()) return sources(path);
-		return e.name.endsWith(".ts") && !e.name.endsWith(".test.ts") ? [path] : [];
-	});
-}
-
 test("the extension's code imports only core/index.ts, its own files, and node:", () => {
-	const files = sources(HERE);
+	const files = [...extensionSources(HERE), join(HERE, "test-fakes.ts")];
 	assert.ok(files.length >= 4, "index, session and the two libraries");
 	for (const file of files) {
 		const from = relative(HERE, dirname(file)).split(sep).join(posix.sep);
