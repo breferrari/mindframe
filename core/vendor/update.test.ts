@@ -328,11 +328,13 @@ test("a needed file another record owns but the vault lacks is refused, and noth
 
 test("a needed file another record owns that isn't a file is refused (#117)", (t) => {
 	const s = imports(t);
+	const before = readFileSync(s.recFile, "utf8");
 	otherRecord(s, null);
 	mkdirSync(path.join(s.vault, ".claude", "scripts", "util.ts"), { recursive: true });
 	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
 	assert.equal(s.cli("update", ...s.at()), 1);
 	assert.match(s.lines.join("\n"), /\.claude\/scripts\/util\.ts is owned by \.claude\/scripts\/VENDOR\.json and isn't a file/);
+	assert.equal(readFileSync(s.recFile, "utf8"), before, "the record is untouched");
 	assert.equal(s.vaultLib(), LIB);
 });
 
@@ -358,6 +360,18 @@ test("the name check reads code, not comments or strings, and a default-plus-nam
 	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
 	const warning = s.lines.find((l) => l.startsWith("vendor: warning:")) ?? "";
 	assert.match(warning, /doesn't export gone, ghost, which/, s.lines.join("\n"));
+});
+
+test("the name check knows a regex literal, a default export, and two spellings of one file (#117)", (t) => {
+	const s = imports(t);
+	otherRecord(s, 'const r = /"/;\nexport const u = 0;\nexport default function f() {}\n');
+	s.commit({
+		"lib.ts": 'import { u } from "./util.ts";\nimport { f } from "./sub/../util.ts";\n' + LIB,
+		"util.ts": "export const u = 1;\nexport function f() {}\n",
+	});
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.equal(s.lines.filter((l) => l.includes("kept by")).length, 1, "one entry per importer");
+	assert.ok(s.lines.some((l) => /doesn't export f, which/.test(l)), s.lines.join("\n"));
 });
 
 test("each updated file that imports a kept file is checked, not only the first (#117)", (t) => {

@@ -553,27 +553,23 @@ export type UpdatePlan = {
 	readonly added: ReadonlyArray<{ readonly file: string; readonly importedBy: string }>;
 	/**
 	 * Files an updated file newly imports that another record keeps, present in
-	 * the vault: left as they are and not recorded here (#117). `missing` is the
-	 * names the importer imports that the kept copy doesn't export by name.
+	 * the vault: left as they are and not recorded here (#117), one entry per
+	 * importer. `unexported` is the names the importer imports from the file,
+	 * by any specifier, that the kept copy doesn't export by name.
 	 */
-	readonly kept: ReadonlyArray<{ readonly file: string; readonly importedBy: string; readonly owner: string; readonly missing: readonly string[] }>;
+	readonly kept: ReadonlyArray<{ readonly file: string; readonly importedBy: string; readonly owner: string; readonly unexported: readonly string[] }>;
 };
 
 type Kept = UpdatePlan["kept"][number];
 
 /**
- * A module's code as the name scans read it: comments become a space, and a
- * string's text is kept only where an import puts a specifier (after `from`),
- * so import- or export-like text in a comment or a string reads as nothing.
+ * A module's code as the name scans read it, through `lex`: comments and regex
+ * literals read as nothing, and a string's text is kept only after `from`,
+ * where an import puts a specifier, so import- or export-like text in a
+ * comment, a string or a regex reads as nothing.
  */
 function codeOf(source: string): string {
-	return source.replace(
-		/("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g,
-		(match, string: string | undefined, offset: number) => {
-			if (string === undefined) return " ";
-			return /\bfrom\s*$/.test(source.slice(Math.max(0, offset - 16), offset)) ? string : '""';
-		},
-	);
+	return lex(source, (_, before) => /\bfrom$/.test(before));
 }
 
 /** The names in a `{ a, b as c, type T }` list: as the importer names them (`imported`), or as the module exports them (`exported`). */
@@ -588,14 +584,15 @@ function namesIn(list: string, side: "imported" | "exported"): string[] {
 }
 
 /**
- * The names `source` imports by name from `spec`: `import { a, b as c, type T }`,
- * `import D, { a }` and `export { a } from`, each by the name the target
- * exports. A namespace or default import names nothing here.
+ * The names `source` imports by name from the specifiers `from` accepts:
+ * `import { a, b as c, type T }`, `import D, { a }` and `export { a } from`,
+ * each by the name the target exports. A namespace or default import names
+ * nothing here.
  */
-function namedImportsOf(source: string, spec: string): string[] {
+function namedImportsOf(source: string, from: (spec: string) => boolean): string[] {
 	const names = new Set<string>();
 	for (const m of codeOf(source).matchAll(/\b(?:import|export)\s+(?:type\s+)?(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*(["'])([^"'\n]+)\2/g)) {
-		if (m[3] === spec) for (const name of namesIn(m[1]!, "imported")) names.add(name);
+		if (from(m[3]!)) for (const name of namesIn(m[1]!, "imported")) names.add(name);
 	}
 	return [...names];
 }
@@ -609,7 +606,8 @@ function namedImportsOf(source: string, spec: string): string[] {
 function exportedNamesOf(source: string): Set<string> {
 	const code = codeOf(source);
 	const names = new Set<string>();
-	for (const m of code.matchAll(/\bexport\s+(?:declare\s+)?(?:default\s+)?(?:async\s+)?(?:abstract\s+)?(?:const|let|var|function\*?|class|type|interface|enum|namespace)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
+	if (/\bexport\s+default\b/.test(code)) names.add("default");
+	for (const m of code.matchAll(/\bexport\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(?:const|let|var|function\*?|class|type|interface|enum|namespace)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
 	for (const m of code.matchAll(/\bexport\s+(?:type\s+)?\{([^}]*)\}/g)) for (const name of namesIn(m[1]!, "exported")) names.add(name);
 	return names;
 }
@@ -625,12 +623,24 @@ function exportedNamesOf(source: string): Set<string> {
  */
 export function importsOf(source: string): string[] {
 	const found = new Set<string>();
-	// The last stretch of code read, strings and comments left out: enough to see
-	// what precedes a string or a slash, and linear however long the file.
+	lex(source, (text, before, plain) => {
+		const placed = /(?:\bfrom|\bimport)$/.test(before) || /\b(?:import|require)\s*\($/.test(before);
+		if (placed && plain && (text.startsWith("./") || text.startsWith("../"))) found.add(text);
+		return false;
+	});
+	return [...found];
+}
+
+/**
+ * A module's code with its comments and regex literals left out, and each
+ * string kept as `"text"` when `keep` says so, given its text, the code before
+ * it (trimmed) and whether it is plain (a template with no `${…}` is). Every
+ * other string reads as `""`. One lexer for every scan of a module's code, so
+ * import-like text in a comment, a string or a regex is never read as code.
+ * Linear however long the file.
+ */
+function lex(source: string, keep: (text: string, before: string, plain: boolean) => boolean): string {
 	let code = "";
-	const read = (more: string) => {
-		code = (code + more).slice(-64);
-	};
 	for (let i = 0; i < source.length; ) {
 		const ch = source[i]!;
 		const two = source.slice(i, i + 2);
@@ -642,12 +652,12 @@ export function importsOf(source: string): string[] {
 		if (two === "/*") {
 			const end = source.indexOf("*/", i + 2);
 			i = end === -1 ? source.length : end + 2;
-			read(" ");
+			code += " ";
 			continue;
 		}
 		// A slash where a value starts opens a regex literal: skip to its closing
 		// slash, past escapes and character classes.
-		if (ch === "/" && /(?:^|[(,=:[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bin|\bof)\s*$/.test(code)) {
+		if (ch === "/" && /(?:^|[(,=:[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bin|\bof)\s*$/.test(code.slice(-64))) {
 			let j = i + 1;
 			let inClass = false;
 			while (j < source.length && source[j] !== "\n") {
@@ -658,7 +668,7 @@ export function importsOf(source: string): string[] {
 				else j++;
 			}
 			i = j + 1;
-			read(" _ ");
+			code += " _ ";
 			continue;
 		}
 		if (ch === '"' || ch === "'" || ch === "`") {
@@ -676,17 +686,14 @@ export function importsOf(source: string): string[] {
 				text += source[j];
 				j++;
 			}
-			const before = code.trimEnd();
-			const placed = /(?:\bfrom|\bimport)$/.test(before) || /\b(?:import|require)\s*\($/.test(before);
-			if (placed && plain && (text.startsWith("./") || text.startsWith("../"))) found.add(text);
-			read(" _ ");
+			code += keep(text, code.slice(-64).trimEnd(), plain) ? JSON.stringify(text) : '""';
 			i = j + 1;
 			continue;
 		}
-		read(ch);
+		code += ch;
 		i++;
 	}
-	return [...found];
+	return code;
 }
 
 const MODULE_FILE = /\.(?:[cm]?[jt]sx?)$/;
@@ -761,8 +768,12 @@ function closeImports(
 			const owner = input.ownerOf?.(file);
 			if (owner) {
 				if (stat?.isFile()) {
-					const exported = exportedNamesOf(readFileSync(target, "utf8"));
-					kept.push({ file, importedBy: next.file, owner, missing: namedImportsOf(next.fresh, spec).filter((name) => !exported.has(name)) });
+					if (!kept.some((k) => k.file === file && k.importedBy === next.file)) {
+						const exported = exportedNamesOf(readFileSync(target, "utf8"));
+						// Every specifier of this importer's that resolves to the file: `./util.ts` and `./sub/../util.ts` are one.
+						const names = namedImportsOf(next.fresh, (s) => path.posix.normalize(path.posix.join(path.posix.dirname(next.file), s)) === file);
+						kept.push({ file, importedBy: next.file, owner, unexported: names.filter((name) => !exported.has(name)) });
+					}
 				} else if (first) {
 					problems.push(`${file} is owned by ${owner} and ${stat === undefined ? "missing from the vault" : "isn't a file"}, and ${next.file} now imports it; restore it through that record, then update`);
 				}
