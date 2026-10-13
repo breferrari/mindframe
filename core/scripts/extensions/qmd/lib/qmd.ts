@@ -107,6 +107,7 @@ function globalQmdEntry(): string | null {
 		shell: true,
 		encoding: "utf8",
 		timeout: 3000,
+		windowsHide: true,
 	});
 	if (npmRoot.error || npmRoot.signal !== null || npmRoot.status !== 0) {
 		return null;

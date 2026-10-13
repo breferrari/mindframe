@@ -1,0 +1,17 @@
+Description: mindframe: lifted into the qmd extension, importing from the extension and the core's public entry (#96)
+Forwarded: https://github.com/breferrari/mindframe/issues/19
+Last-Update: 2026-10-13
+
+diff --git a/core/scripts/extensions/qmd/lib/qmd-ignore.ts b/core/scripts/extensions/qmd/lib/qmd-ignore.ts
+--- a/core/scripts/extensions/qmd/lib/qmd-ignore.ts
++++ b/core/scripts/extensions/qmd/lib/qmd-ignore.ts
+@@ -17,8 +17,7 @@
+ import { homedir } from "node:os";
+ import { join } from "node:path";
+ 
+-import { warn } from "./hook-io.ts";
+-import { escapeRegex } from "./regex.ts";
++import { escapeRegex, warn } from "../../../core/index.ts";
+ 
+ /**
+  * YAML indent widths used by QMD's serializer. Defined once here so the strip

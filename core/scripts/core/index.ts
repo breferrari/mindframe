@@ -44,7 +44,13 @@ export { extractWikilinkTargets } from "../lib/wikilinks.ts";
 export { writeFileAtomic } from "../lib/atomic-write.ts";
 
 /** A trace line on stderr when HOOK_DEBUG=1, and nothing otherwise: hooks print nothing else of their own. */
-export { debug } from "../lib/hook-io.ts";
+export { debug, warn } from "../lib/hook-io.ts";
+
+/** A string as a literal inside a RegExp: for an extension that builds a pattern from a name (the qmd extension's ignore and collection rules, #96). */
+export { escapeRegex } from "../lib/regex.ts";
+
+/** The manifest a script read as text, parsed as openVault parses it: for a standalone script that runs outside a hook (the qmd extension's bootstrap, #96). */
+export { manifestOf } from "../lib/manifest.ts";
 
 /** The vault root, walked up from the agent's project folder or a fallback (documented on the function). */
 export { resolveProjectDir } from "../lib/project-dir.ts";

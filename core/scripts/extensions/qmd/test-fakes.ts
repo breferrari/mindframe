@@ -3,7 +3,7 @@
  * recorded, for the extension's tests. Nothing here runs QMD or touches a QMD store.
  */
 import { rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { EMPTY_STORE_BYTES, type QmdDeps } from "./session.ts";
 
 export const VAULT = join("/", "vaults", "My Wiki");
@@ -52,4 +52,9 @@ export async function waitFor(condition: () => boolean, timeoutMs = 5_000, inter
 		if (Date.now() >= deadline) return;
 		await new Promise((r) => setTimeout(r, intervalMs));
 	}
+}
+
+/** A host path from a literal, as obsidian-mind's test helpers make one: resolved on this OS. */
+export function hostPath(literal: string): string {
+	return resolve(literal);
 }

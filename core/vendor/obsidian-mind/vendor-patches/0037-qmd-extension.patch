@@ -1,4 +1,4 @@
-Description: mindframe: the qmd extension takes debug from the core's public entry point, not a copy of hook-io, and its switch from lib/switches.ts, the extension's one home for both switches (#94, #95, #102); spawnDetachedQmd kept, with no caller yet
+Description: mindframe: the qmd extension takes debug from the core's public entry point, not a copy of hook-io, and its switch from lib/switches.ts, the extension's one home for both switches (#94, #95, #102); spawnDetachedQmd kept, with no caller yet; npm root -g hides its console window on Windows, upstream in obsidian-mind #382 (#96)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
@@ -14,7 +14,15 @@ diff --git a/core/scripts/extensions/qmd/lib/qmd.ts b/core/scripts/extensions/qm
  
  const require = createRequire(import.meta.url);
  
-@@ -154,30 +154,20 @@
+@@ -107,6 +107,7 @@
+ 		shell: true,
+ 		encoding: "utf8",
+ 		timeout: 3000,
++		windowsHide: true,
+ 	});
+ 	if (npmRoot.error || npmRoot.signal !== null || npmRoot.status !== 0) {
+ 		return null;
+@@ -154,30 +155,20 @@
  			};
  }
  

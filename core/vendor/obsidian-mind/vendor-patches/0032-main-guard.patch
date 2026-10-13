@@ -1,0 +1,31 @@
+Description: mindframe: argv[1] compared by its real path too, so a vault under a linked folder runs its guarded main block, upstream at obsidian-mind#391 (#96)
+Forwarded: https://github.com/breferrari/mindframe/issues/19
+Last-Update: 2026-10-13
+
+diff --git a/core/scripts/extensions/qmd/lib/main-guard.ts b/core/scripts/extensions/qmd/lib/main-guard.ts
+--- a/core/scripts/extensions/qmd/lib/main-guard.ts
++++ b/core/scripts/extensions/qmd/lib/main-guard.ts
+@@ -11,11 +11,19 @@
+  * apples-to-apples on every platform.
+  */
+ 
++import { realpathSync } from "node:fs";
+ import { fileURLToPath } from "node:url";
+ 
+ export function isMainModule(importMetaUrl: string): boolean {
+-	return (
+-		process.argv[1] !== undefined &&
+-		fileURLToPath(importMetaUrl) === process.argv[1]
+-	);
++	const entry = process.argv[1];
++	if (entry === undefined) return false;
++	const self = fileURLToPath(importMetaUrl);
++	if (self === entry) return true;
++	// import.meta.url is the module's real path; argv[1] is the path as typed, which a
++	// linked folder (macOS's /var → /private/var, a junction) makes differ (obsidian-mind#391).
++	try {
++		return realpathSync(self) === realpathSync(entry);
++	} catch {
++		return false;
++	}
+ }

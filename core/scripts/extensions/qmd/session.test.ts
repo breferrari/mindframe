@@ -5,8 +5,10 @@
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import { manifestOf } from "../../lib/manifest.ts";
-import { EMPTY_STORE_BYTES, qmdNotesOf, qmdSessionRefreshOf, type QmdDeps } from "./session.ts";
+import { BOOTSTRAP_PATH, EMPTY_STORE_BYTES, qmdNotesOf, qmdSessionRefreshOf, type QmdDeps } from "./session.ts";
 import { QMD_SWITCH, REFRESH_SWITCH } from "./lib/switches.ts";
 import { VAULT, fakeDeps } from "./test-fakes.ts";
 
@@ -43,12 +45,17 @@ describe("QMD's session-start work", () => {
 		assert.notEqual(calls.detached[0]?.cwd, VAULT, "never holds the vault folder open");
 	});
 
+	test("the bootstrap ships with the extension, under obsidian-mind's name (#96)", () => {
+		assert.ok(existsSync(BOOTSTRAP_PATH), BOOTSTRAP_PATH);
+		assert.equal(basename(BOOTSTRAP_PATH), "qmd-bootstrap.ts");
+	});
+
 	test("a missing or near-empty store: the idempotent bootstrap, run from the vault", () => {
 		for (const storeBytes of [null, 98_304]) {
 			const { deps, calls } = fakeDeps({ storeBytes });
 			assert.equal(qmdSessionStart(VAULT, MANIFEST, deps).refresh, "bootstrap");
 			assert.equal(calls.detached[0]?.cwd, VAULT);
-			assert.ok(calls.detached[0]?.args.includes(".scripts/qmd-bootstrap.ts"));
+			assert.ok(calls.detached[0]?.args.includes(BOOTSTRAP_PATH), "the extension's own bootstrap (#96)");
 		}
 	});
 

@@ -1,0 +1,16 @@
+Description: mindframe: lifted into the qmd extension, importing from the extension and the core's public entry (#96)
+Forwarded: https://github.com/breferrari/mindframe/issues/19
+Last-Update: 2026-10-13
+
+diff --git a/core/scripts/extensions/qmd/lib/qmd-models.ts b/core/scripts/extensions/qmd/lib/qmd-models.ts
+--- a/core/scripts/extensions/qmd/lib/qmd-models.ts
++++ b/core/scripts/extensions/qmd/lib/qmd-models.ts
+@@ -16,7 +16,7 @@
+ 
+ import { readFileSync, writeFileSync } from "node:fs";
+ 
+-import { warn } from "./hook-io.ts";
++import { warn } from "../../../core/index.ts";
+ 
+ /**
+  * qmd's own default embedder, as of 2.8.3. Recognised so the upsert can tell
