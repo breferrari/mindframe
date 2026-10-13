@@ -13,7 +13,7 @@
       "patches": [
         "0014-qmd-refresh.patch"
       ],
-      "sha256": "f1d6966fc887f834d27fb1af00dac4168e07fdf1f8fc1f69bcbfd7cd07eebce4",
+      "sha256": "94c2d8679eaa21ddd9d5eab622f53ed22a22529de9e97f5dd98f3b2ce97a353b",
       "upstream": "lib/qmd-refresh.ts",
       "upstreamSha256": "7b48b64e26100151e0083e6f164c2643dfd4a664a2567b9b1385a96d904da00e"
     },

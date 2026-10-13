@@ -46,40 +46,41 @@ describe("applyInjectionBudget's measure", () => {
 	});
 
 	test("a level's fit is handed a test of the whole render, by the budget's measure", () => {
-		const items = Array.from({ length: 30 }, (_, i) => `- "item ${i}"`);
+		const goals = Array.from({ length: 30 }, (_, i) => `"goal ${i}"`);
 		const seen: unknown[] = [];
 		const ladder: BudgetSection = {
-			header: "### Items",
-			body: items.join("\n"),
+			header: "### Goals",
+			body: goals.join("\n"),
 			priority: 5,
-			fallback: "Items: on demand.",
-			levels: [
-				{
-					name: "first items",
-					fit: (fits) => {
-						seen.push(typeof fits);
-						for (let n = items.length - 1; n >= 1; n--) if (fits(items.slice(0, n).join("\n"))) return items.slice(0, n).join("\n");
-						return null;
-					},
-				},
-			],
+			fallback: "Goals: on demand.",
+			levels: [{ name: "headlines", fit: (fits) => (seen.push(typeof fits), topHeadlines(goals, fits)) }],
 		};
 		const result = applyInjectionBudget([{ header: "", body: "## Session Context", priority: 0 }, ladder], 260, enveloped);
 		assert.deepEqual(seen, ["function"]);
-		assert.deepEqual(result.degraded, [{ section: "Items", level: "first items" }]);
+		assert.deepEqual(result.degraded, [{ section: "Goals", level: "headlines" }]);
 		assert.ok(result.bytes <= 260, `${result.bytes}`);
+		assert.match(result.text, /goal 0/, "the first goals are the ones kept");
 	});
 });
 
-test("topHeadlines keeps the most headlines the test accepts, and says how many more there are", () => {
+test("topHeadlines keeps the first headlines the test accepts, and says how many more there are", () => {
 	const headlines = ["One", "Two", "Three", "Four"];
 	const body = topHeadlines(headlines, (b) => b.split("\n").length <= 3);
 	assert.ok(body !== null);
+	assert.match(body, /One/);
+	assert.match(body, /Two/);
+	assert.doesNotMatch(body, /Three|Four/);
 	assert.match(body, /\+2 more goals/);
 	assert.equal(topHeadlines(headlines, () => false), null);
 });
 
-test("the ceiling leaves room for the SessionStart envelope (obsidian-mind #341)", () => {
-	assert.equal(INJECTION_CEILING_BYTES, envelopedLimit("SessionStart").max - METER_HEADROOM);
-	assert.ok(INJECTION_CEILING_BYTES < HOOK_OUTPUT_MAX_CHARS - METER_HEADROOM, "below the plain-stdout ceiling by the envelope's size");
+test("a context at the ceiling, with a full meter, fits the hook cap inside the SessionStart envelope (obsidian-mind #341)", () => {
+	// A body at the ceiling as the budget measures it (`enveloped` counts its two quotes), then the
+	// meter in the room left: the escaped newline before it takes two characters of that room.
+	const body = "x".repeat(INJECTION_CEILING_BYTES - 2);
+	assert.equal(enveloped(body), INJECTION_CEILING_BYTES);
+	const context = `${body}\n${"m".repeat(METER_HEADROOM - 2)}`;
+	const sent = JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } });
+	assert.ok(sent.length <= HOOK_OUTPUT_MAX_CHARS, `${sent.length} of ${HOOK_OUTPUT_MAX_CHARS}`);
+	assert.ok(envelopedLimit("SessionStart").max < HOOK_OUTPUT_MAX_CHARS, "the envelope takes room");
 });

@@ -52,15 +52,21 @@ jobs:
           #
           # Excluded:
           # - test files, test helpers and fixtures, which hold paths on
-          #   purpose to exercise Windows and POSIX handling, and the vendor
-          #   patches of test files, which carry those lines (#102);
+          #   purpose to exercise Windows and POSIX handling;
+          # - vendor patches, whose removed and context lines are upstream's
+          #   text: below, each patch's header and added lines are scanned,
+          #   except the added lines of a test file (#102);
           # - this workflow, whose pattern line matches itself.
           # The folder excludes need `glob`: without it, `**/` only matches
           # below another folder, and a top-level tests/ would be scanned.
           pattern='claude\.ai/(code/)?session|^Claude-Session:|(^|[^A-Za-z0-9/])[A-Za-z]:(\\{1,2}|/)[A-Za-z0-9_.-]+(\\{1,2}|/)[A-Za-z0-9_.-]+(\\{1,2}|/)|/Users/[^/[:space:]]+/|/home/[^/[:space:]]+/'
           hits=$(git grep -nIE "$pattern" -- . \
-            ':(exclude)*.test.*' ':(exclude,glob)**/tests/**' ':(exclude,glob)**/fixtures/**' ':(exclude,glob)**/vendor-patches/*-test.patch' \
+            ':(exclude)*.test.*' ':(exclude,glob)**/tests/**' ':(exclude,glob)**/fixtures/**' ':(exclude,glob)**/vendor-patches/**' \
             ':(exclude).github/workflows/ci.yml' || true)
+          for p in $(git ls-files '*vendor-patches/*.patch'); do
+            own=$(awk '/^diff --git /{body=1; test=($0 ~ /\.test\./)} !body || (/^\+/ && !/^\+\+\+/ && !test)' "$p" | grep -nIE "$pattern" || true)
+            if [ -n "$own" ]; then hits="$hits"$'\n'"$p: $own"; fi
+          done
           if [ -n "$hits" ]; then
             echo "::error::agent-session artifacts or local paths in tracked files"
             echo "$hits"
