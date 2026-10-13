@@ -50,7 +50,7 @@
       "patches": [
         "0026-instruction-files.patch"
       ],
-      "sha256": "0cc3493001be92a91e04a332863cf21b9ba02a7cba653e698eba9d3cc5085aad",
+      "sha256": "fe7431d0a87972d1ad442ae8d83b894db4adcdfc4839e6df0aa1144ed6c581c4",
       "upstream": "lib/instruction-files.ts",
       "upstreamSha256": "3367dcf34cdf8e14ff7a75cc515a6f23c76d3120fb43868dd507adc860e184c5"
     },

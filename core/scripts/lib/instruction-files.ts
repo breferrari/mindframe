@@ -9,7 +9,7 @@
  * retired later is retired in one place.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 export const INSTRUCTION_FILE = "AGENTS.md";
@@ -90,29 +90,29 @@ export function isInstructionFile(name: string, platform: NodeJS.Platform = proc
 
 /**
  * The context files the vault's `.gemini/settings.json` names
- * (`context.fileName`, a string or a list), or [] when there is none. Gemini
- * accepts comments and a BOM in that file, so the comments are dropped (a
- * commented-out fileName names nothing), then a strict `JSON.parse` is tried
- * and a narrow read of `context`'s fileName value second. Lifted from
- * obsidian-mind's hygiene scan (#104), which reads the raw text: dropping the
- * comments first, and reading only under `context`, are mindframe's.
+ * (`context.fileName`, or the older top-level `contextFileName` Gemini still
+ * migrates; a string or a list), or [] when there is none. Gemini accepts
+ * comments and a BOM in that file, so both are dropped before a strict
+ * `JSON.parse`. A file that still doesn't parse names nothing, because Gemini
+ * applies none of it either. Lifted from obsidian-mind's hygiene scan (#104),
+ * which falls back to a narrow read of the raw text; dropping comments
+ * instead, and the v1 key, are mindframe's.
  */
 export function geminiContextFiles(vaultRoot: string): string[] {
-	let text: string;
+	const path = join(vaultRoot, GEMINI_SETTINGS);
 	try {
-		// Strings are matched first and kept, so a `//` inside one (a URL) is no comment.
-		text = readFileSync(join(vaultRoot, GEMINI_SETTINGS), "utf8")
-			.replace(/^\uFEFF/, "")
-			.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (_, string: string | undefined) => string ?? "");
-	} catch {
-		return [];
-	}
-	try {
-		const names = (JSON.parse(text) as { context?: { fileName?: unknown } } | null)?.context?.fileName;
+		// Only a regular file: a FIFO at that path would block the hook on read.
+		if (!statSync(path).isFile()) return [];
+		// Strings are matched first and kept, so a `//` inside one (a URL) is no
+		// comment; an unterminated block comment runs to the end, in one pass.
+		const text = readFileSync(path, "utf8")
+			.replace(/^﻿/, "")
+			.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g, (_, string: string | undefined) => string ?? "");
+		const settings = JSON.parse(text) as { context?: { fileName?: unknown }; contextFileName?: unknown } | null;
+		const names = settings?.context?.fileName ?? settings?.contextFileName;
 		return (Array.isArray(names) ? names : [names]).filter((n): n is string => typeof n === "string");
 	} catch {
-		const value = /"context"\s*:\s*\{[^{}]*?"fileName"\s*:\s*(\[[^\]]*\]|"[^"]*")/.exec(text)?.[1] ?? "";
-		return [...value.matchAll(/"([^"]*)"/g)].map((m) => m[1]!);
+		return [];
 	}
 }
 

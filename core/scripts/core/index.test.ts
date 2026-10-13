@@ -165,25 +165,36 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "non-strings are dropped");
 	});
 
-	test("comments, a BOM and CRLF, as Gemini accepts them: the narrow read finds fileName", () => {
-		settings('﻿{\r\n  // Gemini reads AGENTS.md\r\n  "context": { "fileName": ["AGENTS.md"] }\r\n}\r\n');
+	test("comments, a BOM and CRLF, as Gemini accepts them: the settings still parse", () => {
+		settings('\uFEFF{\r\n  // Gemini reads AGENTS.md\r\n  "context": { "fileName": ["AGENTS.md"] }\r\n}\r\n');
 		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"]);
 		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), true);
 	});
 
-	test("a commented-out fileName doesn't count: the narrow read skips comments", () => {
-		settings('{\n  // was: "fileName": "AGENTS.md"\n  /* "fileName": ["AGENTS.md"] */\n  "context": { "fileName": "GEMINI.md" }\n}\n');
+	test("a commented-out fileName doesn't count, and a // inside a string is no comment", () => {
+		settings('{\n  // was: "fileName": "AGENTS.md"\n  /* "context": { "fileName": ["AGENTS.md"] } */\n  "context": { "fileName": "GEMINI.md" }\n}\n');
 		assert.deepEqual(core.geminiContextFiles(root), ["GEMINI.md"]);
 		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), false);
 		settings('{\n  // a comment\n  "$schema": "https://example.com/settings.json",\n  "context": { "fileName": "AGENTS.md" }\n}\n');
-		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "a // inside a string is no comment");
+		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"]);
+		settings('{ "context": { "fileName": "AGENTS.md" } } /* never closed');
+		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "an unterminated block comment runs to the end");
 	});
 
-	test("the narrow read takes context's fileName only, not one under another key", () => {
-		settings('{\n  "ui": { "fileName": "AGENTS.md" },\n  "context": { "fileName": "GEMINI.md", },\n}\n');
-		assert.deepEqual(core.geminiContextFiles(root), ["GEMINI.md"]);
-		settings('{ "ui": { "fileName": "AGENTS.md" }, }');
+	test("settings Gemini can't parse name nothing, as Gemini applies none of them: a trailing comma", () => {
+		settings('{ "context": { "fileName": "AGENTS.md", }, }');
 		assert.deepEqual(core.geminiContextFiles(root), []);
+		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), false);
+	});
+
+	test("only the top-level context counts; a v1 contextFileName counts where context.fileName is absent", () => {
+		settings(JSON.stringify({ mcpServers: { x: { context: { fileName: "AGENTS.md" } } } }));
+		assert.deepEqual(core.geminiContextFiles(root), []);
+		settings(JSON.stringify({ contextFileName: "AGENTS.md" }));
+		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"]);
+		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), true);
+		settings(JSON.stringify({ contextFileName: "AGENTS.md", context: { fileName: "GEMINI.md" } }));
+		assert.deepEqual(core.geminiContextFiles(root), ["GEMINI.md"], "context.fileName wins over the v1 key");
 	});
 
 	test("names match by #91's rule: agents.md names AGENTS.md where the filesystem ignores case", () => {
