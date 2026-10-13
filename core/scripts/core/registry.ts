@@ -220,15 +220,18 @@ function ordered<T extends { readonly id: string; readonly priority?: number }>(
 	for (const { declaration, extension } of registry.loaded) {
 		if (!declaration.events.includes(event)) continue;
 		const off = new Set(declaration.disable ?? []);
-		// Reading an extension's lists and items runs its code too (a getter),
-		// so it is isolated like a call.
+		// Reading an extension's lists and items runs its code too (a getter, or a
+		// Proxy walked), so it is isolated like a call, and the list is copied
+		// inside the try. Its id is the declaration's, which load checked equal
+		// to the extension's and which runs no code (#110).
+		const ext = declaration.id;
 		let items: readonly T[];
 		try {
 			const list = pick(extension) ?? [];
 			if (!Array.isArray(list)) throw new Error("the list is not an array");
-			items = list;
+			items = Array.from(list as readonly T[]);
 		} catch (err) {
-			failures.push({ extension: extension.id, point, message: message(err) });
+			failures.push({ extension: ext, point, message: message(err) });
 			continue;
 		}
 		for (const item of items) {
@@ -238,16 +241,16 @@ function ordered<T extends { readonly id: string; readonly priority?: number }>(
 				id = typeof item === "object" && item !== null ? item.id : undefined;
 				priority = typeof item === "object" && item !== null ? item.priority : undefined;
 			} catch (err) {
-				failures.push({ extension: extension.id, point, message: message(err) });
+				failures.push({ extension: ext, point, message: message(err) });
 				continue;
 			}
 			if (typeof id !== "string" || !(priority === undefined || (typeof priority === "number" && Number.isFinite(priority)))) {
-				failures.push({ extension: extension.id, point, message: "an item without a string `id`, or with a priority that is not a finite number" });
+				failures.push({ extension: ext, point, message: "an item without a string `id`, or with a priority that is not a finite number" });
 				continue;
 			}
 			if (off.has(id)) continue;
 			entries.push({
-				ext: extension.id,
+				ext,
 				id,
 				events: declaration.events,
 				item,
@@ -397,11 +400,10 @@ export async function collectSections(
 			if (!isString(header) || !(pointer === undefined || isString(pointer))) throw new Error("`header` and `pointer` must be strings");
 			return { header, pointer };
 		});
-		return fields === undefined ? [] : [{ ...fields, entry }];
+		return fields === undefined ? [] : [{ ...fields, entry, pointed: mode === "pointer" && fields.pointer !== undefined }];
 	});
-	const pointers = entries.filter(({ pointer }) => mode === "pointer" && pointer !== undefined);
 	const rendered = await each(
-		entries.filter((e) => !pointers.includes(e)).map(({ entry }) => entry),
+		entries.filter(({ pointed }) => !pointed).map(({ entry }) => entry),
 		failures,
 		"section",
 		(item) => item.render(ctx),
@@ -411,10 +413,9 @@ export async function collectSections(
 	const bodies = new Map<Entry<Section>, string>();
 	for (const { entry, value } of rendered) if (value !== null) bodies.set(entry, value);
 	const sections: BudgetSection[] = [];
-	for (const checked of entries) {
-		const { entry, header, pointer } = checked;
+	for (const { entry, header, pointer, pointed } of entries) {
 		const priority = budgetPriority(entry.priority);
-		if (pointers.includes(checked)) sections.push({ header, body: pointer ?? "", priority });
+		if (pointed) sections.push({ header, body: pointer ?? "", priority });
 		else {
 			const body = bodies.get(entry);
 			if (body !== undefined) sections.push({ header, body, priority, fallback: pointer });
@@ -439,8 +440,9 @@ export function collectChecklist(registry: Registry): Dispatch<ChecklistItem[]> 
 		const fields = fieldsOf(entry, "checklist", failures, (item) => {
 			const full: unknown = item.full;
 			const short: unknown = item.short;
+			const priority: unknown = item.priority;
 			if (!isString(full) || !isString(short)) throw new Error("`full` and `short` must be strings");
-			return { full, short };
+			return typeof priority === "number" ? { full, short, priority } : { full, short };
 		});
 		if (fields !== undefined) items.push({ id: entry.id, ...fields });
 	}
@@ -522,10 +524,10 @@ export function undispatched(registry: Registry): string[] {
 		}
 	};
 	for (const { declaration, extension } of registry.loaded) {
-		if (filled(() => extension.preToolGuards)) out.push(`${extension.id}: pre-tool guards`);
-		if (filled(() => extension.mcpTools)) out.push(`${extension.id}: MCP tools`);
+		if (filled(() => extension.preToolGuards)) out.push(`${declaration.id}: pre-tool guards`);
+		if (filled(() => extension.mcpTools)) out.push(`${declaration.id}: MCP tools`);
 		if (filled(() => extension.effects) && !declaration.events.some((event) => EFFECT_EVENTS.includes(event as EffectTrigger["event"]))) {
-			out.push(`${extension.id}: effects, with no ${EFFECT_EVENTS_TEXT} in its events`);
+			out.push(`${declaration.id}: effects, with no ${EFFECT_EVENTS_TEXT} in its events`);
 		}
 	}
 	return out;

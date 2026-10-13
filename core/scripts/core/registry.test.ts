@@ -373,6 +373,40 @@ describe("rule 5: nothing an extension returns reaches the output unchecked", ()
 		assert.deepEqual(failures.map((f) => [f.point, f.item, f.message]), [["checklist", undefined, "proxy"], ["checklist", "a.1", "plain string"]]);
 	});
 
+	test("a signal's hint is read once: a getter that throws on a second read can't escape (#110)", async () => {
+		const hint = once("h");
+		const ext = { id: "a", signals: [{ id: "a.1", match: () => true, get hint() { return hint(); } }] } as unknown as Extension;
+		const { result, failures } = await matchSignals(fromLoaded([declared(ext)]), "p");
+		assert.deepEqual(result, ["h"]);
+		assert.deepEqual(failures, []);
+	});
+
+	test("an extension's id is read from its declaration after load: an id getter that throws later can't escape (#110)", async () => {
+		// The registry is built around the extension, so only reads after load reach this getter.
+		const ext = { get id(): string { return boom(); }, checklist: [{ id: "a.1", full: "F", short: "S" }], get sections(): never { return boom(); }, mcpTools: [{}] } as unknown as Extension;
+		const registry = fromLoaded([declared({ id: "a" } as Extension)]);
+		const loaded = { ...registry, loaded: [{ declaration: registry.loaded[0]!.declaration, extension: ext }] };
+		assert.deepEqual(collectChecklist(loaded).result.map((i) => i.id), ["a.1"]);
+		assert.deepEqual((await collectSections(loaded, ctx, "full")).failures.map((f) => f.extension), ["a"]);
+		assert.deepEqual(undispatched(loaded), ["a: MCP tools"]);
+	});
+
+	test("a list that is a Proxy of an array, throwing as it is walked, is a failure, not a crash (#110)", () => {
+		const list = new Proxy([], { get: (target, key) => (key === "length" || key === Symbol.iterator ? boom() : Reflect.get(target, key)) });
+		const ext = { id: "a", checklist: list } as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext), declared({ id: "b", checklist: [{ id: "b.1", full: "F", short: "S" }] })]));
+		assert.deepEqual(result.map((i) => i.id), ["b.1"]);
+		assert.deepEqual(failures.map((f) => [f.extension, f.point, f.message]), [["a", "checklist", "getter"]]);
+	});
+
+	test("a checklist item keeps its own priority (#110)", () => {
+		const ext: Extension = { id: "a", checklist: [{ id: "a.1", full: "F", short: "S", priority: 3 }, { id: "a.2", full: "F", short: "S" }] };
+		assert.deepEqual(collectChecklist(fromLoaded([declared(ext)])).result, [
+			{ id: "a.1", full: "F", short: "S", priority: 3 },
+			{ id: "a.2", full: "F", short: "S" },
+		]);
+	});
+
 	test("a matching signal whose `hint` getter throws is a failure; the other hints come back (#110)", async () => {
 		const ext = {
 			id: "a",
