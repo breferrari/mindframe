@@ -44,6 +44,8 @@ test("openVault returns the migration notes, so no entry point has to call migra
 	assert.deepEqual(qmdOnly.notes, migrationNotes(qmdOnly.manifest));
 	assert.match(qmdOnly.notes.join("\n"), /QMD off: extensions needs/);
 	assert.deepEqual((await openVault(vault(t), "session-start", {})).notes, [], "nothing to migrate, no notes");
+	const migrated = JSON.stringify({ qmd_index: "notes", extensions: [JSON.parse(QMD_DECLARATION)] });
+	assert.deepEqual((await openVault(vault(t, migrated), "session-start", {})).notes, [], "qmd set and declared: migrated, no notes");
 });
 
 test("openVault with no manifest: no extensions, no throw", async (t) => {

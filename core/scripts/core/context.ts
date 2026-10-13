@@ -42,7 +42,7 @@ export async function openVault(
 	event: HookEvent,
 	env: NodeJS.ProcessEnv = process.env,
 	now: number = Date.now(),
-): Promise<{ manifest: Manifest; registry: Registry; ctx: HookContext; notes: string[] }> {
+): Promise<{ manifest: Manifest; registry: Registry; ctx: HookContext; notes: readonly string[] }> {
 	const manifest = readManifest(vaultRoot);
 	const registry = await loadRegistry(vaultRoot, manifest, event, env);
 	return { manifest, registry, ctx: { vaultRoot, manifest, now }, notes: migrationNotes(manifest) };
