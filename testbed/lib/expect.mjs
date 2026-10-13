@@ -284,12 +284,74 @@ export const isSilent = (output) => {
   return s === '' || s === '{}'
 }
 
+const deliveries = new WeakMap()
+
+/** The fields of a hook's JSON that someone reads as text: the user (systemMessage, stopReason) or the model (a block's reason). */
+const SHOWN = ['systemMessage', 'stopReason', 'reason']
+
+/**
+ * What a hook delivered, read once per hook (#129). Claude Code reads a hook's
+ * stdout as hook JSON when it parses as an object. Then:
+ * - the model's context is `hookSpecificOutput.additionalContext`, but only
+ *   from an envelope whose `hookEventName` is this hook's event, as the core's
+ *   own reader (`parseHookContext`) and Claude Code require; any other
+ *   envelope is `rejected`, and delivers nothing;
+ * - `shown` is the text of the fields someone reads (SHOWN); policyResults
+ *   and control flags (`continue`, `suppressOutput`) are for the machine.
+ * Stdout that isn't a JSON object is its own context. `size` is in the unit
+ * the core's budget and meter report: an enveloped context is the larger of
+ * its UTF-8 bytes and its JSON-escaped length (`enveloped` in
+ * lib/session-start.ts), anything else its UTF-8 bytes, and nothing is 0.
+ */
+export function delivered(h) {
+  if (deliveries.has(h)) return deliveries.get(h)
+  const raw = String(h.output ?? '')
+  let d = { context: raw, enveloped: false, rejected: false, shown: '' }
+  let json
+  try {
+    json = raw.trimStart().startsWith('{') ? JSON.parse(raw) : undefined
+  } catch {
+    json = undefined
+  }
+  if (json !== null && typeof json === 'object' && !Array.isArray(json)) {
+    const out = json.hookSpecificOutput
+    const enveloped = out !== null && typeof out === 'object' && typeof out.additionalContext === 'string'
+    const rejected = enveloped && h.event !== undefined && out.hookEventName !== h.event
+    const shown = SHOWN.map((k) => json[k]).filter((v) => typeof v === 'string' && v !== '').join('\n')
+    d = { context: enveloped && !rejected ? out.additionalContext : '', enveloped, rejected, shown }
+  }
+  d.size = d.context === '' ? 0 : d.enveloped ? Math.max(Buffer.byteLength(d.context), JSON.stringify(d.context).length) : Buffer.byteLength(d.context)
+  deliveries.set(h, d)
+  return d
+}
+
+/** Everything a hook put out for someone to read, as the `hook` kind reads it: the context, then the shown text. */
+const hookText = (h) => {
+  const d = delivered(h)
+  return [d.context, d.shown].filter((t) => t !== '').join('\n')
+}
+
+/** Nothing for the model or the user: no context and no shown text. A rejected envelope printed something, so it isn't silent. */
+export const silent = (h) => {
+  const d = delivered(h)
+  return !d.rejected && d.context.trim() === '' && d.shown === ''
+}
+
+/** What a source delivered, in the unit the core's budget and meter report (`delivered`). */
+export function deliveredSize(t, src) {
+  if (!src.startsWith('hook:')) return Buffer.byteLength(sourceText(t, src))
+  const event = src.slice('hook:'.length)
+  const sizes = t.hooks.filter((h) => h.event === event).map((h) => delivered(h).size)
+  // sourceText joins the hooks' contexts with one newline each.
+  return sizes.reduce((x, y) => x + y, 0) + Math.max(0, sizes.length - 1)
+}
+
 export function sourceText(t, src) {
   if (src === 'answer') return t.answer
   if (src === 'deliver') return t.deliver ?? ''
   if (src === 'shown') return t.informational.join('\n')
   const event = src.slice('hook:'.length)
-  return t.hooks.filter((h) => h.event === event).map((h) => h.output).join('\n')
+  return t.hooks.filter((h) => h.event === event).map((h) => delivered(h).context).join('\n')
 }
 
 function evalHook(v, ts) {
@@ -302,14 +364,14 @@ function evalHook(v, ts) {
     return [false, h.status !== 'responded' ? `${h.name}: no response` : `${h.name}: exit ${h.exitCode} (${h.outcome})`]
   }
   if (v.exit !== undefined && v.exit !== 0 && !hooks.some((h) => h.exitCode === v.exit)) return [false, `no exit ${v.exit}`]
-  if (v.silent === true && !hooks.every((h) => isSilent(h.output))) return [false, `not silent: ${hooks.find((h) => !isSilent(h.output)).output.slice(0, 80)}`]
-  if (v.silent === false && hooks.every((h) => isSilent(h.output))) return [false, 'silent']
+  if (v.silent === true && !hooks.every(silent)) return [false, `not silent: ${hookText(hooks.find((h) => !silent(h))).slice(0, 80)}`]
+  if (v.silent === false && hooks.every(silent)) return [false, 'silent']
   // output: at least one run's output matches. everyOutput: every run's
   // does, which is what a negative ("no MF- marker anywhere") needs.
-  if (v.output !== undefined && !hooks.some((h) => matches(v.output, h.output))) return [false, `output does not match ${describe(v.output)}`]
+  if (v.output !== undefined && !hooks.some((h) => matches(v.output, hookText(h)))) return [false, `output does not match ${describe(v.output)}`]
   if (v.everyOutput !== undefined) {
-    const off = hooks.find((h) => !matches(v.everyOutput, h.output))
-    if (off) return [false, `a ${off.name} output does not match ${describe(v.everyOutput)}: ${JSON.stringify(off.output.slice(0, 80))}`]
+    const off = hooks.find((h) => !matches(v.everyOutput, hookText(h)))
+    if (off) return [false, `a ${off.name} output does not match ${describe(v.everyOutput)}: ${JSON.stringify(hookText(off).slice(0, 80))}`]
   }
   return [true, `${hooks.length}x ok`]
 }
@@ -337,7 +399,7 @@ function evalOnTurn(kind, v, t) {
   if (kind === 'budget') {
     const text = sourceText(t, v.in)
     if (text === '') return [false, `${v.in} is empty`]
-    const bytes = Buffer.byteLength(text)
+    const bytes = deliveredSize(t, v.in)
     if (v.maxBytes !== undefined && bytes > v.maxBytes) return [false, `${bytes} bytes > ${v.maxBytes}`]
     if (v.lastLine !== undefined) {
       const last = text.trimEnd().split('\n').pop()
@@ -361,7 +423,7 @@ function evalOnTurn(kind, v, t) {
     if (m.truncated) return [false, 'the meter says the output was truncated']
     if (m.budget === null) return [false, 'the meter reports no budget']
     if (m.bytes > m.budget) return [false, `meter reports ${m.bytes} bytes over its ${m.budget}-byte budget`]
-    const actual = Buffer.byteLength(text)
+    const actual = deliveredSize(t, v.in)
     if (v.maxBytes !== undefined) {
       if (m.bytes > v.maxBytes) return [false, `meter reports ${m.bytes} bytes > ${v.maxBytes}`]
       if (actual > v.maxBytes) return [false, `${actual} bytes delivered > ${v.maxBytes}`]
@@ -397,7 +459,7 @@ function evalOnTurn(kind, v, t) {
     if (hooks.length === 0) return [false, `${v.event} did not run`]
     const bad = hooks.find((h) => !ok(h))
     if (bad) return [false, `${v.event} failed: exit ${bad.exitCode}`]
-    const text = hooks.map((h) => h.output).join('\n')
+    const text = hooks.map(hookText).join('\n')
     if (!text.includes(v.extension)) return [false, `output does not name ${v.extension}`]
     const missing = (v.present ?? []).filter((m) => !matches(m, text))
     if (missing.length) return [false, `other sections missing: ${missing.map(describe).join(', ')}`]

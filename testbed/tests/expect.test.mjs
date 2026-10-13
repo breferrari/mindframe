@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { evaluate, isNone, isSilent, locate, matches, validateExpectation } from '../lib/expect.mjs'
+import { delivered, evaluate, isNone, isSilent, locate, matches, validateExpectation } from '../lib/expect.mjs'
 import { validateSpec } from '../lib/spec.mjs'
 import { minimalSpec } from './_helpers.mjs'
 
@@ -120,6 +120,58 @@ test('order: presence is checked before position', () => {
   const missing = ev({ id: 'o', turn: 1, order: { in: 'hook:SessionStart', items: ['## Z', '## A'] } }, r)
   assert.equal(missing.pass, false, 'a missing first item (-1) must not pass as "before"')
   assert.match(missing.detail, /missing/)
+})
+
+const envelope = (event, context) => JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: context } })
+
+test('a hook context is graded as the agent receives it: the JSON envelope unwrapped, anything else as it stands (#129)', () => {
+  const d = (output, event = 'SessionStart') => delivered({ output, event })
+  assert.equal(d(envelope('SessionStart', '## A\n## B')).context, '## A\n## B')
+  assert.equal(d('## A\n## B').context, '## A\n## B', 'plain stdout')
+  assert.equal(d('{"hookSpecificOutput": ').context, '{"hookSpecificOutput": ', 'malformed JSON is plain stdout')
+  assert.deepEqual([d('{"systemMessage":"x"}').context, d('{"systemMessage":"x"}').shown], ['', 'x'], 'a systemMessage is shown to the user, not the model')
+  assert.equal(d(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart' } })).context, '', 'an envelope with no context gives nothing')
+  assert.equal(d(JSON.stringify({ hookSpecificOutput: { additionalContext: '## A' } })).rejected, true, 'an envelope with no event name is rejected, as the core rejects it')
+  assert.equal(d(undefined).context, '')
+  assert.equal(d(JSON.stringify({ continue: true, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: '', policyResults: [{ id: 'p' }] } })).shown, '', 'policyResults and control flags are for the machine')
+  assert.equal(d(envelope('Stop', '## A')).size, 0, 'nothing delivered, size 0')
+})
+
+test('an envelope for another event delivers nothing, and an envelope keeps its other fields for the hook kind (#129)', () => {
+  assert.equal(delivered({ output: envelope('Stop', '## A'), event: 'SessionStart' }).context, '', 'Claude Code rejects an envelope that names another event')
+  assert.equal(ev({ id: 's', turn: 1, hook: { event: 'SessionStart', silent: true } }, run({ turns: [turn(1, { hooks: [hook('SessionStart', envelope('Stop', '## A'))] })] })).pass, false, 'a rejected envelope printed something: not silent')
+  const wrong = run({ turns: [turn(1, { hooks: [hook('SessionStart', envelope('Stop', '## A\n## B'))] })] })
+  assert.equal(ev({ id: 'o', turn: 1, order: { in: 'hook:SessionStart', items: ['## A', '## B'] } }, wrong).pass, false)
+  const leak = JSON.stringify({ systemMessage: 'MF-LEAK', hookSpecificOutput: { hookEventName: 'Stop', additionalContext: 'clean' } })
+  const r = run({ turns: [turn(1, { hooks: [hook('Stop', leak)] })] })
+  assert.equal(ev({ id: 'n', turn: 1, hook: { event: 'Stop', everyOutput: { not: 'MF-LEAK' } } }, r).pass, false, 'a marker in the systemMessage still shows')
+  assert.equal(ev({ id: 's', turn: 1, hook: { event: 'Stop', silent: true } }, run({ turns: [turn(1, { hooks: [hook('Stop', JSON.stringify({ systemMessage: 'x', hookSpecificOutput: { hookEventName: 'Stop', additionalContext: '' } }))] })] })).pass, false, 'a systemMessage is content: not silent')
+})
+
+test('an envelope whose context is empty gives the agent nothing: silent (#129)', () => {
+  const r = run({ turns: [turn(1, { hooks: [hook('Stop', envelope('Stop', ''))] })] })
+  assert.equal(ev({ id: 's', turn: 1, hook: { event: 'Stop', silent: true } }, r).pass, true)
+})
+
+test('order, hook output and isolates read an enveloped SessionStart by its context (#129)', () => {
+  const r = run({ turns: [turn(1, { hooks: [hook('SessionStart', envelope('SessionStart', '## A\n⚠️ extension thrower: skipped\n## B\n## C'))] })] })
+  assert.equal(ev({ id: 'o', turn: 1, order: { in: 'hook:SessionStart', items: ['## A', '## B', '## C'] } }, r).pass, true)
+  assert.equal(ev({ id: 'h', turn: 1, hook: { event: 'SessionStart', output: { re: '^## B$', flags: 'm' } } }, r).pass, true, 'a line, not an escaped \\n')
+  assert.equal(ev({ id: 'i', turn: 1, isolates: { event: 'SessionStart', extension: 'thrower', present: ['## A', { re: '^## C$', flags: 'm' }] } }, r).pass, true, 'a line of the context, not a run inside the JSON')
+})
+
+test("meter: an enveloped context is measured in the core's unit, the larger of its bytes and its JSON-escaped length (#129)", () => {
+  // 200 short lines: escaping each newline as \n makes the JSON length well over the UTF-8 bytes.
+  const body = Array.from({ length: 200 }, () => 'ab').join('\n')
+  const sized = JSON.stringify(body).length
+  const kb = (n) => `${(n / 1000).toFixed(1)}kB`
+  const context = `${body}\n_context injected: ${kb(sized)} / 4.0kB budget_`
+  assert.ok(sized > Buffer.byteLength(context) + 100, 'the escaped size is past the bytes and the meter rounding')
+  const r = run({ preamble: [hook('SessionStart', envelope('SessionStart', context))] })
+  const m = ev({ id: 'm', arms: ['settings'], turn: 'preamble', meter: { in: 'hook:SessionStart', maxBytes: 4000 } }, r)
+  assert.equal(m.pass, true, m.detail)
+  const plain = run({ preamble: [hook('SessionStart', context)] })
+  assert.equal(ev({ id: 'm', arms: ['settings'], turn: 'preamble', meter: { in: 'hook:SessionStart' } }, plain).pass, false, 'plain stdout is held to its bytes: the meter overstates what arrived')
 })
 
 test('budget: bytes counted exactly, last line, survivors and dropped sections', () => {
