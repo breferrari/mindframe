@@ -291,6 +291,82 @@ describe("rule 5: nothing an extension returns reaches the output unchecked", ()
 		const { failures } = await runValidators(fromLoaded([declared(ext)]), { relPath: "a.md", content: "" }, ctx);
 		assert.equal(failures[0]?.message, "nope");
 	});
+
+	// A getter runs the extension's code, so every field the registry reads
+	// outside a call is read once, inside a try (#110).
+	const boom = (): never => {
+		throw new Error("getter");
+	};
+	/** A field that reads `first` once, then throws: a second read would escape the dispatch. */
+	const once = <T>(first: T) => {
+		let read = false;
+		return () => (read ? boom() : ((read = true), first));
+	};
+
+	test("a checklist item whose `full` or `short` getter throws is a failure; the other items come back (#110)", () => {
+		const ext = {
+			id: "a",
+			checklist: [
+				{ id: "a.1", get full(): string { return boom(); }, short: "s" },
+				{ id: "a.2", full: "f", get short(): string { return boom(); } },
+				{ id: "a.3", full: "F", short: "S" },
+			],
+		} as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext)]));
+		assert.deepEqual(result, [{ id: "a.3", full: "F", short: "S" }]);
+		assert.deepEqual(failures.map((f) => [f.point, f.item, f.message]), [["checklist", "a.1", "getter"], ["checklist", "a.2", "getter"]]);
+	});
+
+	test("a checklist item's fields are read once: a getter that throws on a second read can't escape (#110)", () => {
+		const full = once("F");
+		const ext = { id: "a", checklist: [{ id: "a.1", get full() { return full(); }, short: "S" }] } as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext)]));
+		assert.deepEqual(result, [{ id: "a.1", full: "F", short: "S" }]);
+		assert.deepEqual(failures, []);
+	});
+
+	test("a section whose `header` or `pointer` getter throws is a failure; the other sections render (#110)", async () => {
+		const ext = {
+			id: "a",
+			sections: [
+				{ id: "a.1", get header(): string { return boom(); }, render: () => "x" },
+				{ id: "a.2", header: "### B", get pointer(): string { return boom(); }, render: () => "y" },
+				section("a.3", 3, "z"),
+			],
+		} as unknown as Extension;
+		const { result, failures } = await collectSections(fromLoaded([declared(ext)]), ctx, "full");
+		assert.deepEqual(result.map((s) => s.body), ["z"]);
+		assert.deepEqual(failures.map((f) => [f.point, f.item, f.message]), [["section", "a.1", "getter"], ["section", "a.2", "getter"]]);
+	});
+
+	test("a section's header is read once: a getter that changes type after the check can't reach the output (#110)", async () => {
+		const reads: unknown[] = ["### Once", 42];
+		const ext = { id: "a", sections: [{ id: "a.1", get header() { return reads.shift(); }, render: () => "x" }] } as unknown as Extension;
+		const { result, failures } = await collectSections(fromLoaded([declared(ext)]), ctx, "full");
+		assert.deepEqual(result.map((s) => s.header), ["### Once"]);
+		assert.deepEqual(failures, []);
+	});
+
+	test("a matching signal whose `hint` getter throws is a failure; the other hints come back (#110)", async () => {
+		const ext = {
+			id: "a",
+			signals: [
+				{ id: "a.1", match: () => true, get hint(): string { return boom(); } },
+				{ id: "a.2", match: () => true, hint: "h" },
+			],
+		} as unknown as Extension;
+		const { result, failures } = await matchSignals(fromLoaded([declared(ext)]), "p");
+		assert.deepEqual(result, ["h"]);
+		assert.deepEqual(failures.map((f) => [f.point, f.item, f.message]), [["signal", "a.1", "getter"]]);
+	});
+
+	test("an item's id is read once: an id getter that throws on a later read can't escape the sort (#110)", () => {
+		const id = once("a.1");
+		const ext = { id: "a", checklist: [{ get id() { return id(); }, full: "F", short: "S" }, { id: "a.0", full: "F", short: "S" }] } as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext)]));
+		assert.deepEqual(result.map((i) => i.id), ["a.0", "a.1"]);
+		assert.deepEqual(failures, []);
+	});
 });
 
 describe("rule 8: overrides are by id", () => {

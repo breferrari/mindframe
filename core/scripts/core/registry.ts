@@ -195,6 +195,8 @@ export async function loadRegistry(
 
 type Entry<T> = {
 	readonly ext: string;
+	/** The item's id, as `ordered` read and checked it: the extension's object is never asked again (#110). */
+	readonly id: string;
 	/** The events the extension's declaration lists. */
 	readonly events: readonly HookEvent[];
 	readonly item: T;
@@ -246,6 +248,7 @@ function ordered<T extends { readonly id: string; readonly priority?: number }>(
 			if (off.has(id)) continue;
 			entries.push({
 				ext: extension.id,
+				id,
 				events: declaration.events,
 				item,
 				priority: (priority as number | undefined) ?? declaration.priority ?? Number.POSITIVE_INFINITY,
@@ -257,7 +260,7 @@ function ordered<T extends { readonly id: string; readonly priority?: number }>(
 	return entries.sort(
 		(a, b) =>
 			(a.priority === b.priority ? 0 : a.priority < b.priority ? -1 : 1) ||
-			byText(a.item.id, b.item.id) ||
+			byText(a.id, b.id) ||
 			byText(a.ext, b.ext),
 	);
 }
@@ -300,7 +303,7 @@ const isFindingList = (v: unknown): v is Finding[] =>
  * hook's output unchecked.
  */
 async function isolated<R>(
-	entry: Entry<{ readonly id: string }>,
+	entry: Entry<unknown>,
 	point: Point,
 	started: Promise<unknown>,
 	accept: (value: unknown) => value is R,
@@ -311,7 +314,21 @@ async function isolated<R>(
 		if (!accept(value)) throw new Error(`returned ${describe(value)}, not ${expected}`);
 		return { ok: true, value };
 	} catch (err) {
-		return { ok: false, failure: { extension: entry.ext, point, item: entry.item.id, message: message(err) } };
+		return { ok: false, failure: { extension: entry.ext, point, item: entry.id, message: message(err) } };
+	}
+}
+
+/**
+ * The fields of an entry's item, read once inside a try: a getter runs the
+ * extension's code, so a throw is a failure at `point`, and the entry is
+ * dropped (#110). Callers build from the values read, never the item again.
+ */
+function fieldsOf<T, F>(entry: Entry<T>, point: Point, failures: Failure[], read: (item: T) => F): F | undefined {
+	try {
+		return read(entry.item);
+	} catch (err) {
+		failures.push({ extension: entry.ext, point, item: entry.id, message: message(err) });
+		return undefined;
 	}
 }
 
@@ -366,13 +383,20 @@ export async function collectSections(
 ): Promise<Dispatch<BudgetSection[]>> {
 	const failures: Failure[] = [];
 	// A section's header and pointer are written into the output as they are,
-	// so they are checked before anything renders.
-	const entries = ordered<Section>(registry, "session-start", "section", (e) => e.sections, failures).filter(({ ext, item }) => {
-		if (isString(item.header) && (item.pointer === undefined || isString(item.pointer))) return true;
-		failures.push({ extension: ext, point: "section", item: item.id, message: "`header` and `pointer` must be strings" });
+	// so they are read once and checked before anything renders.
+	const read = new Map<Entry<Section>, { readonly header: string; readonly pointer: string | undefined }>();
+	const entries = ordered<Section>(registry, "session-start", "section", (e) => e.sections, failures).filter((entry) => {
+		const fields = fieldsOf(entry, "section", failures, (item): { header: unknown; pointer: unknown } => ({ header: item.header, pointer: item.pointer }));
+		if (fields === undefined) return false;
+		const { header, pointer } = fields;
+		if (isString(header) && (pointer === undefined || isString(pointer))) {
+			read.set(entry, { header, pointer });
+			return true;
+		}
+		failures.push({ extension: entry.ext, point: "section", item: entry.id, message: "`header` and `pointer` must be strings" });
 		return false;
 	});
-	const pointers = entries.filter(({ item }) => mode === "pointer" && item.pointer !== undefined);
+	const pointers = entries.filter((entry) => mode === "pointer" && read.get(entry)?.pointer !== undefined);
 	const rendered = await each(
 		entries.filter((e) => !pointers.includes(e)),
 		failures,
@@ -385,12 +409,12 @@ export async function collectSections(
 	for (const { entry, value } of rendered) if (value !== null) bodies.set(entry, value);
 	const sections: BudgetSection[] = [];
 	for (const entry of entries) {
-		const { item } = entry;
+		const { header, pointer } = read.get(entry)!;
 		const priority = budgetPriority(entry.priority);
-		if (pointers.includes(entry)) sections.push({ header: item.header, body: item.pointer ?? "", priority });
+		if (pointers.includes(entry)) sections.push({ header, body: pointer ?? "", priority });
 		else {
 			const body = bodies.get(entry);
-			if (body !== undefined) sections.push({ header: item.header, body, priority, fallback: item.pointer });
+			if (body !== undefined) sections.push({ header, body, priority, fallback: pointer });
 		}
 	}
 	return { result: sections, failures };
@@ -408,9 +432,12 @@ export async function runDetectors(registry: Registry, ctx: HookContext): Promis
 export function collectChecklist(registry: Registry): Dispatch<ChecklistItem[]> {
 	const failures: Failure[] = [];
 	const items: ChecklistItem[] = [];
-	for (const { ext, item } of ordered<ChecklistItem>(registry, "stop", "checklist", (e) => e.checklist, failures)) {
-		if (isString(item.full) && isString(item.short)) items.push(item);
-		else failures.push({ extension: ext, point: "checklist", item: item.id, message: "`full` and `short` must be strings" });
+	for (const entry of ordered<ChecklistItem>(registry, "stop", "checklist", (e) => e.checklist, failures)) {
+		const fields = fieldsOf(entry, "checklist", failures, (item): { full: unknown; short: unknown } => ({ full: item.full, short: item.short }));
+		if (fields === undefined) continue;
+		const { full, short } = fields;
+		if (isString(full) && isString(short)) items.push({ id: entry.id, full, short });
+		else failures.push({ extension: entry.ext, point: "checklist", item: entry.id, message: "`full` and `short` must be strings" });
 	}
 	return { result: items, failures };
 }
@@ -423,8 +450,10 @@ export async function matchSignals(registry: Registry, prompt: string): Promise<
 	const hints: string[] = [];
 	for (const { entry, value } of runs) {
 		if (!value) continue;
-		const hint: unknown = entry.item.hint;
-		if (!isString(hint)) failures.push({ extension: entry.ext, point: "signal", item: entry.item.id, message: "`hint` must be a string" });
+		const fields = fieldsOf(entry, "signal", failures, (item): { hint: unknown } => ({ hint: item.hint }));
+		if (fields === undefined) continue;
+		const { hint } = fields;
+		if (!isString(hint)) failures.push({ extension: entry.ext, point: "signal", item: entry.id, message: "`hint` must be a string" });
 		else if (!hints.includes(hint)) hints.push(hint);
 	}
 	return { result: hints, failures };
@@ -460,7 +489,7 @@ export async function runEffects(registry: Registry, trigger: EffectTrigger, ctx
 	const calls = entries.map((entry) => ({
 		...entry,
 		item: {
-			id: entry.item.id,
+			id: entry.id,
 			call: () => {
 				const on: unknown = entry.item.on;
 				if (!Array.isArray(on) || on.length === 0 || !on.every((event) => EFFECT_EVENTS.includes(event))) {
