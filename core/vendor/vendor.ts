@@ -607,7 +607,15 @@ function exportedNamesOf(source: string): Set<string> {
 	const code = codeOf(source);
 	const names = new Set<string>();
 	if (/\bexport\s+default\b/.test(code)) names.add("default");
-	for (const m of code.matchAll(/\bexport\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(?:const|let|var|function\*?|class|type|interface|enum|namespace)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
+	for (const m of code.matchAll(/\bexport\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(?:const\s+enum|function\s*\*?|class|type|interface|enum|namespace|module)\s*([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
+	// A variable statement can bind several names, destructured too: every
+	// identifier before an `=` or inside the binding pattern counts. Reading too
+	// many names only misses a warning; reading too few would raise a false one.
+	for (const m of code.matchAll(/\bexport\s+(?:declare\s+)?(?:const|let|var)\s+(?!enum\b)([^;]*?)(?=;|\n\s*export\b|$)/g)) {
+		for (const id of m[1]!.matchAll(/(?:^|[,{[]|\.\.\.)\s*([A-Za-z_$][\w$]*)\s*(?=[,=}\]:]|$)|:\s*([A-Za-z_$][\w$]*)\s*(?=[,=}\]])/g)) names.add((id[2] ?? id[1])!);
+	}
+	for (const m of code.matchAll(/\bexport\s+\*\s+as\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
+	for (const m of code.matchAll(/\bexport\s+import\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
 	for (const m of code.matchAll(/\bexport\s+(?:type\s+)?\{([^}]*)\}/g)) for (const name of namesIn(m[1]!, "exported")) names.add(name);
 	return names;
 }
@@ -640,7 +648,14 @@ export function importsOf(source: string): string[] {
  * Linear however long the file.
  */
 function lex(source: string, keep: (text: string, before: string, plain: boolean) => boolean): string {
-	let code = "";
+	// The code, in pieces joined once at the end, and its last stretch: enough to
+	// see what precedes a string or a slash, so each step costs the same.
+	const pieces: string[] = [];
+	let tail = "";
+	const add = (piece: string) => {
+		pieces.push(piece);
+		tail = (tail + piece).slice(-64);
+	};
 	for (let i = 0; i < source.length; ) {
 		const ch = source[i]!;
 		const two = source.slice(i, i + 2);
@@ -652,12 +667,12 @@ function lex(source: string, keep: (text: string, before: string, plain: boolean
 		if (two === "/*") {
 			const end = source.indexOf("*/", i + 2);
 			i = end === -1 ? source.length : end + 2;
-			code += " ";
+			add(" ");
 			continue;
 		}
 		// A slash where a value starts opens a regex literal: skip to its closing
 		// slash, past escapes and character classes.
-		if (ch === "/" && /(?:^|[(,=:[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bin|\bof)\s*$/.test(code.slice(-64))) {
+		if (ch === "/" && /(?:^|[(,=:[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bin|\bof)\s*$/.test(tail)) {
 			let j = i + 1;
 			let inClass = false;
 			while (j < source.length && source[j] !== "\n") {
@@ -668,7 +683,7 @@ function lex(source: string, keep: (text: string, before: string, plain: boolean
 				else j++;
 			}
 			i = j + 1;
-			code += " _ ";
+			add(" _ ");
 			continue;
 		}
 		if (ch === '"' || ch === "'" || ch === "`") {
@@ -686,14 +701,14 @@ function lex(source: string, keep: (text: string, before: string, plain: boolean
 				text += source[j];
 				j++;
 			}
-			code += keep(text, code.slice(-64).trimEnd(), plain) ? JSON.stringify(text) : '""';
+			add(keep(text, tail.trimEnd(), plain) ? JSON.stringify(text) : '""');
 			i = j + 1;
 			continue;
 		}
-		code += ch;
+		add(ch);
 		i++;
 	}
-	return code;
+	return pieces.join("");
 }
 
 const MODULE_FILE = /\.(?:[cm]?[jt]sx?)$/;
@@ -737,6 +752,7 @@ function closeImports(
 	const seen = new Set<string>();
 	const added: Array<{ file: string; importedBy: string }> = [];
 	const kept: Kept[] = [];
+	const exportsOf = new Map<string, Set<string> | null>();
 	const queue: Array<{ file: string; upstream: string; fresh: string; was: string }> = [];
 	for (const f of files) {
 		if (!MODULE_FILE.test(f.file)) continue;
@@ -769,10 +785,20 @@ function closeImports(
 			if (owner) {
 				if (stat?.isFile()) {
 					if (!kept.some((k) => k.file === file && k.importedBy === next.file)) {
-						const exported = exportedNamesOf(readFileSync(target, "utf8"));
-						// Every specifier of this importer's that resolves to the file: `./util.ts` and `./sub/../util.ts` are one.
-						const names = namedImportsOf(next.fresh, (s) => path.posix.normalize(path.posix.join(path.posix.dirname(next.file), s)) === file);
-						kept.push({ file, importedBy: next.file, owner, unexported: names.filter((name) => !exported.has(name)) });
+						if (!exportsOf.has(file)) {
+							// The names are a warning's evidence, so a file that can't be read is checked against nothing.
+							let source: string | null = null;
+							try {
+								source = readFileSync(target, "utf8");
+							} catch {
+								source = null;
+							}
+							exportsOf.set(file, source === null ? null : exportedNamesOf(source));
+						}
+						const exported = exportsOf.get(file)!;
+						// Every relative specifier of this importer's that resolves to the file: `./util.ts` and `./sub/../util.ts` are one.
+						const names = namedImportsOf(next.fresh, (s) => (s.startsWith("./") || s.startsWith("../")) && path.posix.normalize(path.posix.join(path.posix.dirname(next.file), s)) === file);
+						kept.push({ file, importedBy: next.file, owner, unexported: exported === null ? [] : names.filter((name) => !exported.has(name)) });
 					}
 				} else if (first) {
 					problems.push(`${file} is owned by ${owner} and ${stat === undefined ? "missing from the vault" : "isn't a file"}, and ${next.file} now imports it; restore it through that record, then update`);

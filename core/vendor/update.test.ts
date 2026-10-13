@@ -382,6 +382,22 @@ test("a name the kept copy exports under an alias counts as exported (#117)", (t
 	assert.ok(!s.lines.some((l) => l.includes("warning")), s.lines.join("\n"));
 });
 
+test("the kept copy's exports read as a module declares them: const enums, several bindings, destructuring, namespaces (#117)", (t) => {
+	const s = imports(t);
+	otherRecord(s, "export const enum Mode { A }\nexport const a = 1, b = f(1, 2);\nexport const { c, d: e } = obj;\nexport * as ns from \"./other.ts\";\nexport function* gen() {}\n");
+	s.commit({ "lib.ts": 'import { Mode, a, b, c, e, ns, gen } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(!s.lines.some((l) => l.includes("warning")), s.lines.join("\n"));
+});
+
+test("a package specifier that happens to join to the kept file's path is no import of it (#117)", (t) => {
+	const s = imports(t);
+	otherRecord(s, "export const u = 0;\n");
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\nimport { pkgThing } from "util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(!s.lines.some((l) => l.includes("warning")), s.lines.join("\n"));
+});
+
 test("each updated file that imports a kept file is checked, not only the first (#117)", (t) => {
 	const s = imports(t);
 	otherRecord(s, "export const u = 0;\n");

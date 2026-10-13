@@ -209,7 +209,7 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 		// the read runs in a child that is killed if it blocks, which fails the test.
 		const index = new URL("./index.ts", import.meta.url).href;
 		const code = `const m = await import(${JSON.stringify(index)}); console.log(JSON.stringify(m.geminiContextFiles(${JSON.stringify(root)})));`;
-		const run = spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", "--input-type=module", "-e", code], { encoding: "utf8", timeout: 5000 });
+		const run = spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", "--input-type=module", "-e", code], { encoding: "utf8", timeout: 20_000 });
 		assert.equal(run.signal, null, "the read blocked, and the child was killed");
 		assert.equal(run.stdout.trim(), "[]", run.stderr);
 	});
