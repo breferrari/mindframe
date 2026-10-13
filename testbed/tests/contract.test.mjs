@@ -159,8 +159,9 @@ test('the fixture extensions load and have the shape the spec relies on', async 
   const budget = await load('mf-budget.mjs')
   assert.equal(budget.sections.find((s) => s.id === 'core').pointer, undefined, 'core is load-bearing')
   assert.deepEqual(thrower.effects[0].on, ['stop'])
-  assert.throws(() => thrower.effects[0].run({ event: 'stop' }, {}))
+  assert.throws(() => thrower.effects[0].run({ event: 'stop' }, {}), /failed on purpose/)
   const effect = await load('mf-effect.mjs')
+  assert.ok(thrower.effects[0].priority < (effect.effects[0].priority ?? Number.POSITIVE_INFINITY), 'the throwing effect runs first, so the one after it shows a throw stops nothing')
   const vault = mkdtempSync(path.join(os.tmpdir(), 'mf-effect-'))
   try {
     const ctx = { vaultRoot: vault, manifest: null, now: 0 }
