@@ -7,6 +7,7 @@
  * together.
  */
 import { describe, test } from "node:test";
+import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
 import { frontmatterBlock, frontmatterLines } from "../lib/frontmatter-block.ts";
 import { countTicketIdWikilinks, shouldSkipFile, validateContent } from "../lib/frontmatter.ts";
@@ -81,6 +82,42 @@ describe("frontmatter.ts's other readers (#82)", () => {
 	test("an instruction file, current or retired, is not a note; a note merely named like one is", () => {
 		for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]) assert.equal(shouldSkipFile(`/v/${name}`), true, name);
 		for (const path of ["/v/people/Claude.md", "/v/topics/Gemini.md", "/v/x/agents.md", "/v/notes/Claude notes.md"]) assert.equal(shouldSkipFile(path), false, path);
+	});
+
+	test("given the vault root, a root instruction file is skipped in the case the agent loads it (#91)", () => {
+		const root = join("/", "v");
+		for (const platform of ["win32", "darwin"] as const) {
+			for (const name of ["claude.md", "Gemini.md", "agents.md"]) assert.equal(shouldSkipFile(join(root, name), { vaultRoot: root, platform }), true, `${platform} ${name}`);
+		}
+		for (const name of ["claude.md", "Gemini.md", "agents.md"]) assert.equal(shouldSkipFile(join(root, name), { vaultRoot: root, platform: "linux" }), false, `linux ${name} is a note`);
+		for (const name of ["CLAUDE.md", "AGENTS.md"]) assert.equal(shouldSkipFile(join(root, name), { vaultRoot: root, platform: "linux" }), true, name);
+		for (const platform of ["win32", "darwin", "linux"] as const) {
+			assert.equal(shouldSkipFile(join(root, "people", "Claude.md"), { vaultRoot: root, platform }), false, `${platform}: a nested note named like one stays a note`);
+		}
+		assert.equal(shouldSkipFile(join(root, "claude.md")), false, "no vault root: exact, as before");
+	});
+
+	test("where the filesystem ignores case, the vault root matches in any case: a drive letter as c: or C: (#91)", () => {
+		const root = resolve("Vault");
+		for (const platform of ["win32", "darwin"] as const) {
+			assert.equal(shouldSkipFile(join(root.toUpperCase(), "claude.md"), { vaultRoot: root.toLowerCase(), platform }), true, platform);
+		}
+	});
+
+	test("a vault-relative path is read from the vault root, not the working directory (#91)", () => {
+		const root = resolve("elsewhere", "Vault");
+		assert.equal(shouldSkipFile("claude.md", { vaultRoot: root, platform: "win32" }), true);
+		assert.equal(shouldSkipFile(join("people", "claude.md"), { vaultRoot: root, platform: "win32" }), false);
+		assert.equal(shouldSkipFile("claude.md", { vaultRoot: root, platform: "darwin" }), true);
+		assert.equal(shouldSkipFile("claude.md", { vaultRoot: root, platform: "linux" }), false, "a note on Linux");
+		assert.equal(shouldSkipFile("CLAUDE.md", { vaultRoot: root, platform: "linux" }), true);
+	});
+
+	test("a backslash-separated relative path is nested on every OS, not one name at the root (#91)", () => {
+		const root = resolve("Vault");
+		for (const platform of ["win32", "darwin", "linux"] as const) {
+			assert.equal(shouldSkipFile(String.raw`people\claude.md`, { vaultRoot: root, platform }), false, platform);
+		}
 	});
 
 	test("a fence-looking line inside a yaml value doesn't hide the body's links", () => {

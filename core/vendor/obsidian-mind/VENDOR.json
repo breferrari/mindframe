@@ -35,9 +35,9 @@
     },
     "core/scripts/lib/frontmatter.ts": {
       "patches": [
-        "0001-frontmatter.patch"
+        "0025-frontmatter.patch"
       ],
-      "sha256": "bb9deba3a751e877d0910361f02037e7e27b87693cfda06035eeacd75d1be838",
+      "sha256": "851c20c98733d4db3e775b6e56a9d35c33cd8b6a064ec9879c876cb9fdcacef0",
       "upstream": "lib/frontmatter.ts",
       "upstreamSha256": "aad35e1b6f615b58abbdece44d0977a1753e6b1e6984363447a45d7ac116e9d4"
     },
@@ -48,9 +48,9 @@
     },
     "core/scripts/lib/instruction-files.ts": {
       "patches": [
-        "0009-instruction-files.patch"
+        "0026-instruction-files.patch"
       ],
-      "sha256": "86ae26f2522746905c2bd5147bef639c0d6c700c225121c68d14ce8c9b620fa7",
+      "sha256": "112c81e9c81de58cd810e4c04e4c277cf87fd40d6f3ef1640b310809feebac30",
       "upstream": "lib/instruction-files.ts",
       "upstreamSha256": "3367dcf34cdf8e14ff7a75cc515a6f23c76d3120fb43868dd507adc860e184c5"
     },

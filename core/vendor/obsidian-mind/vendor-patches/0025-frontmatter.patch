@@ -1,4 +1,4 @@
-Description: mindframe: frontmatter found by its delimiter lines (#64); the instruction-file names from lib/instruction-files.ts, absorbing obsidian-mind #333 (#90); the one frontmatter rule, and links counted outside code (#82)
+Description: mindframe: frontmatter found by its delimiter lines (#64); the instruction-file names from lib/instruction-files.ts, absorbing obsidian-mind #333 (#90); the one frontmatter rule, and links counted outside code (#82); given the vault root, a root instruction file skipped in the case the agent loads it (#91)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
@@ -9,10 +9,11 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
   * frontmatter fields, and wikilink presence on non-trivial notes.
   */
  
+-import { basename, posix } from "node:path";
 +import { frontmatterBlock } from "./frontmatter-block.ts";
- import { basename, posix } from "node:path";
++import { basename, dirname, posix, resolve } from "node:path";
  import { readFileSync } from "node:fs";
-+import { INSTRUCTION_FILE, RETIRED_INSTRUCTION_FILES } from "./instruction-files.ts";
++import { INSTRUCTION_FILES, isInstructionFile, sameOnDisk } from "./instruction-files.ts";
  import { hardWrappedParagraphs } from "./prose-width.ts";
 +import { stripCodeRegions } from "./wikilinks.ts";
  
@@ -25,8 +26,8 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
 -	"AGENTS.md",
 -	"GEMINI.md",
 -]);
-+/** Files that are not notes: the docs, and the instruction files (lib/instruction-files.ts). Matched exactly; #91 decides case. */
-+const ROOT_FILES: ReadonlySet<string> = new Set(["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "ARCHITECTURE.md", INSTRUCTION_FILE, ...RETIRED_INSTRUCTION_FILES]);
++/** Files that are not notes: the docs, and the instruction files (lib/instruction-files.ts). Matched exactly, at any depth; shouldSkipFile adds the case rule at the vault root (#91). */
++const ROOT_FILES: ReadonlySet<string> = new Set(["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "ARCHITECTURE.md", ...INSTRUCTION_FILES]);
  
  const SKIP_PATH_SEGMENTS: readonly string[] = [
  	".claude/",
@@ -39,7 +40,34 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
   *
   * The path is lexically normalized first (separators unified, `.`/`..`
   * segments collapsed) so a path can't dodge the check by spelling the
-@@ -83,9 +79,9 @@
+@@ -57,14 +53,25 @@
+ /**
+  * Return true if the file should be skipped (not validated).
+  * Skips non-markdown, dotfiles, templates, root docs, and translated READMEs.
++ *
++ * Root names match exactly, at any depth. Given the vault root, an
++ * instruction file at the root is also matched the way the agent loads it
++ * (#91): `claude.md` is skipped where the filesystem ignores case, and is a
++ * note on Linux. Without the root, matching stays exact, so a nested note
++ * named like one (`people/Claude.md`) is never skipped for its name. A
++ * relative path is read from the vault root.
+  */
+-export function shouldSkipFile(filePath: string): boolean {
++export function shouldSkipFile(
++	filePath: string,
++	opts: { readonly vaultRoot?: string; readonly platform?: NodeJS.Platform } = {},
++): boolean {
+ 	if (!filePath || !filePath.endsWith(".md")) return true;
+ 
+ 	const normalized = filePath.replaceAll("\\", "/");
+ 	const base = basename(normalized);
+ 
+ 	if (ROOT_FILES.has(base)) return true;
++	if (opts.vaultRoot !== undefined && isInstructionFile(base, opts.platform) && sameOnDisk(dirname(resolve(opts.vaultRoot, normalized)), resolve(opts.vaultRoot), opts.platform)) return true;
+ 
+ 	if (base.startsWith("README.") && base.endsWith(".md")) return true;
+ 
+@@ -83,9 +90,9 @@
  
  /**
   * Which note type a vault path is, by folder. The folder→type map is
@@ -52,7 +80,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
   * do not need a work note's `status`.
   */
  const NOTE_TYPE_BY_FOLDER: readonly (readonly [string, string])[] = [
-@@ -197,28 +193,25 @@
+@@ -197,28 +204,25 @@
  ): string[] {
  	const warnings: string[] = [];
  
@@ -95,7 +123,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
  		warnings.push(
  			"No [[wikilinks]] found — every note must link to at least one other note (vault convention)",
  		);
-@@ -232,7 +225,7 @@
+@@ -232,7 +236,7 @@
  		);
  	}
  
@@ -104,7 +132,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
  	if (ticketLinks > 0) {
  		warnings.push(
  			`${ticketLinks} ticket-ID wikilink(s) (e.g. [[PROJ-…]]) — ticket IDs are plain text or tracker links, never wikilinks (they are not notes)`,
-@@ -250,9 +243,15 @@
+@@ -250,9 +254,15 @@
   * the same decision validateContent's prose comes from.
   */
  export function countTicketIdWikilinks(content: string): number {

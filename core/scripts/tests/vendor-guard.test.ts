@@ -46,9 +46,12 @@ test("an edit to a file either record lists is denied, naming no upstream", (t) 
 	assert.notEqual(decide({ tool_name: "NotebookEdit", tool_input: { notebook_path: ".claude/scripts/lint.ts" } }, root, NOW), null);
 });
 
-test("Windows paths match without case", (t) => {
+test("paths match without case where the filesystem ignores it: Windows and macOS (#91)", (t) => {
 	const root = vault(t);
 	assert.notEqual(decide(edit(join(root, ".CLAUDE", "Scripts", "LINT.ts")), root, NOW, "win32"), null);
+	assert.notEqual(decide(edit(join(root, ".CLAUDE", "Scripts", "LINT.ts")), root, NOW, "darwin"), null);
+	beginEdits(root, [".claude/scripts/lint.ts"], NOW);
+	assert.equal(decide(edit(join(root, ".CLAUDE", "Scripts", "LINT.ts")), root, NOW, "darwin"), null, "an open window matches without case on macOS");
 	assert.equal(decide(edit(join(root, ".CLAUDE", "Scripts", "LINT.ts")), root, NOW, "linux"), null);
 });
 

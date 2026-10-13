@@ -22,6 +22,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { debug, readStdinJson } from "./lib/hook-io.ts";
+import { foldOnDisk } from "./lib/instruction-files.ts";
 import { resolveProjectDir } from "./lib/project-dir.ts";
 
 export const GUARDED_TOOLS: ReadonlySet<string> = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
@@ -40,8 +41,9 @@ export const EXTENSIONS_HOW = "https://github.com/breferrari/mindframe/blob/main
 export type Vendored = { readonly rel: string };
 
 const posix = (p: string): string => p.replaceAll("\\", "/");
-// Windows paths compare without case: `C:/Vault/x` and `c:/vault/x` are one file.
-const fold = (p: string, platform: string): string => (platform === "win32" ? p.toLowerCase() : p);
+// Paths compare without case where the filesystem ignores it: `C:/Vault/x` and
+// `c:/vault/x` are one file on Windows and macOS (lib/instruction-files.ts, #91).
+const fold = foldOnDisk;
 
 /** Every `VENDOR.json` under `.claude/`, nearest first, skipping dot folders and node_modules. */
 export function findRecords(vaultRoot: string): string[] {
@@ -71,7 +73,7 @@ export function findRecords(vaultRoot: string): string[] {
  * owns it, whether or not `check` can verify the record. `.claude/VENDOR.json`
  * lists paths from the vault root, any other record from its own folder.
  */
-function* listed(vaultRoot: string, platform: string): Generator<{ recordFile: string; file: string }> {
+function* listed(vaultRoot: string, platform: NodeJS.Platform): Generator<{ recordFile: string; file: string }> {
 	const defaultRecord = fold(posix(path.join(vaultRoot, ".claude", "VENDOR.json")), platform);
 	for (const recordFile of findRecords(vaultRoot)) {
 		let record: unknown;
@@ -90,7 +92,7 @@ function* listed(vaultRoot: string, platform: string): Generator<{ recordFile: s
 }
 
 /** The vendored file at `filePath`, or null when no record lists it. */
-export function vendoredAt(vaultRoot: string, filePath: string, platform: string = process.platform): Vendored | null {
+export function vendoredAt(vaultRoot: string, filePath: string, platform: NodeJS.Platform = process.platform): Vendored | null {
 	const target = fold(posix(path.resolve(vaultRoot, filePath)), platform);
 	for (const { file } of listed(vaultRoot, platform)) {
 		if (fold(posix(file), platform) === target) return { rel: posix(path.relative(vaultRoot, file)) };
@@ -101,9 +103,9 @@ export function vendoredAt(vaultRoot: string, filePath: string, platform: string
 /**
  * A lookup of the record, other than `except`, that lists a path (absolute, or
  * from the vault root), as a path from the vault root; null when none does. The
- * records are read once. Compared as vendoredAt compares: without case on Windows.
+ * records are read once. Compared as vendoredAt compares: without case on Windows and macOS.
  */
-export function ownersOf(vaultRoot: string, except: string, platform: string = process.platform): (filePath: string) => string | null {
+export function ownersOf(vaultRoot: string, except: string, platform: NodeJS.Platform = process.platform): (filePath: string) => string | null {
 	const skip = fold(posix(path.resolve(except)), platform);
 	const owners = new Map<string, string>();
 	for (const { recordFile, file } of listed(vaultRoot, platform)) {
@@ -164,13 +166,13 @@ export function endEdits(vaultRoot: string, rels: readonly string[]): void {
 	writeWindows(vaultRoot, windows);
 }
 
-export function isBegun(vaultRoot: string, rel: string, now: number, platform: string = process.platform): boolean {
+export function isBegun(vaultRoot: string, rel: string, now: number, platform: NodeJS.Platform = process.platform): boolean {
 	const want = fold(posix(rel), platform);
 	return Object.entries(readWindows(vaultRoot)).some(([r, until]) => fold(r, platform) === want && until > now);
 }
 
 /** The reason to deny this tool call, or null to allow it. */
-export function decide(input: unknown, vaultRoot: string, now: number, platform: string = process.platform): string | null {
+export function decide(input: unknown, vaultRoot: string, now: number, platform: NodeJS.Platform = process.platform): string | null {
 	if (typeof input !== "object" || input === null) return null;
 	const { tool_name: tool, tool_input: toolInput } = input as { tool_name?: unknown; tool_input?: unknown };
 	if (typeof tool !== "string" || !GUARDED_TOOLS.has(tool)) return null;

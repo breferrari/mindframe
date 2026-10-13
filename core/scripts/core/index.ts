@@ -49,13 +49,16 @@ export { debug } from "../lib/hook-io.ts";
 /** The vault root, walked up from the agent's project folder or a fallback (documented on the function). */
 export { resolveProjectDir } from "../lib/project-dir.ts";
 
-/** The vault's instruction file (AGENTS.md), the retired ones (a frozen list) and a check for them, and AGENTS.md's measured size caps. */
+/** The vault's instruction file (AGENTS.md), the retired ones (a frozen list) and a check for them, the platform's case rule for names and paths, and AGENTS.md's measured size caps. */
 export {
 	AGENTS_MD_FLAG_BYTES,
 	AGENTS_MD_MAX_BYTES,
 	INSTRUCTION_FILE,
 	RETIRED_INSTRUCTION_FILES,
+	filesystemIgnoresCase,
+	isInstructionFile,
 	isRetiredInstructionFile,
+	sameOnDisk,
 } from "../lib/instruction-files.ts";
 
 /** A note line by line: each line's region (frontmatter, fence, heading, body), and each wikilink's target and offsets on a line. */

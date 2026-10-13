@@ -38,11 +38,46 @@ export const AGENTS_MD_FLAG_BYTES = 23_000;
 /** Frozen: every extension shares one process, so none may change the list the others' checks read. */
 export const RETIRED_INSTRUCTION_FILES: readonly string[] = Object.freeze([CLAUDE_MD, GEMINI_MD]);
 
+/** `AGENTS.md` and the retired instruction files: every name an agent loads at the vault root (#91). */
+export const INSTRUCTION_FILES: readonly string[] = Object.freeze([INSTRUCTION_FILE, ...RETIRED_INSTRUCTION_FILES]);
+
 /**
- * Whether a root file name is a retired instruction file, ignoring case:
- * Windows and macOS resolve `claude.md` as `CLAUDE.md`, so an agent loads it.
+ * Whether the platform's filesystem ignores case, so `claude.md` opens
+ * `CLAUDE.md`: Windows, and macOS, whose default APFS is case-insensitive.
+ * Known gaps, read by the platform's default (#91): a case-sensitive APFS
+ * volume, and WSL on an NTFS mount (`/mnt/c`), which reports linux but ignores
+ * case. #112 probes the vault root's filesystem instead.
  */
-export function isRetiredInstructionFile(name: string): boolean {
-	const lower = name.toLowerCase();
-	return RETIRED_INSTRUCTION_FILES.some((f) => f.toLowerCase() === lower);
+export function filesystemIgnoresCase(platform: NodeJS.Platform = process.platform): boolean {
+	return platform === "win32" || platform === "darwin";
+}
+
+/** A name or path as `platform`'s filesystem compares it: lowercased where it ignores case (#91). */
+export function foldOnDisk(p: string, platform: NodeJS.Platform = process.platform): string {
+	return filesystemIgnoresCase(platform) ? p.toLowerCase() : p;
+}
+
+/** Whether two names or paths open the same file on `platform` (#91). */
+export function sameOnDisk(a: string, b: string, platform: NodeJS.Platform = process.platform): boolean {
+	return foldOnDisk(a, platform) === foldOnDisk(b, platform);
+}
+
+/** Whether `name` is one of `names` as the agent would open it on `platform`. */
+function opensAs(name: string, names: readonly string[], platform: NodeJS.Platform): boolean {
+	return names.some((f) => sameOnDisk(name, f, platform));
+}
+
+/**
+ * Whether a root file name is a retired instruction file, matched the way the
+ * agent loads it (#91): in any case where the filesystem ignores case, as
+ * Windows and macOS resolve `claude.md` as `CLAUDE.md`, and in exact case on
+ * Linux, where the agent never loads a `claude.md`.
+ */
+export function isRetiredInstructionFile(name: string, platform: NodeJS.Platform = process.platform): boolean {
+	return opensAs(name, RETIRED_INSTRUCTION_FILES, platform);
+}
+
+/** Whether a root file name is `AGENTS.md` or a retired instruction file, by the same rule (#91). */
+export function isInstructionFile(name: string, platform: NodeJS.Platform = process.platform): boolean {
+	return opensAs(name, INSTRUCTION_FILES, platform);
 }
