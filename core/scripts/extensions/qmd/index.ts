@@ -12,7 +12,7 @@
  *   bootstrap on a missing or near-empty store;
  * - `qmd-refresh`, on a note written, before a compaction and at Stop: the
  *   debounced update and embed (lib/refresh.ts, lifted from obsidian-mind),
- *   in a detached worker (refresh-run.ts).
+ *   in a detached worker (qmd-refresh-run.ts).
  *
  * `VAULT_QMD=off` turns all of it off. `VAULT_QMD_REFRESH=off` stops every
  * detached refresh and leaves the notes. QMD's probes are synchronous, so no
@@ -35,7 +35,7 @@ export { SELF_HEAL_HEADER, VERSION_HEADER };
 export const REFRESH_DEBOUNCE_MS = 30_000;
 
 /** The detached worker the refresh effect spawns. */
-export const WORKER_PATH = fileURLToPath(new URL("./refresh-run.ts", import.meta.url));
+export const WORKER_PATH = fileURLToPath(new URL("./qmd-refresh-run.ts", import.meta.url));
 
 /**
  * The refresh's sentinel: `QMD_REFRESH_SENTINEL`, or the file obsidian-mind's

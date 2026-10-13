@@ -1,10 +1,10 @@
-Description: mindframe: the worker takes its vault and index from --vault and --index, as the qmd extension's effect resolves them (#95)
+Description: mindframe: the worker takes its vault and index from --vault and --index, as the qmd extension's effect resolves them (#95); at extensions/qmd/qmd-refresh-run.ts, under obsidian-mind's name, so its leftover-worker guards see it (#125)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
-diff --git a/core/scripts/extensions/qmd/refresh-run.ts b/core/scripts/extensions/qmd/refresh-run.ts
---- a/core/scripts/extensions/qmd/refresh-run.ts
-+++ b/core/scripts/extensions/qmd/refresh-run.ts
+diff --git a/core/scripts/extensions/qmd/qmd-refresh-run.ts b/core/scripts/extensions/qmd/qmd-refresh-run.ts
+--- a/core/scripts/extensions/qmd/qmd-refresh-run.ts
++++ b/core/scripts/extensions/qmd/qmd-refresh-run.ts
 @@ -1,9 +1,8 @@
  #!/usr/bin/env node
  /**

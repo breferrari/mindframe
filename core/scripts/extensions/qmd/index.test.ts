@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import type { EffectTrigger, HookContext } from "../../core/index.ts";
 import { QMD_DECLARATION } from "../../core/context.ts";
 import { collectSections, fromLoaded, loadRegistry, runEffects } from "../../core/registry.ts";
-import { SELF_HEAL_HEADER, VERSION_HEADER, extension, qmdExtension, sentinelPathFor } from "./index.ts";
+import { SELF_HEAL_HEADER, VERSION_HEADER, WORKER_PATH, extension, qmdExtension, sentinelPathFor } from "./index.ts";
 import { QMD_SWITCH, REFRESH_SWITCH } from "./lib/switches.ts";
 import { realDeps, type QmdDeps } from "./session.ts";
 import { VAULT, fakeDeps, rmTemp, waitFor, type Calls } from "./test-fakes.ts";
@@ -224,7 +224,7 @@ describe("the qmd extension's effects (#95)", () => {
 		try {
 			await s.run(write("notes/a.md"));
 			assert.equal(s.workers.length, 1);
-			assert.ok(s.workers[0]?.path.endsWith(join("extensions", "qmd", "refresh-run.ts")), s.workers[0]?.path);
+			assert.ok(s.workers[0]?.path.endsWith(join("extensions", "qmd", "qmd-refresh-run.ts")), s.workers[0]?.path);
 			const derived = basename(s.dir).toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
 			assert.deepEqual(s.workers[0]?.args, [`--vault=${s.dir}`, `--index=${derived}`]);
 		} finally {
@@ -357,5 +357,11 @@ describe("no detached worker outlives the extension's effects under VAULT_QMD_RE
 		} finally {
 			rmTemp(f.dir);
 		}
+	});
+});
+
+describe("the shipped worker (#125)", () => {
+	test("the file WORKER_PATH names ships with the extension", () => {
+		assert.ok(existsSync(WORKER_PATH), WORKER_PATH);
 	});
 });

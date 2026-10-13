@@ -1,4 +1,4 @@
-Description: mindframe: the refresh as the qmd extension's effects: imports from the extension and the core, the worker told its vault and index (--vault, --index), the switch from lib/switches.ts read from a given environment rather than re-exported from qmd.ts (#94), a missing worker reported (#95)
+Description: mindframe: the refresh as the qmd extension's effects: imports from the extension and the core, the worker told its vault and index (--vault, --index), the switch from lib/switches.ts read from a given environment rather than re-exported from qmd.ts (#94), a missing worker reported (#95); the worker named qmd-refresh-run.ts (#125)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
@@ -16,7 +16,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
 - * and spawn shape — the only way to drift is to bypass this module.
 + * shared debounced-trigger flow. Consumed by the qmd extension's refresh
 + * effect (index.ts: write, pre-compact and Stop) and the detached worker
-+ * (refresh-run.ts). Centralizing the lifecycle here guarantees every
++ * (qmd-refresh-run.ts). Centralizing the lifecycle here guarantees every
 + * trigger honors the same debounce contract and spawn shape — the only way
 + * to drift is to bypass this module.
   *
