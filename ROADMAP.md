@@ -15,7 +15,7 @@ Status: ✅ done · 🔨 in progress · ⏳ blocked · ⬜ not started
 | [#5](https://github.com/breferrari/mindframe/issues/5) | Run the obsidian-mind baseline spec in real sessions | 🔨 Windows done; POSIX leg pending |
 | [#74](https://github.com/breferrari/mindframe/issues/74) | Let expectations read the mod's delivery in dry runs, and dry-run it in CI | ✅ |
 | [#99](https://github.com/breferrari/mindframe/issues/99) | Fail a test bed run that leaves a detached process behind, and move the pins past VAULT_QMD_REFRESH | ⬜ |
-| [#129](https://github.com/breferrari/mindframe/issues/129) | Grade a hook's context as the agent receives it: the test bed unwraps the SessionStart JSON envelope | ⬜ |
+| [#129](https://github.com/breferrari/mindframe/issues/129) | Grade a hook's context as the agent receives it: the test bed unwraps the SessionStart JSON envelope | ✅ |
 
 ## Phase 2: the core
 
