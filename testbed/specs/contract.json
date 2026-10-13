@@ -92,6 +92,9 @@
         { "id": "rule 5: an effect runs on each event it declares", "arms": ["settings"], "turn": 4, "hook": { "event": "Stop", "output": "MF-EFFECT-RAN: session-start, stop, write" } },
         { "id": "rule 5: an effect runs at Stop before the detectors read what it did", "arms": ["settings"], "turn": 1, "hook": { "event": "Stop", "output": "MF-EFFECT-RAN: session-start, stop" } },
         { "id": "rule 5: a throwing effect is reported in the full Stop report", "arms": ["settings"], "turn": 2, "hook": { "event": "UserPromptSubmit", "output": "mf-thrower, effect throws: skipped" } },
+        { "id": "rule 5: the full Stop report holds only Stop's own failures", "arms": ["settings"], "turn": 2, "hook": { "event": "UserPromptSubmit", "output": { "not": { "re": "section throws|validator wrong-shape|signal hangs" } } } },
+        { "id": "rule 3: an effect runs only on the events its on lists: none at session start", "arms": ["settings"], "turn": "preamble", "hook": { "event": "SessionStart", "output": { "not": "effect throws" } } },
+        { "id": "rule 3: an effect runs only on the events its on lists: none on a write", "turn": "all", "hook": { "event": "PostToolUse", "everyOutput": { "not": "effect throws" } } },
         { "id": "every UserPromptSubmit succeeded", "turn": "all", "hook": { "event": "UserPromptSubmit" } },
         { "id": "every Stop succeeded", "turn": "all", "hook": { "event": "Stop" } }
       ]

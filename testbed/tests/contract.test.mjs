@@ -1,7 +1,8 @@
 // The pieces #11 added: bed.files, bed.manifest, per-scenario env, the
 // meter expectation and hook.everyOutput; and the contract spec itself.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -157,4 +158,16 @@ test('the fixture extensions load and have the shape the spec relies on', async 
   assert.equal(witness.signals[0].match('MF-PING'), true)
   const budget = await load('mf-budget.mjs')
   assert.equal(budget.sections.find((s) => s.id === 'core').pointer, undefined, 'core is load-bearing')
+  assert.deepEqual(thrower.effects[0].on, ['stop'])
+  assert.throws(() => thrower.effects[0].run({ event: 'stop' }, {}))
+  const effect = await load('mf-effect.mjs')
+  const vault = mkdtempSync(path.join(os.tmpdir(), 'mf-effect-'))
+  try {
+    const ctx = { vaultRoot: vault, manifest: null, now: 0 }
+    assert.deepEqual(effect.detectors[0].detect(ctx).map((f) => f.claim), ['MF-EFFECT-RAN: none'], 'nothing marked yet')
+    for (const event of ['session-start', 'stop', 'stop', 'write']) effect.effects[0].run({ event }, ctx)
+    assert.deepEqual(effect.detectors[0].detect(ctx).map((f) => f.claim), ['MF-EFFECT-RAN: session-start, stop, write'], 'each event once, in the order it first ran')
+  } finally {
+    rmSync(vault, { recursive: true, force: true })
+  }
 })
