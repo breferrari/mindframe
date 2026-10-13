@@ -71,7 +71,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 
 ## Shelf: parked (one at a time, later)
 
-Parked issues: the milestone's `Shelf:` description keeps `next.sh` from taking them. The coordinator names one to take, one at a time, later. When one is taken, it moves into a phase.
+Parked issues, taken one at a time. The milestone's `Shelf:` description keeps `next.sh` from taking them. A taken issue moves into a phase.
 
 | Issue | What | Status |
 |-------|------|--------|
