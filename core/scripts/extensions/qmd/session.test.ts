@@ -6,12 +6,14 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { manifestOf } from "../../lib/manifest.ts";
-import { EMPTY_STORE_BYTES, QMD_SWITCH, REFRESH_SWITCH, qmdSessionStartOf, type QmdDeps } from "./session.ts";
+import { EMPTY_STORE_BYTES, QMD_SWITCH, REFRESH_SWITCH, qmdNotesOf, qmdSessionRefreshOf, type QmdDeps } from "./session.ts";
 import { VAULT, fakeDeps } from "./test-fakes.ts";
 
-/** The manifest's text, parsed the way openVault parses it, then the work. */
-const qmdSessionStart = (vaultRoot: string, json: string | null, script: string | undefined, deps: QmdDeps) =>
-	qmdSessionStartOf(vaultRoot, manifestOf(json), script, deps);
+/** The manifest's text, parsed the way openVault parses it, then all of session start's work: the notes, then the refresh. */
+const qmdSessionStart = (vaultRoot: string, json: string | null, script: string | undefined, deps: QmdDeps) => ({
+	notes: qmdNotesOf(vaultRoot, manifestOf(json), deps),
+	refresh: qmdSessionRefreshOf(vaultRoot, manifestOf(json), script, deps),
+});
 
 const MANIFEST = JSON.stringify({ template: "wiki-mind", qmd_index: "", qmd_min_version: "2.0.0" });
 

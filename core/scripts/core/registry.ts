@@ -65,7 +65,7 @@ export const EXTENSIONS_KEY = "extensions";
 export const KILL_SWITCH = "VAULT_EXTENSIONS";
 
 /** The effect events as a message names them. */
-const EFFECT_EVENTS_TEXT = "write, pre-compact or stop";
+const EFFECT_EVENTS_TEXT = "session-start, write, pre-compact or stop";
 
 /** The per-call time limit when a declaration sets none. */
 export const DEFAULT_TIMEOUT_MS = 1_000;

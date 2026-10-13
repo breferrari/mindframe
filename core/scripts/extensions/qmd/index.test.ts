@@ -5,14 +5,18 @@
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
+import { existsSync, utimesSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { collectSections, fromLoaded, loadRegistry } from "../../core/registry.ts";
+import { collectSections, fromLoaded, loadRegistry, runEffects } from "../../core/registry.ts";
+import type { EffectTrigger } from "../../core/index.ts";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import type { HookContext } from "../../core/index.ts";
 import { QMD_DECLARATION } from "../../core/context.ts";
 import { SELF_HEAL_HEADER, VERSION_HEADER, extension, qmdExtension } from "./index.ts";
-import { QMD_SWITCH, type QmdDeps } from "./session.ts";
-import { VAULT, fakeDeps, type Calls } from "./test-fakes.ts";
+import { QMD_SWITCH, REFRESH_SWITCH, type QmdDeps } from "./session.ts";
+import { VAULT, fakeDeps, rmTemp, type Calls } from "./test-fakes.ts";
 
 const counts = (calls: Calls) => ({ sync: calls.sync.length, detached: calls.detached.length });
 
@@ -20,7 +24,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const MANIFEST = Object.freeze({ template: "wiki-mind", qmd_index: "", qmd_min_version: "2.0.0" });
 const MISMATCH = { status: 1, stderr: "Error: ... NODE_MODULE_VERSION 115" };
 
-const declaration = { id: "qmd", module: "scripts/extensions/qmd/index.ts", events: ["session-start" as const] };
+const declaration = { id: "qmd", module: "scripts/extensions/qmd/index.ts", events: ["session-start", "write", "pre-compact", "stop"] as const };
 const ctx = (): HookContext => ({ vaultRoot: VAULT, manifest: MANIFEST, now: 0 });
 const sections = async (deps: QmdDeps, mode: "full" | "pointer" = "full") => {
 	const { result, failures } = await collectSections(fromLoaded([{ declaration, extension: qmdExtension(deps) }]), ctx(), mode);
@@ -42,10 +46,10 @@ describe("the qmd extension", () => {
 		assert.equal(JSON.parse(QMD_DECLARATION).module, ".claude/scripts/extensions/qmd/index.ts", "the vault path the core vendors it to");
 	});
 
-	test("a healthy QMD at or above the floor: no sections, one background refresh", async () => {
+	test("a healthy QMD at or above the floor: no sections, and a section starts no refresh (#95)", async () => {
 		const { deps, calls } = fakeDeps({});
 		assert.deepEqual(await sections(deps), []);
-		assert.equal(calls.detached.length, 1);
+		assert.equal(calls.detached.length, 0, "the session-start refresh is an effect now");
 	});
 
 	test("no QMD installed: no sections, no probe", async () => {
@@ -65,7 +69,7 @@ describe("the qmd extension", () => {
 	test("one probe run serves both sections: QMD's work runs once per hook", async () => {
 		const { deps, calls } = fakeDeps({ status: MISMATCH, version: "qmd 1.0.0\n" });
 		await sections(deps);
-		assert.deepEqual(counts(calls), { sync: 3, detached: 1 }, "status, rebuild and version once each, one refresh");
+		assert.deepEqual(counts(calls), { sync: 3, detached: 0 }, "status, rebuild and version once each, and no refresh");
 	});
 
 	test("load-bearing: on a resume or compact re-entry the notes still render in full", async () => {
@@ -92,5 +96,123 @@ describe("the qmd extension", () => {
 		assert.deepEqual(result, []);
 		assert.deepEqual(failures.map((f) => [f.extension, f.point, f.item, f.message]), [["qmd", "section", "qmd-self-heal", "boom"], ["qmd", "section", "qmd-version", "boom"]]);
 		assert.equal(runs, 1);
+	});
+});
+
+describe("the qmd extension's effects (#95)", () => {
+	/** A vault-shaped temp folder for the sentinel, and the effects over fake deps with spawns recorded. */
+	function setup(opts: Parameters<typeof fakeDeps>[0] = {}) {
+		const dir = mkdtempSync(join(tmpdir(), "qmd-effects-"));
+		const sentinel = join(dir, ".qmd-refresh-sentinel");
+		const fake = fakeDeps({ ...opts, env: { QMD_REFRESH_SENTINEL: sentinel, ...opts.env } });
+		const workers: { path: string; args: readonly string[] }[] = [];
+		const ext = qmdExtension(fake.deps, { spawnWorker: (path, args) => void workers.push({ path, args }) });
+		const registry = fromLoaded([{ declaration, extension: ext }]);
+		const run = async (trigger: EffectTrigger) => {
+			const { failures } = await runEffects(registry, trigger, { vaultRoot: dir, manifest: MANIFEST, now: 0 });
+			assert.deepEqual(failures, []);
+		};
+		return { dir, sentinel, calls: fake.calls, workers, run, done: () => rmTemp(dir) };
+	}
+	const write = (relPath: string): EffectTrigger => ({ event: "write", target: { relPath, content: "x" } });
+
+	test("the extension's effects: the session-start refresh, and the debounced refresh on write, pre-compact and stop", () => {
+		assert.deepEqual(extension.effects?.map((e) => [e.id, e.on]), [
+			["qmd-session-refresh", ["session-start"]],
+			["qmd-refresh", ["write", "pre-compact", "stop"]],
+		]);
+		assert.deepEqual(JSON.parse(QMD_DECLARATION).events, ["session-start", "write", "pre-compact", "stop"], "the declaration lists every event they run on");
+	});
+
+	test("session start: a background update on a populated store, as the sections' run used to start", async () => {
+		const s = setup();
+		try {
+			await s.run({ event: "session-start" });
+			assert.equal(s.calls.detached.length, 1);
+			assert.deepEqual(s.calls.detached[0]?.args.slice(-1), ["update"]);
+			assert.deepEqual(s.workers, [], "no debounced worker at session start");
+		} finally {
+			s.done();
+		}
+	});
+
+	test(`session start with ${REFRESH_SWITCH}=off: nothing detached`, async () => {
+		const s = setup({ env: { [REFRESH_SWITCH]: "off" } });
+		try {
+			await s.run({ event: "session-start" });
+			assert.equal(s.calls.detached.length, 0);
+		} finally {
+			s.done();
+		}
+	});
+
+	test("a note written: one worker, told its vault and its index as session start resolves them", async () => {
+		const s = setup();
+		try {
+			await s.run(write("notes/a.md"));
+			assert.equal(s.workers.length, 1);
+			assert.ok(s.workers[0]?.path.endsWith(join("extensions", "qmd", "refresh-run.ts")), s.workers[0]?.path);
+			const derived = basename(s.dir).toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+			assert.deepEqual(s.workers[0]?.args, [`--vault=${s.dir}`, `--index=${derived}`]);
+		} finally {
+			s.done();
+		}
+	});
+
+	test("one sentinel serves write, pre-compact and stop: a burst spawns one leading worker and one trailing flush", async () => {
+		const s = setup();
+		try {
+			await s.run(write("notes/a.md"));
+			const t = (Date.now() - 10_000) / 1000;
+			utimesSync(s.sentinel, t, t);
+			await s.run({ event: "pre-compact" });
+			await s.run({ event: "stop" });
+			assert.equal(s.workers.length, 2, "the leading worker, then one trailing flush for the window");
+			assert.ok(s.workers[1]?.args.some((a) => a.startsWith("--trailing=")));
+		} finally {
+			s.done();
+		}
+	});
+
+	test("a write that isn't vault markdown refreshes nothing", async () => {
+		const s = setup();
+		try {
+			for (const p of ["notes/a.txt", ".git/HEAD.md", ".obsidian/workspace.md", "x/node_modules/p/README.md", "notes\\b.json"]) await s.run(write(p));
+			assert.deepEqual(s.workers, []);
+		} finally {
+			s.done();
+		}
+	});
+
+	test("a Windows-style path to a note refreshes", async () => {
+		const s = setup();
+		try {
+			await s.run(write("notes\\sub dir\\a.md"));
+			assert.equal(s.workers.length, 1);
+		} finally {
+			s.done();
+		}
+	});
+
+	test(`${QMD_SWITCH}=off: no effect does anything`, async () => {
+		const s = setup({ env: { [QMD_SWITCH]: "off" } });
+		try {
+			for (const trigger of [{ event: "session-start" }, write("notes/a.md"), { event: "pre-compact" }, { event: "stop" }] as const) await s.run(trigger);
+			assert.deepEqual(s.workers, []);
+			assert.deepEqual(counts(s.calls), { sync: 0, detached: 0 });
+			assert.equal(existsSync(s.sentinel), false, "not even a sentinel stamp");
+		} finally {
+			s.done();
+		}
+	});
+
+	test("no QMD installed: no worker", async () => {
+		const s = setup({ entry: null });
+		try {
+			await s.run(write("notes/a.md"));
+			assert.deepEqual(s.workers, []);
+		} finally {
+			s.done();
+		}
 	});
 });

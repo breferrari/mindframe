@@ -46,8 +46,11 @@ export async function openVault(
 	return { manifest, registry, ctx: { vaultRoot, manifest, now } };
 }
 
-/** The declaration a vault adds to `extensions` to keep QMD's session-start work (#70). */
-export const QMD_DECLARATION = '{"id":"qmd","module":".claude/scripts/extensions/qmd/index.ts","events":["session-start"]}';
+/** The events the qmd extension runs on: its sections at session start, and its refresh effects (#95). */
+const QMD_EVENTS = ["session-start", "write", "pre-compact", "stop"] as const;
+
+/** The declaration a vault adds to `extensions` to keep QMD's session-start work and its refresh (#70, #95). */
+export const QMD_DECLARATION = '{"id":"qmd","module":".claude/scripts/extensions/qmd/index.ts","events":["session-start","write","pre-compact","stop"]}';
 
 /**
  * Notes for the meter line about a step a vault still has to take after a
@@ -56,8 +59,8 @@ export const QMD_DECLARATION = '{"id":"qmd","module":".claude/scripts/extensions
  * `qmd_index` too: it means derive the name) and declares no extension with
  * id `qmd` would otherwise lose it without a trace. A declaration with
  * `enabled: false` counts: the vault chose that. One the registry refuses,
- * or one that doesn't run at session start, doesn't: QMD's work would never
- * run. The note is short, because it rides on the meter line, in the room
+ * or one that doesn't list all four of its events (QMD_EVENTS), doesn't:
+ * some of QMD's work would never run. The note is short, because it rides on the meter line, in the room
  * the budget keeps for it (METER_HEADROOM).
  *
  * The keys are the ones the extension reads (`qmdIndexOf` and
@@ -67,9 +70,9 @@ export const QMD_DECLARATION = '{"id":"qmd","module":".claude/scripts/extensions
 export function migrationNotes(manifest: Manifest): string[] {
 	const setsQmd = typeof manifest?.["qmd_index"] === "string" || typeof manifest?.["qmd_min_version"] === "string";
 	if (!setsQmd) return [];
-	const hasQmd = parseDeclarations(manifest).result.some((d) => d.id === "qmd" && d.events.includes("session-start"));
+	const hasQmd = parseDeclarations(manifest).result.some((d) => d.id === "qmd" && QMD_EVENTS.every((e) => d.events.includes(e)));
 	if (hasQmd) return [];
 	const declared = manifest?.[EXTENSIONS_KEY];
 	const named = Array.isArray(declared) && declared.some((d: unknown) => typeof d === "object" && d !== null && (d as Record<string, unknown>)["id"] === "qmd");
-	return [`QMD off: ${named ? "make the qmd entry" : "add"} ${QMD_DECLARATION} in manifest extensions`];
+	return [named ? `QMD off: fix qmd entry to ${QMD_DECLARATION}` : `QMD off: extensions needs ${QMD_DECLARATION}`];
 }
