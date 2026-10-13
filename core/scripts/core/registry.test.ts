@@ -339,12 +339,38 @@ describe("rule 5: nothing an extension returns reaches the output unchecked", ()
 		assert.deepEqual(failures.map((f) => [f.point, f.item, f.message]), [["section", "a.1", "getter"], ["section", "a.2", "getter"]]);
 	});
 
+	// A getter that changes type, not one that throws: the output must carry the value that was checked.
 	test("a section's header is read once: a getter that changes type after the check can't reach the output (#110)", async () => {
 		const reads: unknown[] = ["### Once", 42];
 		const ext = { id: "a", sections: [{ id: "a.1", get header() { return reads.shift(); }, render: () => "x" }] } as unknown as Extension;
 		const { result, failures } = await collectSections(fromLoaded([declared(ext)]), ctx, "full");
 		assert.deepEqual(result.map((s) => s.header), ["### Once"]);
 		assert.deepEqual(failures, []);
+	});
+
+	test("a section's pointer, and a checklist item's short, are read once too: in pointer mode the pointer is the body (#110)", async () => {
+		const pointers: unknown[] = ["see notes", 42];
+		const sections = { id: "a", sections: [{ id: "a.1", header: "### A", get pointer() { return pointers.shift(); }, render: () => "x" }] } as unknown as Extension;
+		const pointed = await collectSections(fromLoaded([declared(sections)]), ctx, "pointer");
+		assert.deepEqual(pointed.result.map((s) => s.body), ["see notes"]);
+		assert.deepEqual(pointed.failures, []);
+		const shorts: unknown[] = ["S", 42];
+		const checklist = { id: "a", checklist: [{ id: "a.1", full: "F", get short() { return shorts.shift(); } }] } as unknown as Extension;
+		assert.deepEqual(collectChecklist(fromLoaded([declared(checklist)])).result, [{ id: "a.1", full: "F", short: "S" }]);
+	});
+
+	test("a getter that throws a non-Error, and a Proxy that throws on every get, are failures too (#110)", () => {
+		const ext = {
+			id: "a",
+			checklist: [
+				{ id: "a.1", get full(): string { throw "plain string"; }, short: "s" },
+				new Proxy({}, { get: () => { throw new Error("proxy"); } }),
+				{ id: "a.3", full: "F", short: "S" },
+			],
+		} as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext)]));
+		assert.deepEqual(result.map((i) => i.id), ["a.3"]);
+		assert.deepEqual(failures.map((f) => [f.point, f.item, f.message]), [["checklist", undefined, "proxy"], ["checklist", "a.1", "plain string"]]);
 	});
 
 	test("a matching signal whose `hint` getter throws is a failure; the other hints come back (#110)", async () => {

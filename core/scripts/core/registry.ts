@@ -195,7 +195,7 @@ export async function loadRegistry(
 
 type Entry<T> = {
 	readonly ext: string;
-	/** The item's id, as `ordered` read and checked it: the extension's object is never asked again (#110). */
+	/** The item's id, as `ordered` read and checked it: the id is never read from the item again (#110). */
 	readonly id: string;
 	/** The events the extension's declaration lists. */
 	readonly events: readonly HookEvent[];
@@ -411,10 +411,10 @@ export async function collectSections(
 	const bodies = new Map<Entry<Section>, string>();
 	for (const { entry, value } of rendered) if (value !== null) bodies.set(entry, value);
 	const sections: BudgetSection[] = [];
-	for (const read of entries) {
-		const { entry, header, pointer } = read;
+	for (const checked of entries) {
+		const { entry, header, pointer } = checked;
 		const priority = budgetPriority(entry.priority);
-		if (pointers.includes(read)) sections.push({ header, body: pointer ?? "", priority });
+		if (pointers.includes(checked)) sections.push({ header, body: pointer ?? "", priority });
 		else {
 			const body = bodies.get(entry);
 			if (body !== undefined) sections.push({ header, body, priority, fallback: pointer });
@@ -456,9 +456,9 @@ export async function matchSignals(registry: Registry, prompt: string): Promise<
 	for (const { entry, value } of runs) {
 		if (!value) continue;
 		const hint = fieldsOf(entry, "signal", failures, (item) => {
-			const value: unknown = item.hint;
-			if (!isString(value)) throw new Error("`hint` must be a string");
-			return value;
+			const raw: unknown = item.hint;
+			if (!isString(raw)) throw new Error("`hint` must be a string");
+			return raw;
 		});
 		if (hint !== undefined && !hints.includes(hint)) hints.push(hint);
 	}
@@ -495,7 +495,6 @@ export async function runEffects(registry: Registry, trigger: EffectTrigger, ctx
 	const calls = entries.map((entry) => ({
 		...entry,
 		item: {
-			id: entry.id,
 			call: () => {
 				const on: unknown = entry.item.on;
 				if (!Array.isArray(on) || on.length === 0 || !on.every((event) => EFFECT_EVENTS.includes(event))) {
