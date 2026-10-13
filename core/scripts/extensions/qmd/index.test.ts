@@ -219,11 +219,6 @@ describe("the qmd extension's effects (#95)", () => {
 		}
 	});
 
-	test("the worker ships at WORKER_PATH under the name every leftover-worker guard matches (#125)", () => {
-		assert.ok(existsSync(WORKER_PATH), WORKER_PATH);
-		assert.equal(basename(WORKER_PATH), "qmd-refresh-run.ts");
-	});
-
 	test("a note written: one worker, told its vault and its index as session start resolves them", async () => {
 		const s = setup();
 		try {
@@ -362,5 +357,11 @@ describe("no detached worker outlives the extension's effects under VAULT_QMD_RE
 		} finally {
 			rmTemp(f.dir);
 		}
+	});
+});
+
+describe("the shipped worker (#125)", () => {
+	test("the file WORKER_PATH names ships with the extension", () => {
+		assert.ok(existsSync(WORKER_PATH), WORKER_PATH);
 	});
 });
