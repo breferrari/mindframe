@@ -50,6 +50,15 @@ export const EMPTY_STORE_BYTES = 500_000;
 /** The bootstrap a missing or near-empty store gets: the extension's own script (#96), run with the vault as cwd. */
 export const BOOTSTRAP_PATH = fileURLToPath(new URL("./qmd-bootstrap.ts", import.meta.url));
 
+/**
+ * The bootstrap and the libraries it imports: every file it needs that the hook's own imports don't
+ * reach, so `vendor update` doesn't bring them in (#133), and a vault copies them by hand.
+ */
+export const BOOTSTRAP_FILES: readonly string[] = [
+	BOOTSTRAP_PATH,
+	...["lib/qmd-bootstrap.ts", "lib/qmd-models.ts", "lib/qmd-ignore.ts", "lib/main-guard.ts"].map((f) => fileURLToPath(new URL(`./${f}`, import.meta.url))),
+];
+
 type SpawnSyncResult = { readonly status: number | null; readonly stdout?: string; readonly stderr?: string };
 
 /** The side effects, injectable so tests never run a real QMD. */
@@ -60,8 +69,8 @@ export type QmdDeps = {
 	readonly spawnDetached: (cmd: string, args: readonly string[], opts: { cwd: string; shell: boolean }) => void;
 	readonly storeSize: (path: string) => number | null;
 	readonly home: string;
-	/** The bootstrap script session start runs; BOOTSTRAP_PATH unless a test names another. */
-	readonly bootstrapPath?: string;
+	/** Whether a file the bootstrap needs is there (BOOTSTRAP_FILES). */
+	readonly exists: (path: string) => boolean;
 };
 
 export const realDeps: QmdDeps = {
@@ -82,6 +91,7 @@ export const realDeps: QmdDeps = {
 		}
 	},
 	home: homedir(),
+	exists: existsSync,
 };
 
 /** A load-bearing note for the session context, as heading and body. */
@@ -145,11 +155,11 @@ export function qmdSessionRefreshOf(vaultRoot: string, manifest: ManifestObject,
 	const size = index === null ? null : deps.storeSize(resolveIndexStorePath(index, deps.env, deps.home));
 	const empty = index !== null && (size === null || size < EMPTY_STORE_BYTES);
 	if (empty) {
-		const script = deps.bootstrapPath ?? BOOTSTRAP_PATH;
-		// Spawned by path, so `vendor update` doesn't bring it in (#133): a vault that missed the copy is told,
-		// as a missing refresh worker is, rather than a detached node dying with no one to see it.
-		if (!existsSync(script)) throw new Error(`the qmd bootstrap is missing: ${script}; copy it from mindframe and record it (core/scripts/README.md)`);
-		deps.spawnDetached(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", script], { cwd: vaultRoot, shell: false });
+		// Spawned by path, so `vendor update` doesn't bring them in (#133): a vault that missed a file is told,
+		// as a missing refresh worker is, rather than a detached node dying on an import with no one to see it.
+		const missing = BOOTSTRAP_FILES.filter((f) => !deps.exists(f));
+		if (missing.length > 0) throw new Error(`the qmd bootstrap is missing ${missing.join(", ")}; copy the bootstrap and its libraries from mindframe and record them (core/scripts/README.md)`);
+		deps.spawnDetached(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", BOOTSTRAP_PATH], { cwd: vaultRoot, shell: false });
 	} else {
 		// cwd is the OS temp folder, so a lingering QMD process never holds the vault folder open on Windows.
 		const update = buildQmdCommand(entry, qmdArgsWithIndex(index, ["update"]));

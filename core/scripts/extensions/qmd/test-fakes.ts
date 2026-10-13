@@ -17,6 +17,7 @@ export function fakeDeps(opts: {
 	rebuild?: number;
 	storeBytes?: number | null;
 	env?: Record<string, string>;
+	exists?: (path: string) => boolean;
 }): { deps: QmdDeps; calls: Calls } {
 	const calls: Calls = { sync: [], detached: [] };
 	const deps: QmdDeps = {
@@ -32,6 +33,7 @@ export function fakeDeps(opts: {
 		spawnDetached: (cmd, args, o) => void calls.detached.push({ cmd, args, cwd: o.cwd }),
 		storeSize: () => (opts.storeBytes === undefined ? EMPTY_STORE_BYTES * 10 : opts.storeBytes),
 		home: join("/", "home", "u"),
+		exists: opts.exists ?? (() => true),
 	};
 	return { deps, calls };
 }

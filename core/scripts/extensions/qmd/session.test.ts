@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { manifestOf } from "../../lib/manifest.ts";
-import { BOOTSTRAP_PATH, EMPTY_STORE_BYTES, qmdNotesOf, qmdSessionRefreshOf, type QmdDeps } from "./session.ts";
+import { BOOTSTRAP_FILES, BOOTSTRAP_PATH, EMPTY_STORE_BYTES, qmdNotesOf, qmdSessionRefreshOf, type QmdDeps } from "./session.ts";
 import { QMD_SWITCH, REFRESH_SWITCH } from "./lib/switches.ts";
 import { VAULT, fakeDeps } from "./test-fakes.ts";
 
@@ -50,10 +50,14 @@ describe("QMD's session-start work", () => {
 		assert.equal(basename(BOOTSTRAP_PATH), "qmd-bootstrap.ts");
 	});
 
-	test("a bootstrap that isn't there is reported, not spawned to die silently (#96)", () => {
-		const { deps, calls } = fakeDeps({ storeBytes: null });
-		assert.throws(() => qmdSessionRefreshOf(VAULT, manifestOf(MANIFEST), { ...deps, bootstrapPath: "/no/such/qmd-bootstrap.ts" }), /qmd bootstrap is missing/);
-		assert.equal(calls.detached.length, 0, "nothing spawned");
+	test("a bootstrap, or a library it imports, that isn't there is reported, not spawned to die silently (#96)", () => {
+		for (const gone of BOOTSTRAP_FILES) {
+			const { deps, calls } = fakeDeps({ storeBytes: null, exists: (f) => f !== gone });
+			assert.throws(() => qmdSessionRefreshOf(VAULT, manifestOf(MANIFEST), deps), (e: Error) => e.message.includes("qmd bootstrap is missing") && e.message.includes(gone), gone);
+			assert.equal(calls.detached.length, 0, "nothing spawned");
+		}
+		assert.equal(BOOTSTRAP_FILES.length, 5, "the script and its four libraries");
+		for (const f of BOOTSTRAP_FILES) assert.ok(existsSync(f), `${f} ships with the extension`);
 	});
 
 	test("a missing or near-empty store: the idempotent bootstrap, run from the vault", () => {

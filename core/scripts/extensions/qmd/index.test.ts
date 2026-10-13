@@ -169,6 +169,20 @@ describe("the qmd extension's effects (#95)", () => {
 		}
 	});
 
+	test("a missing bootstrap is a reported failure of the session-start effect (#96)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "qmd-nobootstrap-"));
+		try {
+			const { deps, calls } = fakeDeps({ storeBytes: null, exists: (f) => !f.endsWith("qmd-ignore.ts") });
+			const registry = fromLoaded([{ declaration, extension: qmdExtension(deps) }]);
+			const { failures } = await runEffects(registry, { event: "session-start" }, { vaultRoot: dir, manifest: MANIFEST, now: 0 });
+			assert.equal(failures.length, 1);
+			assert.match(failures[0]?.message ?? "", /qmd bootstrap is missing .*qmd-ignore\.ts/);
+			assert.equal(calls.detached.length, 0);
+		} finally {
+			rmTemp(dir);
+		}
+	});
+
 	test("an empty QMD_REFRESH_SENTINEL is unset: an empty path would turn the debounce off (#95)", () => {
 		const fallback = join("/v", ".claude", "scripts", ".qmd-refresh-sentinel");
 		assert.equal(sentinelPathFor("/v", { QMD_REFRESH_SENTINEL: "" }), fallback);

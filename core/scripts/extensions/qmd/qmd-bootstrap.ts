@@ -214,10 +214,10 @@ function main(): void {
 	// private fallback would populate one index while SessionStart, the
 	// refresh worker, and the MCP wrapper read another — which surfaces as
 	// "0 documents", not as an error.
-	// `process.cwd()` is the vault root: `readManifest()` above already
+	// `process.cwd()` is the vault root: `readManifestRaw()` above already
 	// resolved `vault-manifest.json` relative to it, so a wrong cwd has
 	// already failed.
-	const index = resolveQmdIndexOf(manifestOf(manifestRaw), process.cwd());
+	const index = resolveQmdIndexOf(manifest, process.cwd());
 
 	if (index === null) {
 		process.stderr.write(
