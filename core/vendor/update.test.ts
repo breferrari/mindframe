@@ -374,6 +374,14 @@ test("the name check knows a regex literal, a default export, and two spellings 
 	assert.ok(s.lines.some((l) => /doesn't export f, which/.test(l)), s.lines.join("\n"));
 });
 
+test("a name the kept copy exports under an alias counts as exported (#117)", (t) => {
+	const s = imports(t);
+	otherRecord(s, "const internal = 0;\nexport { internal as u };\n");
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(!s.lines.some((l) => l.includes("warning")), s.lines.join("\n"));
+});
+
 test("each updated file that imports a kept file is checked, not only the first (#117)", (t) => {
 	const s = imports(t);
 	otherRecord(s, "export const u = 0;\n");
