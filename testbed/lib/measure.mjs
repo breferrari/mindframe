@@ -13,7 +13,7 @@
 //   meterSlack { in }            the budget the meter says went unused: its
 //                                budget minus the size it reports
 //   bytes      { in }            the source's size in bytes
-import { parseMeter, sectionLevel, sourceText } from './expect.mjs'
+import { deliveredSize, parseMeter, sectionLevel, sourceText } from './expect.mjs'
 
 export const MEASURE_KINDS = ['count', 'toolRead', 'meterLevel', 'meterSlack', 'bytes']
 
@@ -82,7 +82,7 @@ export function measure(m, run) {
     }
     return null
   }
-  if (m.kind === 'bytes') return { value: ts.reduce((n, t) => n + Buffer.byteLength(sourceText(t, m.in)), 0) }
+  if (m.kind === 'bytes') return { value: ts.reduce((n, t) => n + deliveredSize(t, m.in), 0) }
   throw new MeasureError(`unknown kind ${m.kind}`)
 }
 

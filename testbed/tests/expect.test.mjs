@@ -133,6 +133,16 @@ test('a hook context is graded as the agent receives it: the JSON envelope unwra
   assert.equal(contextOf(undefined), '')
 })
 
+test('an envelope for another event delivers nothing, and an envelope keeps its other fields for the hook kind (#129)', () => {
+  assert.equal(contextOf(envelope('Stop', '## A'), 'SessionStart'), '', 'Claude Code rejects an envelope that names another event')
+  const wrong = run({ turns: [turn(1, { hooks: [hook('SessionStart', envelope('Stop', '## A\n## B'))] })] })
+  assert.equal(ev({ id: 'o', turn: 1, order: { in: 'hook:SessionStart', items: ['## A', '## B'] } }, wrong).pass, false)
+  const leak = JSON.stringify({ systemMessage: 'MF-LEAK', hookSpecificOutput: { hookEventName: 'Stop', additionalContext: 'clean' } })
+  const r = run({ turns: [turn(1, { hooks: [hook('Stop', leak)] })] })
+  assert.equal(ev({ id: 'n', turn: 1, hook: { event: 'Stop', everyOutput: { not: 'MF-LEAK' } } }, r).pass, false, 'a marker in the systemMessage still shows')
+  assert.equal(ev({ id: 's', turn: 1, hook: { event: 'Stop', silent: true } }, run({ turns: [turn(1, { hooks: [hook('Stop', JSON.stringify({ systemMessage: 'x', hookSpecificOutput: { hookEventName: 'Stop', additionalContext: '' } }))] })] })).pass, false, 'a systemMessage is content: not silent')
+})
+
 test('an envelope whose context is empty gives the agent nothing: silent (#129)', () => {
   const r = run({ turns: [turn(1, { hooks: [hook('Stop', envelope('Stop', ''))] })] })
   assert.equal(ev({ id: 's', turn: 1, hook: { event: 'Stop', silent: true } }, r).pass, true)

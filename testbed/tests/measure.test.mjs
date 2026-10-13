@@ -37,6 +37,13 @@ test('parseMeter reads degraded and unknown segments; sectionLevel reads every f
   assert.equal(parseMeter('_context injected: soon_'), null)
 })
 
+test('bytes: an enveloped context is measured in the core\'s unit, as budget and meter grade it (#129)', () => {
+  const body = Array.from({ length: 50 }, () => 'ab').join('\n')
+  const out = JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: body } })
+  const r = run({ turns: [turn(1, { hooks: [{ event: 'SessionStart', name: 'SessionStart', status: 'responded', exitCode: 0, outcome: 'success', output: out }] })] })
+  assert.equal(measure(v({ kind: 'bytes', turn: 1, in: 'hook:SessionStart' }), r).value, JSON.stringify(body).length)
+})
+
 test('count: distinct markers, case-insensitive, out of the list', () => {
   const r = run({ turns: [turn(1, { answer: 'Work on brindlewick, then Corvantine. Brindlewick again.' })] })
   const res = measure(v({ kind: 'count', turn: 1, in: 'answer', markers: ['Brindlewick', 'Corvantine', 'Dashmere'] }), r)

@@ -284,39 +284,63 @@ export const isSilent = (output) => {
   return s === '' || s === '{}'
 }
 
-/**
- * A hook's output as the agent receives it (#129). A hook that answers in the
- * JSON envelope, `{"hookSpecificOutput":{"additionalContext":"…"}}`, hands the
- * agent its additionalContext, so that is what is graded; anything else,
- * plain stdout, other JSON or JSON that doesn't parse, is graded as it stands.
- */
-export function contextOf(output) {
-  const raw = String(output ?? '')
-  if (!raw.trimStart().startsWith('{')) return raw
-  try {
-    const context = JSON.parse(raw)?.hookSpecificOutput?.additionalContext
-    return typeof context === 'string' ? context : raw
-  } catch {
-    return raw
-  }
-}
+const deliveries = new WeakMap()
 
 /**
- * What a source delivered, in the unit the core's budget and meter report:
- * an enveloped hook context is held to the larger of its UTF-8 bytes and its
- * JSON-escaped length, as the core measures it on the envelope path
- * (session-start.ts `enveloped`); anything else to its UTF-8 bytes (#129).
+ * What a hook delivered, read once per hook (#129). A hook that answers in the
+ * JSON envelope, `{"hookSpecificOutput":{"hookEventName":…,"additionalContext":…}}`,
+ * hands the model its additionalContext, and nothing when the envelope names
+ * another event (Claude Code rejects it); its other fields (a systemMessage,
+ * policyResults) still went out, so they are kept as `rest`. Anything else,
+ * plain stdout, other JSON or JSON that doesn't parse, is its own context.
+ * `size` is in the unit the core's budget and meter report: an enveloped
+ * context is the larger of its UTF-8 bytes and its JSON-escaped length
+ * (`enveloped` in lib/session-start.ts), anything else its UTF-8 bytes.
  */
+export function delivered(h) {
+  if (deliveries.has(h)) return deliveries.get(h)
+  const raw = String(h.output ?? '')
+  let d = { context: raw, enveloped: false, rest: '' }
+  if (raw.trimStart().startsWith('{')) {
+    try {
+      const { hookSpecificOutput: out, ...top } = JSON.parse(raw) ?? {}
+      if (out && typeof out === 'object' && typeof out.additionalContext === 'string') {
+        const { additionalContext, hookEventName, ...fields } = out
+        const forThisHook = hookEventName === undefined || h.event === undefined || hookEventName === h.event
+        const rest = { ...top, ...(Object.keys(fields).length > 0 ? { hookSpecificOutput: fields } : {}) }
+        d = { context: forThisHook ? additionalContext : '', enveloped: true, rest: Object.keys(rest).length > 0 ? JSON.stringify(rest) : '' }
+      }
+    } catch {
+      // not JSON: plain stdout
+    }
+  }
+  d.size = d.enveloped ? Math.max(Buffer.byteLength(d.context), JSON.stringify(d.context).length) : Buffer.byteLength(d.context)
+  deliveries.set(h, d)
+  return d
+}
+
+/** The context a hook's output hands the model (`delivered`), for an output and the event it answered. */
+export const contextOf = (output, event) => delivered({ output, event }).context
+
+/** Everything a hook put out, as the `hook` kind reads it: an envelope's context and its other fields. */
+const hookText = (h) => {
+  const d = delivered(h)
+  return d.rest === '' ? d.context : `${d.context}\n${d.rest}`
+}
+
+/** No content for the model or the user: nothing, `{}`, or an envelope with an empty context and no other field. */
+export const silent = (h) => {
+  const d = delivered(h)
+  return d.enveloped ? d.context.trim() === '' && d.rest === '' : isSilent(d.context)
+}
+
+/** What a source delivered, in the unit the core's budget and meter report (`delivered`). */
 export function deliveredSize(t, src) {
   if (!src.startsWith('hook:')) return Buffer.byteLength(sourceText(t, src))
   const event = src.slice('hook:'.length)
-  const sizes = t.hooks.filter((h) => h.event === event).map((h) => {
-    const context = contextOf(h.output)
-    const bytes = Buffer.byteLength(context)
-    return context === String(h.output ?? '') ? bytes : Math.max(bytes, JSON.stringify(context).length)
-  })
+  const sizes = t.hooks.filter((h) => h.event === event).map((h) => delivered(h).size)
   // sourceText joins the hooks' contexts with one newline each.
-  return sizes.reduce((a, b) => a + b, 0) + Math.max(0, sizes.length - 1)
+  return sizes.reduce((x, y) => x + y, 0) + Math.max(0, sizes.length - 1)
 }
 
 export function sourceText(t, src) {
@@ -324,7 +348,7 @@ export function sourceText(t, src) {
   if (src === 'deliver') return t.deliver ?? ''
   if (src === 'shown') return t.informational.join('\n')
   const event = src.slice('hook:'.length)
-  return t.hooks.filter((h) => h.event === event).map((h) => contextOf(h.output)).join('\n')
+  return t.hooks.filter((h) => h.event === event).map((h) => delivered(h).context).join('\n')
 }
 
 function evalHook(v, ts) {
@@ -337,14 +361,14 @@ function evalHook(v, ts) {
     return [false, h.status !== 'responded' ? `${h.name}: no response` : `${h.name}: exit ${h.exitCode} (${h.outcome})`]
   }
   if (v.exit !== undefined && v.exit !== 0 && !hooks.some((h) => h.exitCode === v.exit)) return [false, `no exit ${v.exit}`]
-  if (v.silent === true && !hooks.every((h) => isSilent(contextOf(h.output)))) return [false, `not silent: ${contextOf(hooks.find((h) => !isSilent(contextOf(h.output))).output).slice(0, 80)}`]
-  if (v.silent === false && hooks.every((h) => isSilent(contextOf(h.output)))) return [false, 'silent']
+  if (v.silent === true && !hooks.every(silent)) return [false, `not silent: ${hookText(hooks.find((h) => !silent(h))).slice(0, 80)}`]
+  if (v.silent === false && hooks.every(silent)) return [false, 'silent']
   // output: at least one run's output matches. everyOutput: every run's
   // does, which is what a negative ("no MF- marker anywhere") needs.
-  if (v.output !== undefined && !hooks.some((h) => matches(v.output, contextOf(h.output)))) return [false, `output does not match ${describe(v.output)}`]
+  if (v.output !== undefined && !hooks.some((h) => matches(v.output, hookText(h)))) return [false, `output does not match ${describe(v.output)}`]
   if (v.everyOutput !== undefined) {
-    const off = hooks.find((h) => !matches(v.everyOutput, contextOf(h.output)))
-    if (off) return [false, `a ${off.name} output does not match ${describe(v.everyOutput)}: ${JSON.stringify(contextOf(off.output).slice(0, 80))}`]
+    const off = hooks.find((h) => !matches(v.everyOutput, hookText(h)))
+    if (off) return [false, `a ${off.name} output does not match ${describe(v.everyOutput)}: ${JSON.stringify(hookText(off).slice(0, 80))}`]
   }
   return [true, `${hooks.length}x ok`]
 }
@@ -432,7 +456,7 @@ function evalOnTurn(kind, v, t) {
     if (hooks.length === 0) return [false, `${v.event} did not run`]
     const bad = hooks.find((h) => !ok(h))
     if (bad) return [false, `${v.event} failed: exit ${bad.exitCode}`]
-    const text = hooks.map((h) => contextOf(h.output)).join('\n')
+    const text = hooks.map(hookText).join('\n')
     if (!text.includes(v.extension)) return [false, `output does not name ${v.extension}`]
     const missing = (v.present ?? []).filter((m) => !matches(m, text))
     if (missing.length) return [false, `other sections missing: ${missing.map(describe).join(', ')}`]

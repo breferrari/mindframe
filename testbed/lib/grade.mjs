@@ -2,7 +2,7 @@
 // the two tables a run is read by: expectations by arm, and every hook by
 // arm.
 import { DRY_SKIPPED } from './dry.mjs'
-import { evaluate } from './expect.mjs'
+import { evaluate, silent } from './expect.mjs'
 import { formatValue, measureAll, measureLabel } from './measure.mjs'
 
 // An expectation of any kind that reads the model's answer or what the user
@@ -78,7 +78,7 @@ export function hookTable(record) {
       const c = ((cells[h.event] ??= {})[run.arm] ??= { ran: 0, failed: 0, silent: 0 })
       c.ran++
       if (h.status !== 'responded' || h.exitCode !== 0) c.failed++
-      else if (String(h.output ?? '').trim() === '' || String(h.output).trim() === '{}') c.silent++
+      else if (silent(h)) c.silent++
     }
   }
   const mod = {}
