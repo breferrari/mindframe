@@ -18,7 +18,7 @@ export const QMD_SWITCH = "VAULT_QMD";
 export const REFRESH_SWITCH = "VAULT_QMD_REFRESH";
 
 /** Whether all of QMD's work is off. */
-export function qmdOff(env: Env): boolean {
+export function qmdOff(env: Env = process.env): boolean {
 	return env[QMD_SWITCH] === "off";
 }
 

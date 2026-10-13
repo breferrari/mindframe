@@ -6,7 +6,7 @@
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, utimesSync } from "node:fs";
+import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,8 +15,8 @@ import { QMD_DECLARATION } from "../../core/context.ts";
 import { collectSections, fromLoaded, loadRegistry, runEffects } from "../../core/registry.ts";
 import { SELF_HEAL_HEADER, VERSION_HEADER, extension, qmdExtension } from "./index.ts";
 import { QMD_SWITCH, REFRESH_SWITCH } from "./lib/switches.ts";
-import type { QmdDeps } from "./session.ts";
-import { VAULT, fakeDeps, rmTemp, type Calls } from "./test-fakes.ts";
+import { realDeps, type QmdDeps } from "./session.ts";
+import { VAULT, fakeDeps, rmTemp, waitFor, type Calls } from "./test-fakes.ts";
 
 const counts = (calls: Calls) => ({ sync: calls.sync.length, detached: calls.detached.length });
 
@@ -226,4 +226,60 @@ test("one hook's sections and session-start effect resolve QMD once between them
 	await collectSections(registry, one, "full");
 	await runEffects(registry, { event: "session-start" }, one);
 	assert.equal(resolved, 1);
+});
+
+describe("no detached worker outlives the extension's effects under VAULT_QMD_REFRESH=off (#70's guard, #95)", () => {
+	// Real spawns, observed through fakes that write a marker when they run: the
+	// debounced worker, and a stand-in for qmd's entry that session start's
+	// update runs. No spawn seam, so the switch is what decides.
+	function fixture(env: Record<string, string>) {
+		const dir = mkdtempSync(join(tmpdir(), "qmd-guard-"));
+		const marker = (name: string) => join(dir, `${name}-ran`);
+		const writer = (name: string) => {
+			const path = join(dir, `${name}.mjs`);
+			writeFileSync(path, `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker(name))}, "");\n`);
+			return path;
+		};
+		const qmdEntry = writer("qmd");
+		const workerPath = writer("worker");
+		const deps: QmdDeps = {
+			...realDeps,
+			env: { QMD_REFRESH_SENTINEL: join(dir, ".qmd-refresh-sentinel"), ...env },
+			resolveEntry: () => qmdEntry,
+			storeSize: () => Number.MAX_SAFE_INTEGER,
+		};
+		const registry = fromLoaded([{ declaration, extension: qmdExtension(deps, { workerPath }) }]);
+		const fire = async () => {
+			const ctx: HookContext = { vaultRoot: dir, manifest: MANIFEST, now: 0 };
+			for (const trigger of [{ event: "session-start" }, { event: "write", target: { relPath: "a.md", content: "" } }] as const) {
+				assert.deepEqual((await runEffects(registry, trigger, ctx)).failures, []);
+			}
+		};
+		return { dir, ran: () => ["qmd", "worker"].filter((n) => existsSync(marker(n))), fire };
+	}
+	let spawnMs = 0;
+
+	test("control: with the switch unset, both spawns run, so the observation works", async () => {
+		const f = fixture({});
+		try {
+			const start = Date.now();
+			await f.fire();
+			await waitFor(() => f.ran().length === 2, 10_000);
+			assert.deepEqual(f.ran(), ["qmd", "worker"]);
+			spawnMs = Date.now() - start;
+		} finally {
+			rmTemp(f.dir);
+		}
+	});
+
+	test("off: session start's update and the debounced worker spawn nothing", async () => {
+		const f = fixture({ [REFRESH_SWITCH]: "off" });
+		try {
+			await f.fire();
+			await waitFor(() => f.ran().length > 0, spawnMs === 0 ? 10_000 : Math.max(2_000, 3 * spawnMs));
+			assert.deepEqual(f.ran(), [], "a worker ran with VAULT_QMD_REFRESH=off");
+		} finally {
+			rmTemp(f.dir);
+		}
+	});
 });
