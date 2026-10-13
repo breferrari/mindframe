@@ -92,25 +92,28 @@ export function isInstructionFile(name: string, platform: NodeJS.Platform = proc
 /**
  * The context files the vault's `.gemini/settings.json` names
  * (`context.fileName`, or the older top-level `contextFileName` Gemini still
- * migrates; a string or a list), or [] when there is none. The file is read
- * as gemini-cli 51617c1 reads it: comments are dropped by strip-json-comments'
+ * migrates; a string or a list), or [] when there is none. The file is parsed
+ * as gemini-cli 51617c1 parses it: comments are dropped by strip-json-comments'
  * rules, then a strict `JSON.parse`. A file that doesn't parse names nothing,
  * because Gemini applies none of it either. A BOM is kept, so a BOM'd file
- * doesn't parse, as Gemini refuses it (#119). Lifted from obsidian-mind's
- * hygiene scan (#104), which falls back to a narrow read of the raw text;
- * dropping comments instead, the v1 key, and keeping the BOM (as obsidian-mind
- * #377 does too) are mindframe's.
+ * doesn't parse, as Gemini refuses it (#119). What Gemini does after parsing
+ * is left out: `$VAR` expansion in values, skipping an untrusted folder's
+ * settings, and merging user-level settings. Lifted from obsidian-mind's
+ * hygiene scan (#104), which falls back to a narrow read of the raw text at
+ * the recorded commit; dropping comments instead, the v1 key, and keeping the
+ * BOM are mindframe's changes to it (obsidian-mind #377 keeps the BOM too).
  */
 export function geminiContextFiles(vaultRoot: string): string[] {
 	const path = join(vaultRoot, GEMINI_SETTINGS);
 	try {
 		// Only a regular file: a FIFO at that path would block the hook on read.
 		if (statSync(path, { throwIfNoEntry: false })?.isFile() !== true) return [];
-		// Strings are matched first (a double quote, past escapes), so a `//` inside
-		// one is no comment; an unterminated block comment runs to the end, in one
-		// pass; a comment becomes a space, so `tr/**/ue` stays two tokens.
+		// Strings are matched first (a double quote, past escapes, an escaped line
+		// break too), so a `//` inside one is no comment; an unterminated block
+		// comment runs to the end, in one pass; a comment becomes a space, so
+		// `tr/**/ue` stays two tokens.
 		const text = readFileSync(path, "utf8")
-			.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g, (_, string: string | undefined) => string ?? " ");
+			.replace(/("(?:[^"\\]|\\[\s\S])*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g, (_, string: string | undefined) => string ?? " ");
 		const settings = JSON.parse(text) as { context?: { fileName?: unknown }; contextFileName?: unknown } | null;
 		const names = settings?.context?.fileName ?? settings?.contextFileName;
 		// Gemini trims each name, so " AGENTS.md" names AGENTS.md there too.
