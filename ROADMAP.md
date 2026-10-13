@@ -42,6 +42,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#89](https://github.com/breferrari/mindframe/issues/89) | Absorb obsidian-mind #333 into the core: the instruction files library and its comments | ✅ |
 | [#102](https://github.com/breferrari/mindframe/issues/102) | Record obsidian-mind as upstream for the core libraries absorbed from it | ⬜ |
 | [#91](https://github.com/breferrari/mindframe/issues/91) | Match a retired instruction file the way the agent loads it: any case where the filesystem ignores case, exact case on Linux | ⏳ after #102 |
+| [#104](https://github.com/breferrari/mindframe/issues/104) | Retire GEMINI.md only where the vault points Gemini at AGENTS.md: a vault-aware retired-file predicate | ⏳ after #91 |
 
 ## Phase 3: first-party extensions
 
