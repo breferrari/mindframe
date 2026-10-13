@@ -406,7 +406,14 @@ test("a kept copy that can't be read is a warning, not a silent pass (#117)", { 
 	otherRecord(s, "export const u = 0;\n");
 	const kept = path.join(s.vault, ".claude", "scripts", "util.ts");
 	chmodSync(kept, 0o000);
-	t.after(() => chmodSync(kept, 0o644));
+	// The vault may be gone by now: setup's cleanup can run first, and it removes an unreadable file anyway.
+	t.after(() => {
+		try {
+			chmodSync(kept, 0o644);
+		} catch {
+			// already removed
+		}
+	});
 	try {
 		readFileSync(kept);
 		t.skip("this user reads every file (root)");
