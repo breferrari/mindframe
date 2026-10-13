@@ -183,6 +183,16 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"]);
 	});
 
+	test("an escaped line break stays inside its string: a /* */ there is text, and the file doesn't parse (#119)", () => {
+		settings('{ "x": "a /* \\\n */ b", "context": { "fileName": "AGENTS.md" } }');
+		assert.deepEqual(core.geminiContextFiles(root), []);
+	});
+
+	test("a string that never closes runs to the end, as strip-json-comments reads it: nothing after it is a comment (#119)", () => {
+		settings('{ "context": { "fileName": "AGENTS.md" } } "open // not a comment\n');
+		assert.deepEqual(core.geminiContextFiles(root), []);
+	});
+
 	test("an escaped backslash before a quote doesn't escape it: the string closes, and a // after it is a comment (#119)", () => {
 		// The quotes in the comment make a mispaired reading keep the comment as text, so the file wouldn't parse.
 		settings('{ "dir": "C:\\\\", "context": { "fileName": "AGENTS.md" } } // a "Windows" path ends in a backslash\n');
