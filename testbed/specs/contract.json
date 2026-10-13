@@ -8,7 +8,8 @@
       { "from": "../fixtures/contract/mf-budget.mjs", "path": ".claude/extensions/mf-budget/index.mjs" },
       { "from": "../fixtures/contract/mf-thrower.mjs", "path": ".claude/extensions/mf-thrower/index.mjs" },
       { "from": "../fixtures/contract/mf-witness.mjs", "path": ".claude/extensions/mf-witness/index.mjs" },
-      { "from": "../fixtures/contract/mf-getter.mjs", "path": ".claude/extensions/mf-getter/index.mjs" }
+      { "from": "../fixtures/contract/mf-getter.mjs", "path": ".claude/extensions/mf-getter/index.mjs" },
+      { "from": "../fixtures/contract/mf-effect.mjs", "path": ".claude/extensions/mf-effect/index.mjs" }
     ],
     "manifest": {
       "set": { "eager_layer_budget_bytes": 4000, "eager_layer_instruction_budget_bytes": 4000 },
@@ -18,7 +19,8 @@
         { "id": "mf-budget", "module": ".claude/extensions/mf-budget/index.mjs", "events": ["session-start"] },
         { "id": "mf-thrower", "module": ".claude/extensions/mf-thrower/index.mjs", "events": ["session-start", "stop", "prompt", "write"], "timeoutMs": 200 },
         { "id": "mf-witness", "module": ".claude/extensions/mf-witness/index.mjs", "events": ["session-start", "stop", "prompt", "write"] },
-        { "id": "mf-getter", "module": ".claude/extensions/mf-getter/index.mjs", "events": ["session-start"] }
+        { "id": "mf-getter", "module": ".claude/extensions/mf-getter/index.mjs", "events": ["session-start"] },
+        { "id": "mf-effect", "module": ".claude/extensions/mf-effect/index.mjs", "events": ["session-start", "write", "stop"] }
       ]
     }
   },
@@ -86,7 +88,10 @@
         { "id": "rule 5: the model was told what was skipped", "turn": 5, "answer": { "re": "extension mf-(thrower|getter)" } },
         { "id": "rule 3: a session-start extension is not loaded at prompt", "turn": "all", "hook": { "event": "UserPromptSubmit", "everyOutput": { "not": "extension mf-getter" } } },
         { "id": "rule 3: a session-start extension is not loaded at write", "turn": "all", "hook": { "event": "PostToolUse", "everyOutput": { "not": "extension mf-getter" } } },
-        { "id": "rule 3: Stop counts only its own event's failure (mf-thrower's detector)", "arms": ["settings"], "turn": 1, "hook": { "event": "Stop", "output": { "re": "\\b1 extension failure\\(s\\)" } } },
+        { "id": "rule 3: Stop counts only its own event's failures (mf-thrower's detector and effect)", "arms": ["settings"], "turn": 1, "hook": { "event": "Stop", "output": { "re": "\\b2 extension failure\\(s\\)" } } },
+        { "id": "rule 5: an effect runs on each event it declares", "arms": ["settings"], "turn": 4, "hook": { "event": "Stop", "output": "MF-EFFECT-RAN: session-start, stop, write" } },
+        { "id": "rule 5: an effect runs at Stop before the detectors read what it did", "arms": ["settings"], "turn": 1, "hook": { "event": "Stop", "output": "MF-EFFECT-RAN: session-start, stop" } },
+        { "id": "rule 5: a throwing effect is reported in the full Stop report, and the other effect still ran", "arms": ["settings"], "turn": 2, "hook": { "event": "UserPromptSubmit", "output": "mf-thrower, effect throws: skipped" } },
         { "id": "every UserPromptSubmit succeeded", "turn": "all", "hook": { "event": "UserPromptSubmit" } },
         { "id": "every Stop succeeded", "turn": "all", "hook": { "event": "Stop" } }
       ]

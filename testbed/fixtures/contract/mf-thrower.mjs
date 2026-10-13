@@ -17,5 +17,14 @@ const extension = {
   signals: [{ id: 'hangs', match: () => new Promise(() => {}), hint: 'MF-THROWER-HINT' }],
   // Wrong shape: a string where a list of warnings belongs.
   validators: [{ id: 'wrong-shape', appliesTo: () => true, validate: () => 'MF-THROWER-NOT-A-LIST' }],
+  effects: [
+    {
+      id: 'throws',
+      on: ['stop'],
+      run: () => {
+        throw new Error('mf-thrower effect failed on purpose')
+      },
+    },
+  ],
 }
 export default extension
