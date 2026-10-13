@@ -133,11 +133,30 @@ test('a hook context is graded as the agent receives it: the JSON envelope unwra
   assert.equal(contextOf(undefined), '')
 })
 
+test('an envelope whose context is empty gives the agent nothing: silent (#129)', () => {
+  const r = run({ turns: [turn(1, { hooks: [hook('Stop', envelope('Stop', ''))] })] })
+  assert.equal(ev({ id: 's', turn: 1, hook: { event: 'Stop', silent: true } }, r).pass, true)
+})
+
 test('order, hook output and isolates read an enveloped SessionStart by its context (#129)', () => {
   const r = run({ turns: [turn(1, { hooks: [hook('SessionStart', envelope('SessionStart', '## A\n⚠️ extension thrower: skipped\n## B\n## C'))] })] })
   assert.equal(ev({ id: 'o', turn: 1, order: { in: 'hook:SessionStart', items: ['## A', '## B', '## C'] } }, r).pass, true)
   assert.equal(ev({ id: 'h', turn: 1, hook: { event: 'SessionStart', output: { re: '^## B$', flags: 'm' } } }, r).pass, true, 'a line, not an escaped \\n')
-  assert.equal(ev({ id: 'i', turn: 1, isolates: { event: 'SessionStart', extension: 'thrower', present: ['## A', '## C'] } }, r).pass, true)
+  assert.equal(ev({ id: 'i', turn: 1, isolates: { event: 'SessionStart', extension: 'thrower', present: ['## A', { re: '^## C$', flags: 'm' }] } }, r).pass, true, 'a line of the context, not a run inside the JSON')
+})
+
+test("meter: an enveloped context is measured in the core's unit, the larger of its bytes and its JSON-escaped length (#129)", () => {
+  // 200 short lines: escaping each newline as \n makes the JSON length well over the UTF-8 bytes.
+  const body = Array.from({ length: 200 }, () => 'ab').join('\n')
+  const sized = JSON.stringify(body).length
+  const kb = (n) => `${(n / 1000).toFixed(1)}kB`
+  const context = `${body}\n_context injected: ${kb(sized)} / 4.0kB budget_`
+  assert.ok(sized > Buffer.byteLength(context) + 100, 'the escaped size is past the bytes and the meter rounding')
+  const r = run({ preamble: [hook('SessionStart', envelope('SessionStart', context))] })
+  const m = ev({ id: 'm', arms: ['settings'], turn: 'preamble', meter: { in: 'hook:SessionStart', maxBytes: 4000 } }, r)
+  assert.equal(m.pass, true, m.detail)
+  const plain = run({ preamble: [hook('SessionStart', context)] })
+  assert.equal(ev({ id: 'm', arms: ['settings'], turn: 'preamble', meter: { in: 'hook:SessionStart' } }, plain).pass, false, 'plain stdout is held to its bytes: the meter overstates what arrived')
 })
 
 test('budget: bytes counted exactly, last line, survivors and dropped sections', () => {

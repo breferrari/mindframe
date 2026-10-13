@@ -301,6 +301,24 @@ export function contextOf(output) {
   }
 }
 
+/**
+ * What a source delivered, in the unit the core's budget and meter report:
+ * an enveloped hook context is held to the larger of its UTF-8 bytes and its
+ * JSON-escaped length, as the core measures it on the envelope path
+ * (session-start.ts `enveloped`); anything else to its UTF-8 bytes (#129).
+ */
+export function deliveredSize(t, src) {
+  if (!src.startsWith('hook:')) return Buffer.byteLength(sourceText(t, src))
+  const event = src.slice('hook:'.length)
+  const sizes = t.hooks.filter((h) => h.event === event).map((h) => {
+    const context = contextOf(h.output)
+    const bytes = Buffer.byteLength(context)
+    return context === String(h.output ?? '') ? bytes : Math.max(bytes, JSON.stringify(context).length)
+  })
+  // sourceText joins the hooks' contexts with one newline each.
+  return sizes.reduce((a, b) => a + b, 0) + Math.max(0, sizes.length - 1)
+}
+
 export function sourceText(t, src) {
   if (src === 'answer') return t.answer
   if (src === 'deliver') return t.deliver ?? ''
@@ -319,8 +337,8 @@ function evalHook(v, ts) {
     return [false, h.status !== 'responded' ? `${h.name}: no response` : `${h.name}: exit ${h.exitCode} (${h.outcome})`]
   }
   if (v.exit !== undefined && v.exit !== 0 && !hooks.some((h) => h.exitCode === v.exit)) return [false, `no exit ${v.exit}`]
-  if (v.silent === true && !hooks.every((h) => isSilent(h.output))) return [false, `not silent: ${hooks.find((h) => !isSilent(h.output)).output.slice(0, 80)}`]
-  if (v.silent === false && hooks.every((h) => isSilent(h.output))) return [false, 'silent']
+  if (v.silent === true && !hooks.every((h) => isSilent(contextOf(h.output)))) return [false, `not silent: ${contextOf(hooks.find((h) => !isSilent(contextOf(h.output))).output).slice(0, 80)}`]
+  if (v.silent === false && hooks.every((h) => isSilent(contextOf(h.output)))) return [false, 'silent']
   // output: at least one run's output matches. everyOutput: every run's
   // does, which is what a negative ("no MF- marker anywhere") needs.
   if (v.output !== undefined && !hooks.some((h) => matches(v.output, contextOf(h.output)))) return [false, `output does not match ${describe(v.output)}`]
@@ -354,7 +372,7 @@ function evalOnTurn(kind, v, t) {
   if (kind === 'budget') {
     const text = sourceText(t, v.in)
     if (text === '') return [false, `${v.in} is empty`]
-    const bytes = Buffer.byteLength(text)
+    const bytes = deliveredSize(t, v.in)
     if (v.maxBytes !== undefined && bytes > v.maxBytes) return [false, `${bytes} bytes > ${v.maxBytes}`]
     if (v.lastLine !== undefined) {
       const last = text.trimEnd().split('\n').pop()
@@ -378,7 +396,7 @@ function evalOnTurn(kind, v, t) {
     if (m.truncated) return [false, 'the meter says the output was truncated']
     if (m.budget === null) return [false, 'the meter reports no budget']
     if (m.bytes > m.budget) return [false, `meter reports ${m.bytes} bytes over its ${m.budget}-byte budget`]
-    const actual = Buffer.byteLength(text)
+    const actual = deliveredSize(t, v.in)
     if (v.maxBytes !== undefined) {
       if (m.bytes > v.maxBytes) return [false, `meter reports ${m.bytes} bytes > ${v.maxBytes}`]
       if (actual > v.maxBytes) return [false, `${actual} bytes delivered > ${v.maxBytes}`]
