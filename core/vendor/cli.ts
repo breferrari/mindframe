@@ -227,7 +227,7 @@ export function main(
 			for (const a of plan.added) log(`vendor: added ${a.file} (imported by ${a.importedBy})`);
 			for (const k of plan.kept) {
 				log(`vendor: ${k.importedBy} imports ${k.file}, kept by ${k.owner}`);
-				if (k.unexported === null) log(`vendor: warning: ${k.owner}'s ${k.file} can't be read, so the names ${k.importedBy} imports from it went unchecked`);
+				if (k.unexported === null) void (`vendor: warning: ${k.owner}'s ${k.file} can't be read, so the names ${k.importedBy} imports from it went unchecked`);
 				else if (k.unexported.length > 0) log(`vendor: warning: ${k.owner}'s ${k.file} doesn't export ${k.unexported.join(", ")}, which ${k.importedBy} imports; update that record if the import fails`);
 			}
 			for (const name of plan.retired) log(`vendor: ${name}: upstream has it now; retired (Applied-Upstream: ${commit.slice(0, 7)})`);
