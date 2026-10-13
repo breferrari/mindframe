@@ -13,7 +13,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
 +import { frontmatterBlock } from "./frontmatter-block.ts";
 +import { basename, dirname, posix, resolve } from "node:path";
  import { readFileSync } from "node:fs";
-+import { INSTRUCTION_FILES, filesystemIgnoresCase, isInstructionFile } from "./instruction-files.ts";
++import { INSTRUCTION_FILES, isInstructionFile, sameOnDisk } from "./instruction-files.ts";
  import { hardWrappedParagraphs } from "./prose-width.ts";
 +import { stripCodeRegions } from "./wikilinks.ts";
  
@@ -26,7 +26,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
 -	"AGENTS.md",
 -	"GEMINI.md",
 -]);
-+/** Files that are not notes: the docs, and the instruction files (lib/instruction-files.ts). Matched exactly; #91 decides case. */
++/** Files that are not notes: the docs, and the instruction files (lib/instruction-files.ts). Matched exactly, at any depth; shouldSkipFile adds the case rule at the vault root (#91). */
 +const ROOT_FILES: ReadonlySet<string> = new Set(["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "ARCHITECTURE.md", ...INSTRUCTION_FILES]);
  
  const SKIP_PATH_SEGMENTS: readonly string[] = [
@@ -40,16 +40,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
   *
   * The path is lexically normalized first (separators unified, `.`/`..`
   * segments collapsed) so a path can't dodge the check by spelling the
-@@ -54,17 +50,33 @@
- 	return base !== "MEMORY.md";
- }
- 
-+/** Whether `dir` is the vault root, compared without case where the filesystem ignores it (`c:\v` is `C:\v`). */
-+function isVaultRootDir(dir: string, vaultRoot: string, platform: NodeJS.Platform = process.platform): boolean {
-+	const root = resolve(vaultRoot);
-+	return filesystemIgnoresCase(platform) ? dir.toLowerCase() === root.toLowerCase() : dir === root;
-+}
-+
+@@ -57,14 +53,24 @@
  /**
   * Return true if the file should be skipped (not validated).
   * Skips non-markdown, dotfiles, templates, root docs, and translated READMEs.
@@ -71,11 +62,11 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
  	const base = basename(normalized);
  
  	if (ROOT_FILES.has(base)) return true;
-+	if (opts.vaultRoot !== undefined && isInstructionFile(base, opts.platform) && isVaultRootDir(dirname(resolve(filePath)), opts.vaultRoot, opts.platform)) return true;
++	if (opts.vaultRoot !== undefined && isInstructionFile(base, opts.platform) && sameOnDisk(dirname(resolve(filePath)), resolve(opts.vaultRoot), opts.platform)) return true;
  
  	if (base.startsWith("README.") && base.endsWith(".md")) return true;
  
-@@ -83,9 +95,9 @@
+@@ -83,9 +89,9 @@
  
  /**
   * Which note type a vault path is, by folder. The folder→type map is
@@ -88,7 +79,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
   * do not need a work note's `status`.
   */
  const NOTE_TYPE_BY_FOLDER: readonly (readonly [string, string])[] = [
-@@ -197,28 +209,25 @@
+@@ -197,28 +203,25 @@
  ): string[] {
  	const warnings: string[] = [];
  
@@ -131,7 +122,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
  		warnings.push(
  			"No [[wikilinks]] found — every note must link to at least one other note (vault convention)",
  		);
-@@ -232,7 +241,7 @@
+@@ -232,7 +235,7 @@
  		);
  	}
  
@@ -140,7 +131,7 @@ diff --git a/core/scripts/lib/frontmatter.ts b/core/scripts/lib/frontmatter.ts
  	if (ticketLinks > 0) {
  		warnings.push(
  			`${ticketLinks} ticket-ID wikilink(s) (e.g. [[PROJ-…]]) — ticket IDs are plain text or tracker links, never wikilinks (they are not notes)`,
-@@ -250,9 +259,15 @@
+@@ -250,9 +253,15 @@
   * the same decision validateContent's prose comes from.
   */
  export function countTicketIdWikilinks(content: string): number {

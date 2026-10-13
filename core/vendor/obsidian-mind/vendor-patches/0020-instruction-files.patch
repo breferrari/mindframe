@@ -21,7 +21,7 @@ diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instructio
   */
  
  export const INSTRUCTION_FILE = "AGENTS.md";
-@@ -20,28 +20,55 @@
+@@ -20,28 +20,58 @@
  export const GEMINI_SETTINGS = ".gemini/settings.json";
  
  /**
@@ -60,17 +60,21 @@ diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instructio
 + * a vault is read as macOS's default (#91).
   */
 -export function isRetiredInstructionFile(name: string): boolean {
+-	const lower = name.toLowerCase();
+-	return RETIRED_INSTRUCTION_FILES.some((f) => f.toLowerCase() === lower);
 +export function filesystemIgnoresCase(platform: NodeJS.Platform = process.platform): boolean {
 +	return platform === "win32" || platform === "darwin";
+ }
++
++/** Whether two names or paths open the same file on `platform`: without case where its filesystem ignores case (#91). */
++export function sameOnDisk(a: string, b: string, platform: NodeJS.Platform = process.platform): boolean {
++	return filesystemIgnoresCase(platform) ? a.toLowerCase() === b.toLowerCase() : a === b;
 +}
 +
 +/** Whether `name` is one of `names` as the agent would open it on `platform`. */
 +function opensAs(name: string, names: readonly string[], platform: NodeJS.Platform): boolean {
-+	if (!filesystemIgnoresCase(platform)) return names.includes(name);
- 	const lower = name.toLowerCase();
--	return RETIRED_INSTRUCTION_FILES.some((f) => f.toLowerCase() === lower);
-+	return names.some((f) => f.toLowerCase() === lower);
- }
++	return names.some((f) => sameOnDisk(name, f, platform));
++}
 +
 +/**
 + * Whether a root file name is a retired instruction file, matched the way the

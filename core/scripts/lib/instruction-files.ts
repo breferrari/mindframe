@@ -51,11 +51,14 @@ export function filesystemIgnoresCase(platform: NodeJS.Platform = process.platfo
 	return platform === "win32" || platform === "darwin";
 }
 
+/** Whether two names or paths open the same file on `platform`: without case where its filesystem ignores case (#91). */
+export function sameOnDisk(a: string, b: string, platform: NodeJS.Platform = process.platform): boolean {
+	return filesystemIgnoresCase(platform) ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
 /** Whether `name` is one of `names` as the agent would open it on `platform`. */
 function opensAs(name: string, names: readonly string[], platform: NodeJS.Platform): boolean {
-	if (!filesystemIgnoresCase(platform)) return names.includes(name);
-	const lower = name.toLowerCase();
-	return names.some((f) => f.toLowerCase() === lower);
+	return names.some((f) => sameOnDisk(name, f, platform));
 }
 
 /**

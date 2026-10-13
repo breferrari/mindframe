@@ -6,11 +6,11 @@
 import { frontmatterBlock } from "./frontmatter-block.ts";
 import { basename, dirname, posix, resolve } from "node:path";
 import { readFileSync } from "node:fs";
-import { INSTRUCTION_FILES, filesystemIgnoresCase, isInstructionFile } from "./instruction-files.ts";
+import { INSTRUCTION_FILES, isInstructionFile, sameOnDisk } from "./instruction-files.ts";
 import { hardWrappedParagraphs } from "./prose-width.ts";
 import { stripCodeRegions } from "./wikilinks.ts";
 
-/** Files that are not notes: the docs, and the instruction files (lib/instruction-files.ts). Matched exactly; #91 decides case. */
+/** Files that are not notes: the docs, and the instruction files (lib/instruction-files.ts). Matched exactly, at any depth; shouldSkipFile adds the case rule at the vault root (#91). */
 const ROOT_FILES: ReadonlySet<string> = new Set(["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "ARCHITECTURE.md", ...INSTRUCTION_FILES]);
 
 const SKIP_PATH_SEGMENTS: readonly string[] = [
@@ -50,12 +50,6 @@ export function isBlockedMemoryPath(filePath: string): boolean {
 	return base !== "MEMORY.md";
 }
 
-/** Whether `dir` is the vault root, compared without case where the filesystem ignores it (`c:\v` is `C:\v`). */
-function isVaultRootDir(dir: string, vaultRoot: string, platform: NodeJS.Platform = process.platform): boolean {
-	const root = resolve(vaultRoot);
-	return filesystemIgnoresCase(platform) ? dir.toLowerCase() === root.toLowerCase() : dir === root;
-}
-
 /**
  * Return true if the file should be skipped (not validated).
  * Skips non-markdown, dotfiles, templates, root docs, and translated READMEs.
@@ -76,7 +70,7 @@ export function shouldSkipFile(
 	const base = basename(normalized);
 
 	if (ROOT_FILES.has(base)) return true;
-	if (opts.vaultRoot !== undefined && isInstructionFile(base, opts.platform) && isVaultRootDir(dirname(resolve(filePath)), opts.vaultRoot, opts.platform)) return true;
+	if (opts.vaultRoot !== undefined && isInstructionFile(base, opts.platform) && sameOnDisk(dirname(resolve(filePath)), resolve(opts.vaultRoot), opts.platform)) return true;
 
 	if (base.startsWith("README.") && base.endsWith(".md")) return true;
 
