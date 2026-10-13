@@ -133,8 +133,13 @@ It moves the copy to the checkout's commit, file by file:
 - a patch whose change upstream already has retires: it gains `Applied-Upstream: <commit>` and leaves the record, but stays in `vendor-patches/` as history;
 - otherwise the old upstream, the vault and the new upstream are merged three ways. A clean merge folds into the patch. A conflict writes markers into that file and nothing else, and exits 1 with the record still at the old commit. Resolve the markers, then run `update` again with `--resolved <file>`, and the result folds into the patch.
 
-A file an updated file newly imports comes along. `update` follows each updated file's relative imports, transitively: `import … from`, `export … from`, `import "…"` and `import("…")`. A target the record doesn't name, and upstream has, is written and recorded unpatched at the new commit, with a line saying so: `vendor: added <file> (imported by <importer>)`. #78 asked for update to offer to add such a file. It adds it and says so instead, because `update` isn't interactive and the importer can't run without the file. Three cases are still refused, so nothing is written:
-- a target another `VENDOR.json` in the vault owns: take it off that record, or update that record instead;
+A file an updated file newly imports comes along. `update` follows each updated file's relative imports, transitively: `import … from`, `export … from`, `import "…"` and `import("…")`. A target the record doesn't name, and upstream has, is written and recorded unpatched at the new commit, with a line saying so: `vendor: added <file> (imported by <importer>)`. #78 asked for update to offer to add such a file. It adds it and says so instead, because `update` isn't interactive and the importer can't run without the file.
+
+A target another `VENDOR.json` in the vault owns is that record's. An update never writes or records it, so two records never claim one path (#117).
+- **Present as a file:** it is kept as it is, with a line saying so: `vendor: <importer> imports <file>, kept by <record>`. Its own imports are left to its record. The importer was written against upstream's copy of the target, not the kept one. So when the importer names an import the kept copy doesn't export by name, a warning says which: `vendor: warning: <record>'s <file> doesn't export <names>, which <importer> imports; update that record if the import fails`. That is a text scan, which can't see `export *` (it reads `export * as ns`), so it warns rather than refuses. Where it can't tell, it reads too many names rather than too few. A kept copy that can't be read gets a warning that its names went unchecked.
+- **Missing, or not a file:** refused. Restore it through that record, then update.
+
+Two more cases are refused, so nothing is written:
 - a target upstream doesn't have at the new commit;
 - a target already in the vault, unrecorded, that differs from upstream: move it aside, or record it.
 

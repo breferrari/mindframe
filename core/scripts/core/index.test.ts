@@ -205,7 +205,13 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 		mkdirSync(join(root, ".gemini"), { recursive: true });
 		const made = spawnSync("mkfifo", [join(root, core.GEMINI_SETTINGS)]);
 		if (made.status !== 0) return;
-		assert.deepEqual(core.geminiContextFiles(root), []);
+		// A blocking read stalls the event loop, so no in-process timeout could fire:
+		// the read runs in a child that is killed if it blocks, which fails the test.
+		const index = new URL("./index.ts", import.meta.url).href;
+		const code = `const m = await import(${JSON.stringify(index)}); console.log(JSON.stringify(m.geminiContextFiles(${JSON.stringify(root)})));`;
+		const run = spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", "--input-type=module", "-e", code], { encoding: "utf8", timeout: 20_000 });
+		assert.equal(run.signal, null, "the read blocked, and the child was killed");
+		assert.equal(run.stdout.trim(), "[]", run.stderr);
 	});
 
 	test("only the top-level context counts; a v1 contextFileName counts where context.fileName is absent", () => {
