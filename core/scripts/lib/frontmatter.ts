@@ -71,7 +71,7 @@ export function shouldSkipFile(
 	const base = basename(normalized);
 
 	if (ROOT_FILES.has(base)) return true;
-	if (opts.vaultRoot !== undefined && isInstructionFile(base, opts.platform) && sameOnDisk(dirname(resolve(opts.vaultRoot, filePath)), resolve(opts.vaultRoot), opts.platform)) return true;
+	if (opts.vaultRoot !== undefined && isInstructionFile(base, opts.platform) && sameOnDisk(dirname(resolve(opts.vaultRoot, normalized)), resolve(opts.vaultRoot), opts.platform)) return true;
 
 	if (base.startsWith("README.") && base.endsWith(".md")) return true;
 

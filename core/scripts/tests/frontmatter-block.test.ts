@@ -108,6 +108,16 @@ describe("frontmatter.ts's other readers (#82)", () => {
 		const root = resolve("elsewhere", "Vault");
 		assert.equal(shouldSkipFile("claude.md", { vaultRoot: root, platform: "win32" }), true);
 		assert.equal(shouldSkipFile(join("people", "claude.md"), { vaultRoot: root, platform: "win32" }), false);
+		assert.equal(shouldSkipFile("claude.md", { vaultRoot: root, platform: "darwin" }), true);
+		assert.equal(shouldSkipFile("claude.md", { vaultRoot: root, platform: "linux" }), false, "a note on Linux");
+		assert.equal(shouldSkipFile("CLAUDE.md", { vaultRoot: root, platform: "linux" }), true);
+	});
+
+	test("a backslash-separated relative path is nested on every OS, not one name at the root (#91)", () => {
+		const root = resolve("Vault");
+		for (const platform of ["win32", "darwin", "linux"] as const) {
+			assert.equal(shouldSkipFile(String.raw`people\claude.md`, { vaultRoot: root, platform }), false, platform);
+		}
 	});
 
 	test("a fence-looking line inside a yaml value doesn't hide the body's links", () => {
