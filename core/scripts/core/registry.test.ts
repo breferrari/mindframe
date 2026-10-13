@@ -291,6 +291,150 @@ describe("rule 5: nothing an extension returns reaches the output unchecked", ()
 		const { failures } = await runValidators(fromLoaded([declared(ext)]), { relPath: "a.md", content: "" }, ctx);
 		assert.equal(failures[0]?.message, "nope");
 	});
+
+	// A getter runs the extension's code, so every field the registry reads
+	// outside a call is read once, inside a try (#110).
+	const boom = (): never => {
+		throw new Error("getter");
+	};
+	/** A field that reads `first` once, then throws: a second read would escape the dispatch. */
+	const once = <T>(first: T) => {
+		let read = false;
+		return () => (read ? boom() : ((read = true), first));
+	};
+
+	test("a checklist item whose `full` or `short` getter throws is a failure; the other items come back (#110)", () => {
+		const ext = {
+			id: "a",
+			checklist: [
+				{ id: "a.1", get full(): string { return boom(); }, short: "s" },
+				{ id: "a.2", full: "f", get short(): string { return boom(); } },
+				{ id: "a.3", full: "F", short: "S" },
+			],
+		} as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext)]));
+		assert.deepEqual(result, [{ id: "a.3", full: "F", short: "S" }]);
+		assert.deepEqual(failures.map((f) => [f.point, f.item, f.message]), [["checklist", "a.1", "getter"], ["checklist", "a.2", "getter"]]);
+	});
+
+	test("a checklist item's fields are read once: a getter that throws on a second read can't escape (#110)", () => {
+		const full = once("F");
+		const ext = { id: "a", checklist: [{ id: "a.1", get full() { return full(); }, short: "S" }] } as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext)]));
+		assert.deepEqual(result, [{ id: "a.1", full: "F", short: "S" }]);
+		assert.deepEqual(failures, []);
+	});
+
+	test("a section whose `header` or `pointer` getter throws is a failure; the other sections render (#110)", async () => {
+		const ext = {
+			id: "a",
+			sections: [
+				{ id: "a.1", get header(): string { return boom(); }, render: () => "x" },
+				{ id: "a.2", header: "### B", get pointer(): string { return boom(); }, render: () => "y" },
+				section("a.3", 3, "z"),
+			],
+		} as unknown as Extension;
+		const { result, failures } = await collectSections(fromLoaded([declared(ext)]), ctx, "full");
+		assert.deepEqual(result.map((s) => s.body), ["z"]);
+		assert.deepEqual(failures.map((f) => [f.point, f.item, f.message]), [["section", "a.1", "getter"], ["section", "a.2", "getter"]]);
+	});
+
+	// A getter that changes type, not one that throws: the output must carry the value that was checked.
+	test("a section's header is read once: a getter that changes type after the check can't reach the output (#110)", async () => {
+		const reads: unknown[] = ["### Once", 42];
+		const ext = { id: "a", sections: [{ id: "a.1", get header() { return reads.shift(); }, render: () => "x" }] } as unknown as Extension;
+		const { result, failures } = await collectSections(fromLoaded([declared(ext)]), ctx, "full");
+		assert.deepEqual(result.map((s) => s.header), ["### Once"]);
+		assert.deepEqual(failures, []);
+	});
+
+	test("a section's pointer, and a checklist item's short, are read once too: in pointer mode the pointer is the body (#110)", async () => {
+		const pointers: unknown[] = ["see notes", 42];
+		const sections = { id: "a", sections: [{ id: "a.1", header: "### A", get pointer() { return pointers.shift(); }, render: () => "x" }] } as unknown as Extension;
+		const pointed = await collectSections(fromLoaded([declared(sections)]), ctx, "pointer");
+		assert.deepEqual(pointed.result.map((s) => s.body), ["see notes"]);
+		assert.deepEqual(pointed.failures, []);
+		const shorts: unknown[] = ["S", 42];
+		const checklist = { id: "a", checklist: [{ id: "a.1", full: "F", get short() { return shorts.shift(); } }] } as unknown as Extension;
+		assert.deepEqual(collectChecklist(fromLoaded([declared(checklist)])).result, [{ id: "a.1", full: "F", short: "S" }]);
+	});
+
+	test("a getter that throws a non-Error, and a Proxy that throws on every get, are failures too (#110)", () => {
+		const ext = {
+			id: "a",
+			checklist: [
+				{ id: "a.1", get full(): string { throw "plain string"; }, short: "s" },
+				new Proxy({}, { get: () => { throw new Error("proxy"); } }),
+				{ id: "a.3", full: "F", short: "S" },
+			],
+		} as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext)]));
+		assert.deepEqual(result.map((i) => i.id), ["a.3"]);
+		assert.deepEqual(failures.map((f) => [f.point, f.item, f.message]), [["checklist", undefined, "proxy"], ["checklist", "a.1", "plain string"]]);
+	});
+
+	test("a signal's hint is read once: a getter that throws on a second read can't escape (#110)", async () => {
+		const hint = once("h");
+		const ext = { id: "a", signals: [{ id: "a.1", match: () => true, get hint() { return hint(); } }] } as unknown as Extension;
+		const { result, failures } = await matchSignals(fromLoaded([declared(ext)]), "p");
+		assert.deepEqual(result, ["h"]);
+		assert.deepEqual(failures, []);
+	});
+
+	test("an extension's id is read from its declaration after load: an id getter that throws later can't escape (#110)", async () => {
+		// The registry is built around the extension, so only reads after load reach this getter.
+		const ext = { get id(): string { return boom(); }, checklist: [{ id: "a.1", full: "F", short: "S" }], get sections(): never { return boom(); }, mcpTools: [{}] } as unknown as Extension;
+		const registry = fromLoaded([declared({ id: "a" } as Extension)]);
+		const loaded = { ...registry, loaded: [{ declaration: registry.loaded[0]!.declaration, extension: ext }] };
+		assert.deepEqual(collectChecklist(loaded).result.map((i) => i.id), ["a.1"]);
+		assert.deepEqual((await collectSections(loaded, ctx, "full")).failures.map((f) => f.extension), ["a"]);
+		assert.deepEqual(undispatched(loaded), ["a: MCP tools"]);
+	});
+
+	test("a list that is a Proxy of an array, throwing as it is walked, is a failure, not a crash (#110)", () => {
+		const list = new Proxy([], { get: (target, key) => (key === "length" || key === Symbol.iterator ? boom() : Reflect.get(target, key)) });
+		const ext = { id: "a", checklist: list } as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext), declared({ id: "b", checklist: [{ id: "b.1", full: "F", short: "S" }] })]));
+		assert.deepEqual(result.map((i) => i.id), ["b.1"]);
+		assert.deepEqual(failures.map((f) => [f.extension, f.point, f.message]), [["a", "checklist", "getter"]]);
+	});
+
+	test("a checklist item's priority is read once, by ordered: a getter that throws on a second read can't drop the item (#110)", () => {
+		const priority = once(3);
+		const ext = { id: "a", checklist: [{ id: "a.1", full: "F", short: "S", get priority() { return priority(); } }] } as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext)]));
+		assert.deepEqual(result, [{ id: "a.1", full: "F", short: "S", priority: 3 }]);
+		assert.deepEqual(failures, []);
+	});
+
+	test("a checklist item keeps its own priority (#110)", () => {
+		const ext: Extension = { id: "a", checklist: [{ id: "a.1", full: "F", short: "S", priority: 3 }, { id: "a.2", full: "F", short: "S" }] };
+		assert.deepEqual(collectChecklist(fromLoaded([declared(ext)])).result, [
+			{ id: "a.1", full: "F", short: "S", priority: 3 },
+			{ id: "a.2", full: "F", short: "S" },
+		]);
+	});
+
+	test("a matching signal whose `hint` getter throws is a failure; the other hints come back (#110)", async () => {
+		const ext = {
+			id: "a",
+			signals: [
+				{ id: "a.1", match: () => true, get hint(): string { return boom(); } },
+				{ id: "a.2", match: () => true, hint: "h" },
+			],
+		} as unknown as Extension;
+		const { result, failures } = await matchSignals(fromLoaded([declared(ext)]), "p");
+		assert.deepEqual(result, ["h"]);
+		assert.deepEqual(failures.map((f) => [f.point, f.item, f.message]), [["signal", "a.1", "getter"]]);
+	});
+
+	test("an item's id is read once: an id getter that throws on a later read can't escape the sort (#110)", () => {
+		const id = once("a.1");
+		const ext = { id: "a", checklist: [{ get id() { return id(); }, full: "F", short: "S" }, { id: "a.0", full: "F", short: "S" }] } as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext)]));
+		assert.deepEqual(result.map((i) => i.id), ["a.0", "a.1"]);
+		assert.deepEqual(failures, []);
+	});
 });
 
 describe("rule 8: overrides are by id", () => {

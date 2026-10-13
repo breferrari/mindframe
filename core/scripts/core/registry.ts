@@ -195,6 +195,10 @@ export async function loadRegistry(
 
 type Entry<T> = {
 	readonly ext: string;
+	/** The item's id, as `ordered` read and checked it: the id is never read from the item again (#110). */
+	readonly id: string;
+	/** The item's own priority, as `ordered` read and checked it, before the declaration's fills in (#110). */
+	readonly own: number | undefined;
 	/** The events the extension's declaration lists. */
 	readonly events: readonly HookEvent[];
 	readonly item: T;
@@ -218,15 +222,18 @@ function ordered<T extends { readonly id: string; readonly priority?: number }>(
 	for (const { declaration, extension } of registry.loaded) {
 		if (!declaration.events.includes(event)) continue;
 		const off = new Set(declaration.disable ?? []);
-		// Reading an extension's lists and items runs its code too (a getter),
-		// so it is isolated like a call.
+		// Reading an extension's lists and items runs its code too (a getter, or a
+		// Proxy walked), so it is isolated like a call, and the list is copied
+		// inside the try. Its id is the declaration's, which load checked equal
+		// to the extension's and which runs no code (#110).
+		const ext = declaration.id;
 		let items: readonly T[];
 		try {
 			const list = pick(extension) ?? [];
 			if (!Array.isArray(list)) throw new Error("the list is not an array");
-			items = list;
+			items = Array.from(list as readonly T[]);
 		} catch (err) {
-			failures.push({ extension: extension.id, point, message: message(err) });
+			failures.push({ extension: ext, point, message: message(err) });
 			continue;
 		}
 		for (const item of items) {
@@ -236,16 +243,18 @@ function ordered<T extends { readonly id: string; readonly priority?: number }>(
 				id = typeof item === "object" && item !== null ? item.id : undefined;
 				priority = typeof item === "object" && item !== null ? item.priority : undefined;
 			} catch (err) {
-				failures.push({ extension: extension.id, point, message: message(err) });
+				failures.push({ extension: ext, point, message: message(err) });
 				continue;
 			}
 			if (typeof id !== "string" || !(priority === undefined || (typeof priority === "number" && Number.isFinite(priority)))) {
-				failures.push({ extension: extension.id, point, message: "an item without a string `id`, or with a priority that is not a finite number" });
+				failures.push({ extension: ext, point, message: "an item without a string `id`, or with a priority that is not a finite number" });
 				continue;
 			}
 			if (off.has(id)) continue;
 			entries.push({
-				ext: extension.id,
+				ext,
+				id,
+				own: priority as number | undefined,
 				events: declaration.events,
 				item,
 				priority: (priority as number | undefined) ?? declaration.priority ?? Number.POSITIVE_INFINITY,
@@ -257,7 +266,7 @@ function ordered<T extends { readonly id: string; readonly priority?: number }>(
 	return entries.sort(
 		(a, b) =>
 			(a.priority === b.priority ? 0 : a.priority < b.priority ? -1 : 1) ||
-			byText(a.item.id, b.item.id) ||
+			byText(a.id, b.id) ||
 			byText(a.ext, b.ext),
 	);
 }
@@ -300,7 +309,7 @@ const isFindingList = (v: unknown): v is Finding[] =>
  * hook's output unchecked.
  */
 async function isolated<R>(
-	entry: Entry<{ readonly id: string }>,
+	entry: Entry<unknown>,
 	point: Point,
 	started: Promise<unknown>,
 	accept: (value: unknown) => value is R,
@@ -311,7 +320,27 @@ async function isolated<R>(
 		if (!accept(value)) throw new Error(`returned ${describe(value)}, not ${expected}`);
 		return { ok: true, value };
 	} catch (err) {
-		return { ok: false, failure: { extension: entry.ext, point, item: entry.item.id, message: message(err) } };
+		return { ok: false, failure: failureOf(entry, point, err) };
+	}
+}
+
+/** An item's failure at `point`. */
+function failureOf(entry: Entry<unknown>, point: Point, err: unknown): Failure {
+	return { extension: entry.ext, point, item: entry.id, message: message(err) };
+}
+
+/**
+ * The fields of an entry's item, read and checked once inside a try: a getter
+ * runs the extension's code, so a throw, or a field of the wrong type (`read`
+ * throws), is a failure at `point`, and the entry is dropped (#110). Callers
+ * build from the values read, never the item again.
+ */
+function fieldsOf<T, F>(entry: Entry<T>, point: Point, failures: Failure[], read: (item: T) => F): F | undefined {
+	try {
+		return read(entry.item);
+	} catch (err) {
+		failures.push(failureOf(entry, point, err));
+		return undefined;
 	}
 }
 
@@ -330,7 +359,7 @@ function start(fn: () => unknown): Promise<unknown> {
  * synchronous work, such as QMD's spawnSync probes, never spends another
  * call's time, before it or after it (#70).
  */
-async function each<T extends { readonly id: string }, R>(
+async function each<T, R>(
 	entries: readonly Entry<T>[],
 	failures: Failure[],
 	point: Point,
@@ -366,15 +395,18 @@ export async function collectSections(
 ): Promise<Dispatch<BudgetSection[]>> {
 	const failures: Failure[] = [];
 	// A section's header and pointer are written into the output as they are,
-	// so they are checked before anything renders.
-	const entries = ordered<Section>(registry, "session-start", "section", (e) => e.sections, failures).filter(({ ext, item }) => {
-		if (isString(item.header) && (item.pointer === undefined || isString(item.pointer))) return true;
-		failures.push({ extension: ext, point: "section", item: item.id, message: "`header` and `pointer` must be strings" });
-		return false;
+	// so they are read once and checked before anything renders.
+	const entries = ordered<Section>(registry, "session-start", "section", (e) => e.sections, failures).flatMap((entry) => {
+		const fields = fieldsOf(entry, "section", failures, (item) => {
+			const header: unknown = item.header;
+			const pointer: unknown = item.pointer;
+			if (!isString(header) || !(pointer === undefined || isString(pointer))) throw new Error("`header` and `pointer` must be strings");
+			return { header, pointer };
+		});
+		return fields === undefined ? [] : [{ ...fields, entry, pointed: mode === "pointer" ? fields.pointer : undefined }];
 	});
-	const pointers = entries.filter(({ item }) => mode === "pointer" && item.pointer !== undefined);
 	const rendered = await each(
-		entries.filter((e) => !pointers.includes(e)),
+		entries.filter(({ pointed }) => pointed === undefined).map(({ entry }) => entry),
 		failures,
 		"section",
 		(item) => item.render(ctx),
@@ -384,13 +416,12 @@ export async function collectSections(
 	const bodies = new Map<Entry<Section>, string>();
 	for (const { entry, value } of rendered) if (value !== null) bodies.set(entry, value);
 	const sections: BudgetSection[] = [];
-	for (const entry of entries) {
-		const { item } = entry;
+	for (const { entry, header, pointer, pointed } of entries) {
 		const priority = budgetPriority(entry.priority);
-		if (pointers.includes(entry)) sections.push({ header: item.header, body: item.pointer ?? "", priority });
+		if (pointed !== undefined) sections.push({ header, body: pointed, priority });
 		else {
 			const body = bodies.get(entry);
-			if (body !== undefined) sections.push({ header: item.header, body, priority, fallback: item.pointer });
+			if (body !== undefined) sections.push({ header, body, priority, fallback: pointer });
 		}
 	}
 	return { result: sections, failures };
@@ -408,9 +439,14 @@ export async function runDetectors(registry: Registry, ctx: HookContext): Promis
 export function collectChecklist(registry: Registry): Dispatch<ChecklistItem[]> {
 	const failures: Failure[] = [];
 	const items: ChecklistItem[] = [];
-	for (const { ext, item } of ordered<ChecklistItem>(registry, "stop", "checklist", (e) => e.checklist, failures)) {
-		if (isString(item.full) && isString(item.short)) items.push(item);
-		else failures.push({ extension: ext, point: "checklist", item: item.id, message: "`full` and `short` must be strings" });
+	for (const entry of ordered<ChecklistItem>(registry, "stop", "checklist", (e) => e.checklist, failures)) {
+		const fields = fieldsOf(entry, "checklist", failures, (item) => {
+			const full: unknown = item.full;
+			const short: unknown = item.short;
+			if (!isString(full) || !isString(short)) throw new Error("`full` and `short` must be strings");
+			return { full, short };
+		});
+		if (fields !== undefined) items.push(entry.own === undefined ? { id: entry.id, ...fields } : { id: entry.id, ...fields, priority: entry.own });
 	}
 	return { result: items, failures };
 }
@@ -423,9 +459,12 @@ export async function matchSignals(registry: Registry, prompt: string): Promise<
 	const hints: string[] = [];
 	for (const { entry, value } of runs) {
 		if (!value) continue;
-		const hint: unknown = entry.item.hint;
-		if (!isString(hint)) failures.push({ extension: entry.ext, point: "signal", item: entry.item.id, message: "`hint` must be a string" });
-		else if (!hints.includes(hint)) hints.push(hint);
+		const hint = fieldsOf(entry, "signal", failures, (item) => {
+			const raw: unknown = item.hint;
+			if (!isString(raw)) throw new Error("`hint` must be a string");
+			return raw;
+		});
+		if (hint !== undefined && !hints.includes(hint)) hints.push(hint);
 	}
 	return { result: hints, failures };
 }
@@ -460,7 +499,6 @@ export async function runEffects(registry: Registry, trigger: EffectTrigger, ctx
 	const calls = entries.map((entry) => ({
 		...entry,
 		item: {
-			id: entry.item.id,
 			call: () => {
 				const on: unknown = entry.item.on;
 				if (!Array.isArray(on) || on.length === 0 || !on.every((event) => EFFECT_EVENTS.includes(event))) {
@@ -488,10 +526,10 @@ export function undispatched(registry: Registry): string[] {
 		}
 	};
 	for (const { declaration, extension } of registry.loaded) {
-		if (filled(() => extension.preToolGuards)) out.push(`${extension.id}: pre-tool guards`);
-		if (filled(() => extension.mcpTools)) out.push(`${extension.id}: MCP tools`);
+		if (filled(() => extension.preToolGuards)) out.push(`${declaration.id}: pre-tool guards`);
+		if (filled(() => extension.mcpTools)) out.push(`${declaration.id}: MCP tools`);
 		if (filled(() => extension.effects) && !declaration.events.some((event) => EFFECT_EVENTS.includes(event as EffectTrigger["event"]))) {
-			out.push(`${extension.id}: effects, with no ${EFFECT_EVENTS_TEXT} in its events`);
+			out.push(`${declaration.id}: effects, with no ${EFFECT_EVENTS_TEXT} in its events`);
 		}
 	}
 	return out;
