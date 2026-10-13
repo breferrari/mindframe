@@ -1,4 +1,4 @@
-Description: mindframe: the refresh as the qmd extension's effects: imports from the extension and the core, the worker told its vault and index (--vault, --index), the switch from lib/switches.ts read from a given environment, a missing worker reported (#95)
+Description: mindframe: the refresh as the qmd extension's effects: imports from the extension and the core, the worker told its vault and index (--vault, --index), the switch from lib/switches.ts read from a given environment (#94), a missing worker reported (#95)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
