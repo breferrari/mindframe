@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { contextOf, evaluate, isNone, isSilent, locate, matches, validateExpectation } from '../lib/expect.mjs'
+import { delivered, evaluate, isNone, isSilent, locate, matches, validateExpectation } from '../lib/expect.mjs'
 import { validateSpec } from '../lib/spec.mjs'
 import { minimalSpec } from './_helpers.mjs'
 
@@ -125,16 +125,21 @@ test('order: presence is checked before position', () => {
 const envelope = (event, context) => JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: context } })
 
 test('a hook context is graded as the agent receives it: the JSON envelope unwrapped, anything else as it stands (#129)', () => {
-  assert.equal(contextOf(envelope('SessionStart', '## A\n## B')), '## A\n## B')
-  assert.equal(contextOf('## A\n## B'), '## A\n## B', 'plain stdout')
-  assert.equal(contextOf('{"hookSpecificOutput": '), '{"hookSpecificOutput": ', 'malformed JSON, as it stands')
-  assert.equal(contextOf('{"systemMessage":"x"}'), '{"systemMessage":"x"}', 'JSON with no context, as it stands')
-  assert.equal(contextOf(JSON.stringify({ hookSpecificOutput: { hookEventName: 'Stop' } })), JSON.stringify({ hookSpecificOutput: { hookEventName: 'Stop' } }), 'an envelope with no context, as it stands')
-  assert.equal(contextOf(undefined), '')
+  const d = (output, event = 'SessionStart') => delivered({ output, event })
+  assert.equal(d(envelope('SessionStart', '## A\n## B')).context, '## A\n## B')
+  assert.equal(d('## A\n## B').context, '## A\n## B', 'plain stdout')
+  assert.equal(d('{"hookSpecificOutput": ').context, '{"hookSpecificOutput": ', 'malformed JSON is plain stdout')
+  assert.deepEqual([d('{"systemMessage":"x"}').context, d('{"systemMessage":"x"}').shown], ['', 'x'], 'a systemMessage is shown to the user, not the model')
+  assert.equal(d(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart' } })).context, '', 'an envelope with no context gives nothing')
+  assert.equal(d(JSON.stringify({ hookSpecificOutput: { additionalContext: '## A' } })).rejected, true, 'an envelope with no event name is rejected, as the core rejects it')
+  assert.equal(d(undefined).context, '')
+  assert.equal(d(JSON.stringify({ continue: true, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: '', policyResults: [{ id: 'p' }] } })).shown, '', 'policyResults and control flags are for the machine')
+  assert.equal(d(envelope('Stop', '## A')).size, 0, 'nothing delivered, size 0')
 })
 
 test('an envelope for another event delivers nothing, and an envelope keeps its other fields for the hook kind (#129)', () => {
-  assert.equal(contextOf(envelope('Stop', '## A'), 'SessionStart'), '', 'Claude Code rejects an envelope that names another event')
+  assert.equal(delivered({ output: envelope('Stop', '## A'), event: 'SessionStart' }).context, '', 'Claude Code rejects an envelope that names another event')
+  assert.equal(ev({ id: 's', turn: 1, hook: { event: 'SessionStart', silent: true } }, run({ turns: [turn(1, { hooks: [hook('SessionStart', envelope('Stop', '## A'))] })] })).pass, false, 'a rejected envelope printed something: not silent')
   const wrong = run({ turns: [turn(1, { hooks: [hook('SessionStart', envelope('Stop', '## A\n## B'))] })] })
   assert.equal(ev({ id: 'o', turn: 1, order: { in: 'hook:SessionStart', items: ['## A', '## B'] } }, wrong).pass, false)
   const leak = JSON.stringify({ systemMessage: 'MF-LEAK', hookSpecificOutput: { hookEventName: 'Stop', additionalContext: 'clean' } })

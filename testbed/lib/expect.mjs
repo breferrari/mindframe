@@ -286,52 +286,55 @@ export const isSilent = (output) => {
 
 const deliveries = new WeakMap()
 
+/** The fields of a hook's JSON that someone reads as text: the user (systemMessage, stopReason) or the model (a block's reason). */
+const SHOWN = ['systemMessage', 'stopReason', 'reason']
+
 /**
- * What a hook delivered, read once per hook (#129). A hook that answers in the
- * JSON envelope, `{"hookSpecificOutput":{"hookEventName":…,"additionalContext":…}}`,
- * hands the model its additionalContext, and nothing when the envelope names
- * another event (Claude Code rejects it); its other fields (a systemMessage,
- * policyResults) still went out, so they are kept as `rest`. Anything else,
- * plain stdout, other JSON or JSON that doesn't parse, is its own context.
- * `size` is in the unit the core's budget and meter report: an enveloped
- * context is the larger of its UTF-8 bytes and its JSON-escaped length
- * (`enveloped` in lib/session-start.ts), anything else its UTF-8 bytes.
+ * What a hook delivered, read once per hook (#129). Claude Code reads a hook's
+ * stdout as hook JSON when it parses as an object. Then:
+ * - the model's context is `hookSpecificOutput.additionalContext`, but only
+ *   from an envelope whose `hookEventName` is this hook's event, as the core's
+ *   own reader (`parseHookContext`) and Claude Code require; any other
+ *   envelope is `rejected`, and delivers nothing;
+ * - `shown` is the text of the fields someone reads (SHOWN); policyResults
+ *   and control flags (`continue`, `suppressOutput`) are for the machine.
+ * Stdout that isn't a JSON object is its own context. `size` is in the unit
+ * the core's budget and meter report: an enveloped context is the larger of
+ * its UTF-8 bytes and its JSON-escaped length (`enveloped` in
+ * lib/session-start.ts), anything else its UTF-8 bytes, and nothing is 0.
  */
 export function delivered(h) {
   if (deliveries.has(h)) return deliveries.get(h)
   const raw = String(h.output ?? '')
-  let d = { context: raw, enveloped: false, rest: '' }
-  if (raw.trimStart().startsWith('{')) {
-    try {
-      const { hookSpecificOutput: out, ...top } = JSON.parse(raw) ?? {}
-      if (out && typeof out === 'object' && typeof out.additionalContext === 'string') {
-        const { additionalContext, hookEventName, ...fields } = out
-        const forThisHook = hookEventName === undefined || h.event === undefined || hookEventName === h.event
-        const rest = { ...top, ...(Object.keys(fields).length > 0 ? { hookSpecificOutput: fields } : {}) }
-        d = { context: forThisHook ? additionalContext : '', enveloped: true, rest: Object.keys(rest).length > 0 ? JSON.stringify(rest) : '' }
-      }
-    } catch {
-      // not JSON: plain stdout
-    }
+  let d = { context: raw, enveloped: false, rejected: false, shown: '' }
+  let json
+  try {
+    json = raw.trimStart().startsWith('{') ? JSON.parse(raw) : undefined
+  } catch {
+    json = undefined
   }
-  d.size = d.enveloped ? Math.max(Buffer.byteLength(d.context), JSON.stringify(d.context).length) : Buffer.byteLength(d.context)
+  if (json !== null && typeof json === 'object' && !Array.isArray(json)) {
+    const out = json.hookSpecificOutput
+    const enveloped = out !== null && typeof out === 'object' && typeof out.additionalContext === 'string'
+    const rejected = enveloped && h.event !== undefined && out.hookEventName !== h.event
+    const shown = SHOWN.map((k) => json[k]).filter((v) => typeof v === 'string' && v !== '').join('\n')
+    d = { context: enveloped && !rejected ? out.additionalContext : '', enveloped, rejected, shown }
+  }
+  d.size = d.context === '' ? 0 : d.enveloped ? Math.max(Buffer.byteLength(d.context), JSON.stringify(d.context).length) : Buffer.byteLength(d.context)
   deliveries.set(h, d)
   return d
 }
 
-/** The context a hook's output hands the model (`delivered`), for an output and the event it answered. */
-export const contextOf = (output, event) => delivered({ output, event }).context
-
-/** Everything a hook put out, as the `hook` kind reads it: an envelope's context and its other fields. */
+/** Everything a hook put out for someone to read, as the `hook` kind reads it: the context, then the shown text. */
 const hookText = (h) => {
   const d = delivered(h)
-  return d.rest === '' ? d.context : `${d.context}\n${d.rest}`
+  return [d.context, d.shown].filter((t) => t !== '').join('\n')
 }
 
-/** No content for the model or the user: nothing, `{}`, or an envelope with an empty context and no other field. */
+/** Nothing for the model or the user: no context and no shown text. A rejected envelope printed something, so it isn't silent. */
 export const silent = (h) => {
   const d = delivered(h)
-  return d.enveloped ? d.context.trim() === '' && d.rest === '' : isSilent(d.context)
+  return !d.rejected && d.context.trim() === '' && d.shown === ''
 }
 
 /** What a source delivered, in the unit the core's budget and meter report (`delivered`). */

@@ -12,7 +12,8 @@
 //                                named level, or pointer; null with no meter
 //   meterSlack { in }            the budget the meter says went unused: its
 //                                budget minus the size it reports
-//   bytes      { in }            the source's size in bytes
+//   bytes      { in }            the source's size, in the core's unit for a
+//                                hook context (expect.mjs `delivered`), else bytes
 import { deliveredSize, parseMeter, sectionLevel, sourceText } from './expect.mjs'
 
 export const MEASURE_KINDS = ['count', 'toolRead', 'meterLevel', 'meterSlack', 'bytes']
