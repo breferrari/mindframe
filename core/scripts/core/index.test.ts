@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { spawnSync } from "node:child_process";
 import * as lib from "../lib/project-dir.ts";
 import * as instructionFiles from "../lib/instruction-files.ts";
 import * as core from "./index.ts";
@@ -185,6 +186,26 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 		settings('{ "context": { "fileName": "AGENTS.md", }, }');
 		assert.deepEqual(core.geminiContextFiles(root), []);
 		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), false);
+	});
+
+	test("a comment is a space, as Gemini reads it: tr/**/ue doesn't parse, so the file names nothing", () => {
+		settings('{ "debug": tr/**/ue, "context": { "fileName": "AGENTS.md" } }');
+		assert.deepEqual(core.geminiContextFiles(root), []);
+	});
+
+	test("names are trimmed, as Gemini trims them: a padded GEMINI.md still keeps it", () => {
+		fileName(["AGENTS.md", "GEMINI.md "]);
+		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md", "GEMINI.md"]);
+		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), false);
+		fileName(" AGENTS.md");
+		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), true);
+	});
+
+	test("a FIFO at the settings path is no file: read as none, without blocking", { skip: process.platform === "win32" && "no FIFOs on Windows" }, () => {
+		mkdirSync(join(root, ".gemini"), { recursive: true });
+		const made = spawnSync("mkfifo", [join(root, core.GEMINI_SETTINGS)]);
+		if (made.status !== 0) return;
+		assert.deepEqual(core.geminiContextFiles(root), []);
 	});
 
 	test("only the top-level context counts; a v1 contextFileName counts where context.fileName is absent", () => {

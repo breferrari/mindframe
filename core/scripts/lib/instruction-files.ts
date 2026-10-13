@@ -17,7 +17,8 @@ export const CLAUDE_MD = "CLAUDE.md";
 export const GEMINI_MD = "GEMINI.md";
 
 /**
- * Gemini's settings, whose `context.fileName` points it at `AGENTS.md`. A
+ * Gemini's settings, whose `context.fileName` (or the older top-level
+ * `contextFileName`) points it at `AGENTS.md`. A
  * user's own older copy names no context file, so Gemini reads `GEMINI.md`,
  * which in the old release only says "read CLAUDE.md".
  */
@@ -102,15 +103,18 @@ export function geminiContextFiles(vaultRoot: string): string[] {
 	const path = join(vaultRoot, GEMINI_SETTINGS);
 	try {
 		// Only a regular file: a FIFO at that path would block the hook on read.
-		if (!statSync(path).isFile()) return [];
+		if (statSync(path, { throwIfNoEntry: false })?.isFile() !== true) return [];
 		// Strings are matched first and kept, so a `//` inside one (a URL) is no
-		// comment; an unterminated block comment runs to the end, in one pass.
+		// comment; an unterminated block comment runs to the end, in one pass. A
+		// comment becomes a space, as Gemini's reader makes it, so `tr/**/ue`
+		// stays two tokens and fails to parse there and here alike.
 		const text = readFileSync(path, "utf8")
-			.replace(/^﻿/, "")
-			.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g, (_, string: string | undefined) => string ?? "");
+			.replace(/^\uFEFF/, "")
+			.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g, (_, string: string | undefined) => string ?? " ");
 		const settings = JSON.parse(text) as { context?: { fileName?: unknown }; contextFileName?: unknown } | null;
 		const names = settings?.context?.fileName ?? settings?.contextFileName;
-		return (Array.isArray(names) ? names : [names]).filter((n): n is string => typeof n === "string");
+		// Gemini trims each name, so " AGENTS.md" names AGENTS.md there too.
+		return (Array.isArray(names) ? names : [names]).filter((n): n is string => typeof n === "string").map((n) => n.trim());
 	} catch {
 		return [];
 	}
