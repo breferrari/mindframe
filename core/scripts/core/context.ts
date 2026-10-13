@@ -50,7 +50,7 @@ export async function openVault(
 const QMD_EVENTS = ["session-start", "write", "pre-compact", "stop"] as const;
 
 /** The declaration a vault adds to `extensions` to keep QMD's session-start work and its refresh (#70, #95). */
-export const QMD_DECLARATION = '{"id":"qmd","module":".claude/scripts/extensions/qmd/index.ts","events":["session-start","write","pre-compact","stop"]}';
+export const QMD_DECLARATION = JSON.stringify({ id: "qmd", module: ".claude/scripts/extensions/qmd/index.ts", events: QMD_EVENTS });
 
 /**
  * Notes for the meter line about a step a vault still has to take after a

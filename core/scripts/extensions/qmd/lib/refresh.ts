@@ -23,7 +23,7 @@
 import { spawn } from "node:child_process";
 import { rmSync, statSync, writeFileSync } from "node:fs";
 import { debug } from "../../../core/index.ts";
-import { REFRESH_SWITCH } from "../session.ts";
+import { REFRESH_SWITCH, refreshDisabled } from "./switches.ts";
 import { qmdArgsWithIndex } from "./index-name.ts";
 import { buildQmdCommand, resolveQmdEntry } from "./qmd.ts";
 
@@ -281,17 +281,6 @@ function touchSentinel(sentinelPath: string): void {
 			`qmd-refresh: sentinel write failed: ${(err as Error)?.message ?? "?"}`,
 		);
 	}
-}
-
-/**
- * Whether the detached qmd refresh is switched off: `VAULT_QMD_REFRESH`
- * (session.ts) is exactly "off". It stops this trigger's worker, and session
- * start's update, so a test run leaves no qmd work behind (obsidian-mind
- * #337); obsidian-mind's and wiki-mind's copies read the same variable the
- * same way, and one variable must mean the same to every vault's hooks.
- */
-export function refreshDisabled(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
-	return env[REFRESH_SWITCH] === "off";
 }
 
 /**

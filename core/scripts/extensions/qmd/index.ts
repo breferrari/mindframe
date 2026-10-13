@@ -26,7 +26,8 @@ import { fileURLToPath } from "node:url";
 import type { Effect, Extension, HookContext, Section } from "../../core/index.ts";
 import { resolveQmdIndexOf } from "./lib/index-name.ts";
 import { shouldRefreshForPath, triggerDebouncedRefresh, workerArgsFor } from "./lib/refresh.ts";
-import { QMD_SWITCH, SELF_HEAL_HEADER, VERSION_HEADER, qmdNotesOf, qmdSessionRefreshOf, realDeps, type QmdDeps, type QmdNote } from "./session.ts";
+import { qmdOff } from "./lib/switches.ts";
+import { SELF_HEAL_HEADER, VERSION_HEADER, qmdNotesOf, qmdSessionRefreshOf, realDeps, type QmdDeps, type QmdNote } from "./session.ts";
 
 export { SELF_HEAL_HEADER, VERSION_HEADER };
 
@@ -86,14 +87,14 @@ export function qmdExtension(deps: QmdDeps = realDeps, seams: RefreshSeams = {})
 		id: "qmd-session-refresh",
 		on: ["session-start"],
 		run: (_trigger, ctx) => {
-			qmdSessionRefreshOf(ctx.vaultRoot, ctx.manifest, undefined, depsFor(ctx));
+			qmdSessionRefreshOf(ctx.vaultRoot, ctx.manifest, depsFor(ctx));
 		},
 	};
 	const refresh: Effect = {
 		id: "qmd-refresh",
 		on: ["write", "pre-compact", "stop"],
 		run: (trigger, ctx) => {
-			if (deps.env[QMD_SWITCH] === "off") return;
+			if (qmdOff(deps.env)) return;
 			if (trigger.event === "write" && !shouldRefreshForPath(trigger.target.relPath)) return;
 			const live = depsFor(ctx);
 			triggerDebouncedRefresh({

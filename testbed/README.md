@@ -218,7 +218,7 @@ A bed vault with QMD writes an index store and a collection config named after t
 
 The embedding models (`<cache>/qmd/models`) stay shared, because they are large. A spec's `session.env` or a scenario's `env` can still override either variable.
 
-Each session also runs with `VAULT_QMD_REFRESH=off`, a vault's switch rather than qmd's: a vault that reads it (mindframe's qmd extension, in `extensions/qmd/session.ts` and `lib/refresh.ts` since #70 and #95, and obsidian-mind from its #338) launches no detached qmd refresh, at session start or after a write, so no such worker outlives the run. A spec can set it back. A vault that ignores it can still leave a worker behind; failing the run for that is #99.
+Each session also runs with `VAULT_QMD_REFRESH=off`, a vault's switch rather than qmd's: a vault that reads it (mindframe's qmd extension, in `extensions/qmd/lib/switches.ts` since #70 and #95, and obsidian-mind from its #338) launches no detached qmd refresh, at session start or after a write, so no such worker outlives the run. A spec can set it back. A vault that ignores it can still leave a worker behind; failing the run for that is #99.
 
 Code that ignores those variables, such as a hard-coded config path, would still write to the user's folders. So the runner lists both folders before and after each session:
 - an entry the session created is a **leak**, and so is a changed entry named after the bed;

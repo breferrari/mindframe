@@ -29,6 +29,7 @@ import { statSync as nodeStatSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import type { ManifestObject } from "../../core/index.ts";
 import { buildQmdCommand, qmdVersionAtLeast, resolveQmdEntry } from "./lib/qmd.ts";
+import { qmdOff, refreshDisabled } from "./lib/switches.ts";
 import {
 	isQmdNativeAbiMismatch,
 	qmdArgsWithIndex,
@@ -45,11 +46,8 @@ export const VERSION_HEADER = "### QMD Version";
 /** A store below this size holds no indexed notes: bootstrap rather than update. */
 export const EMPTY_STORE_BYTES = 500_000;
 
-/** The environment variable that turns QMD's session-start work off. */
-export const QMD_SWITCH = "VAULT_QMD";
-
-/** The environment variable that turns off only the detached refresh, with the exact value `off` (obsidian-mind #338). */
-export const REFRESH_SWITCH = "VAULT_QMD_REFRESH";
+/** The bootstrap a missing or near-empty store gets, vault-relative, run with the vault as cwd. */
+export const BOOTSTRAP_SCRIPT = ".scripts/qmd-bootstrap.ts";
 
 type SpawnSyncResult = { readonly status: number | null; readonly stdout?: string; readonly stderr?: string };
 
@@ -92,7 +90,7 @@ export type QmdNote = { readonly header: string; readonly body: string };
  * extension's sections render them; they start nothing in the background.
  */
 export function qmdNotesOf(vaultRoot: string, manifest: ManifestObject, deps: QmdDeps = realDeps): readonly QmdNote[] {
-	if (deps.env[QMD_SWITCH] === "off") return [];
+	if (qmdOff(deps.env)) return [];
 	const entry = deps.resolveEntry();
 	if (entry === null) return [];
 	const index = resolveQmdIndexOf(manifest, vaultRoot);
@@ -133,24 +131,18 @@ export function qmdNotesOf(vaultRoot: string, manifest: ManifestObject, deps: Qm
 /**
  * QMD's session-start refresh for the vault at `vaultRoot`, the extension's
  * session-start effect (#95): a detached `qmd update` on this vault's index,
- * or the idempotent bootstrap when the store is missing or implausibly small.
- * `bootstrapScript` is the vault-relative bootstrap path (run with the vault
- * as cwd). Returns what it started.
+ * or the idempotent bootstrap (BOOTSTRAP_SCRIPT) when the store is missing or
+ * implausibly small. Returns what it started.
  */
-export function qmdSessionRefreshOf(
-	vaultRoot: string,
-	manifest: ManifestObject,
-	bootstrapScript = ".scripts/qmd-bootstrap.ts",
-	deps: QmdDeps = realDeps,
-): "update" | "bootstrap" | null {
-	if (deps.env[QMD_SWITCH] === "off" || deps.env[REFRESH_SWITCH] === "off") return null;
+export function qmdSessionRefreshOf(vaultRoot: string, manifest: ManifestObject, deps: QmdDeps = realDeps): "update" | "bootstrap" | null {
+	if (qmdOff(deps.env) || refreshDisabled(deps.env)) return null;
 	const entry = deps.resolveEntry();
 	if (entry === null) return null;
 	const index = resolveQmdIndexOf(manifest, vaultRoot);
 	const size = index === null ? null : deps.storeSize(resolveIndexStorePath(index, deps.env, deps.home));
 	const empty = index !== null && (size === null || size < EMPTY_STORE_BYTES);
 	if (empty) {
-		deps.spawnDetached(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", bootstrapScript], { cwd: vaultRoot, shell: false });
+		deps.spawnDetached(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", BOOTSTRAP_SCRIPT], { cwd: vaultRoot, shell: false });
 	} else {
 		// cwd is the OS temp folder, so a lingering QMD process never holds the vault folder open on Windows.
 		const update = buildQmdCommand(entry, qmdArgsWithIndex(index, ["update"]));

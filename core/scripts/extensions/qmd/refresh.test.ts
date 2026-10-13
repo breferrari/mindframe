@@ -26,10 +26,9 @@ import {
 	planRefresh,
 	shouldRefreshForPath,
 	triggerDebouncedRefresh,
-	refreshDisabled,
 	workerArgsFor,
 } from "./lib/refresh.ts";
-import { REFRESH_SWITCH } from "./session.ts";
+import { REFRESH_SWITCH, refreshDisabled } from "./lib/switches.ts";
 import { rmTemp, waitFor } from "./test-fakes.ts";
 
 /**

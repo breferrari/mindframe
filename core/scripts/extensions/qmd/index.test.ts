@@ -1,21 +1,21 @@
 /**
- * The qmd extension (#70): QMD's session-start notes as load-bearing,
- * priority-0 sections, through the registry like any other extension. No
- * test here runs a real QMD: the sections are built over injected deps.
+ * The qmd extension (#70, #95): QMD's session-start notes as load-bearing,
+ * priority-0 sections, and its index refresh as effects, through the
+ * registry like any other extension. No test here runs a real QMD: both are
+ * built over injected deps.
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { basename, dirname, join, relative } from "node:path";
-import { existsSync, utimesSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { collectSections, fromLoaded, loadRegistry, runEffects } from "../../core/registry.ts";
-import type { EffectTrigger } from "../../core/index.ts";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
-import type { HookContext } from "../../core/index.ts";
+import { basename, dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { EffectTrigger, HookContext } from "../../core/index.ts";
 import { QMD_DECLARATION } from "../../core/context.ts";
+import { collectSections, fromLoaded, loadRegistry, runEffects } from "../../core/registry.ts";
 import { SELF_HEAL_HEADER, VERSION_HEADER, extension, qmdExtension } from "./index.ts";
-import { QMD_SWITCH, REFRESH_SWITCH, type QmdDeps } from "./session.ts";
+import { QMD_SWITCH, REFRESH_SWITCH } from "./lib/switches.ts";
+import type { QmdDeps } from "./session.ts";
 import { VAULT, fakeDeps, rmTemp, type Calls } from "./test-fakes.ts";
 
 const counts = (calls: Calls) => ({ sync: calls.sync.length, detached: calls.detached.length });
@@ -124,7 +124,7 @@ describe("the qmd extension's effects (#95)", () => {
 		assert.deepEqual(JSON.parse(QMD_DECLARATION).events, ["session-start", "write", "pre-compact", "stop"], "the declaration lists every event they run on");
 	});
 
-	test("session start: a background update on a populated store, as the sections' run used to start", async () => {
+	test("session start: a background update on a populated store", async () => {
 		const s = setup();
 		try {
 			await s.run({ event: "session-start" });
