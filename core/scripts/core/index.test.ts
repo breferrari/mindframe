@@ -11,7 +11,8 @@ import { join, relative } from "node:path";
 import * as lib from "../lib/project-dir.ts";
 import * as instructionFiles from "../lib/instruction-files.ts";
 import * as core from "./index.ts";
-import { resolveProjectDir, writeFileAtomic } from "./index.ts";
+import { debug, resolveProjectDir, writeFileAtomic } from "./index.ts";
+import { debug as hookDebug } from "../lib/hook-io.ts";
 
 describe("writeFileAtomic, through index.ts", () => {
 	let dir = "";
@@ -89,4 +90,8 @@ describe("instruction files, through index.ts", () => {
 		for (const name of ["CLAUDE.md", "claude.md", "Gemini.MD"]) assert.equal(core.isRetiredInstructionFile(name), true, name);
 		for (const name of ["AGENTS.md", "CLAUDE.md.bak", "notes/CLAUDE.md", "README.md"]) assert.equal(core.isRetiredInstructionFile(name), false, name);
 	});
+});
+
+test("debug, the HOOK_DEBUG trace, is exported to extensions: one home, so traces can't drift (#95)", () => {
+	assert.equal(debug, hookDebug);
 });

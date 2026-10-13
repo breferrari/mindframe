@@ -55,7 +55,7 @@ test("openVault honours the kill switch", async (t) => {
 });
 
 describe("migrationNotes: qmd set in the manifest, no qmd extension declared (#70)", () => {
-	const qmd = { id: "qmd", module: ".claude/scripts/extensions/qmd/index.ts", events: ["session-start"] };
+	const qmd = { id: "qmd", module: ".claude/scripts/extensions/qmd/index.ts", events: ["session-start", "write", "pre-compact", "stop"] };
 	const notes = (m: Record<string, unknown> | null) => migrationNotes(m === null ? null : Object.freeze(m));
 
 	test("a note naming the declaration to add, for either key", () => {
@@ -86,11 +86,28 @@ describe("migrationNotes: qmd set in the manifest, no qmd extension declared (#7
 		for (const extensions of ["qmd", { qmd }, [null, 3, "qmd", { id: 7 }]]) assert.equal(notes({ qmd_index: "", extensions }).length, 1, JSON.stringify(extensions));
 	});
 
+	test("a disabled qmd entry counts whatever its events: the vault chose that (#95)", () => {
+		assert.deepEqual(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["session-start"], enabled: false }] }), []);
+	});
+
+	test("the note says off when QMD's work doesn't run at all, and fix when an entry runs it partly", () => {
+		assert.match(notes({ qmd_index: "" })[0] ?? "", /^QMD off: extensions needs /, "no entry");
+		assert.match(notes({ qmd_index: "", extensions: [{ ...qmd, module: "/abs/qmd.ts" }] })[0] ?? "", /^QMD off: fix qmd entry to /, "an entry the registry refuses");
+		assert.match(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop"] }] })[0] ?? "", /^QMD off: fix qmd entry to /, "an entry that never runs at session start");
+		assert.match(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["session-start"] }] })[0] ?? "", /^QMD: fix qmd entry to /, "an entry that runs partly");
+	});
+
+	test("a qmd entry from before #95, session start only, is told to list the refresh's events", () => {
+		const [note] = notes({ qmd_index: "", extensions: [{ ...qmd, events: ["session-start"] }] });
+		assert.match(note ?? "", /fix qmd entry to/);
+		assert.deepEqual(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop", "write", "session-start", "pre-compact"] }] }), [], "any order");
+	});
+
 	test("a qmd declaration that doesn't run at session start doesn't count: QMD's work would never run", () => {
 		const [note] = notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop"] }] });
-		assert.match(note ?? "", /make the qmd entry/, "fix the entry, not add a second one the registry would refuse");
-		assert.match(notes({ qmd_index: "" })[0] ?? "", /: add /);
-		assert.deepEqual(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop", "session-start"] }] }), []);
+		assert.match(note ?? "", /fix qmd entry to/, "fix the entry, not add a second one the registry would refuse");
+		assert.match(notes({ qmd_index: "" })[0] ?? "", /extensions needs /);
+		assert.deepEqual(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop", "session-start", "write", "pre-compact"] }] }), []);
 	});
 
 	test("the note and a full meter fit the room the budget keeps for the meter", () => {

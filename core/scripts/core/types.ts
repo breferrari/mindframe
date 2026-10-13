@@ -120,14 +120,15 @@ export type Validator = Item & {
 	readonly validate: (target: WriteTarget, ctx: HookContext) => MaybePromise<readonly string[]>;
 };
 
-/** What set an effect off: a file just written, a compaction about to run, or Stop. */
+/** What set an effect off: a session starting, a file just written, a compaction about to run, or Stop. */
 export type EffectTrigger =
+	| { readonly event: "session-start" }
 	| { readonly event: "write"; readonly target: WriteTarget }
 	| { readonly event: "pre-compact" }
 	| { readonly event: "stop" };
 
 /** The events an effect can run on. */
-export const EFFECT_EVENTS: readonly EffectTrigger["event"][] = ["write", "pre-compact", "stop"];
+export const EFFECT_EVENTS: readonly EffectTrigger["event"][] = ["session-start", "write", "pre-compact", "stop"];
 
 /**
  * A call made for its side effect alone, such as refreshing a search index.

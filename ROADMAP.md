@@ -40,7 +40,9 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#82](https://github.com/breferrari/mindframe/issues/82) | Read frontmatter by one rule everywhere in the core, as Obsidian does | ✅ |
 | [#85](https://github.com/breferrari/mindframe/issues/85) | Export the vault-root walk-up to extensions | ✅ |
 | [#89](https://github.com/breferrari/mindframe/issues/89) | Absorb obsidian-mind #333 into the core: the instruction files library and its comments | ✅ |
-| [#91](https://github.com/breferrari/mindframe/issues/91) | Match a retired instruction file the way the agent loads it: any case where the filesystem ignores case, exact case on Linux | ⬜ |
+| [#102](https://github.com/breferrari/mindframe/issues/102) | Record obsidian-mind as upstream for the core libraries absorbed from it | ⬜ |
+| [#91](https://github.com/breferrari/mindframe/issues/91) | Match a retired instruction file the way the agent loads it: any case where the filesystem ignores case, exact case on Linux | ⏳ after #102 |
+| [#104](https://github.com/breferrari/mindframe/issues/104) | Retire GEMINI.md only where the vault points Gemini at AGENTS.md: a vault-aware retired-file predicate | ⏳ after #91 |
 
 ## Phase 3: first-party extensions
 
@@ -51,8 +53,10 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#70](https://github.com/breferrari/mindframe/issues/70) | Move qmd out of the core into an optional extension | ✅ |
 | [#71](https://github.com/breferrari/mindframe/issues/71) | Ship the qmd MCP bridge with the qmd extension | ⏳ after #70 |
 | [#94](https://github.com/breferrari/mindframe/issues/94) | Skip session-start's detached qmd refresh when VAULT_QMD_REFRESH=off, as obsidian-mind #338 does | ✅ |
-| [#95](https://github.com/breferrari/mindframe/issues/95) | Run qmd's index refresh as the qmd extension's effects | ⏳ after #70 |
+| [#95](https://github.com/breferrari/mindframe/issues/95) | Run qmd's index refresh as the qmd extension's effects | ✅ |
 | [#96](https://github.com/breferrari/mindframe/issues/96) | Move qmd's bootstrap and model setup into the qmd extension | ⏳ after #95 |
+| [#101](https://github.com/breferrari/mindframe/issues/101) | Add the contract-spec row for effects (DESIGN rule 10) once a vault calls runEffects | ⏳ after wiki-mind calls runEffects |
+| [#106](https://github.com/breferrari/mindframe/issues/106) | Run the qmd refresh worker from the temp folder, not the vault, so it never holds the vault open on Windows | ⬜ |
 | [#14](https://github.com/breferrari/mindframe/issues/14) | Ship the memory MCP server as an optional extension | ⬜ |
 | [#15](https://github.com/breferrari/mindframe/issues/15) | Ship the guards as an optional extension | ⬜ |
 | [#16](https://github.com/breferrari/mindframe/issues/16) | Ship ripple as an optional extension | ⬜ |

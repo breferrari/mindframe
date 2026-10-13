@@ -375,10 +375,10 @@ describe("rule 7: slots are recorded, not dispatched", () => {
 		assert.deepEqual(undispatched(registry), ["a: pre-tool guards", "a: MCP tools"]);
 	});
 
-	test("effects on an extension that declares no write, pre-compact or stop are listed: they can never run", () => {
+	test("effects on an extension that declares no effect event are listed: they can never run", () => {
 		const effects = [{ id: "e", on: ["write"], run: () => {} }] as const;
-		const registry = fromLoaded([declared({ id: "a", effects }, { events: ["session-start"] }), declared({ id: "b", effects }, { events: ["write"] })]);
-		assert.deepEqual(undispatched(registry), ["a: effects, with no write, pre-compact or stop in its events"]);
+		const registry = fromLoaded([declared({ id: "a", effects }, { events: ["prompt"] }), declared({ id: "b", effects }, { events: ["write"] })]);
+		assert.deepEqual(undispatched(registry), ["a: effects, with no session-start, write, pre-compact or stop in its events"]);
 	});
 
 	test("a getter that throws does not make undispatched throw", () => {
@@ -407,6 +407,14 @@ describe("rule 5: effects run for their side effect alone", () => {
 			assert.deepEqual(failures, []);
 		}
 		assert.deepEqual(ran, ["w:write", "pc:pre-compact", "pc:stop"]);
+	});
+
+	test("an effect runs at session start too (#95)", async () => {
+		const ran: string[] = [];
+		const ext: Extension = { id: "a", effects: [effect("s", ["session-start"], (t) => { ran.push(t.event); })] };
+		const { failures } = await runEffects(fromLoaded([declared(ext, { events: ["session-start"] })]), { event: "session-start" }, ctx);
+		assert.deepEqual(failures, []);
+		assert.deepEqual(ran, ["session-start"]);
 	});
 
 	test("an effect whose `on` names an event its declaration does not list is a failure, not a silent skip", async () => {
@@ -478,7 +486,7 @@ describe("rule 5: effects run for their side effect alone", () => {
 		assert.match(failures[0]?.message ?? "", /returned number, not nothing/);
 	});
 
-	test("an `on` that is not a list of write, pre-compact and stop is a failure", async () => {
+	test("an `on` that is not a list of the effect events is a failure", async () => {
 		let ran = 0;
 		const run = () => { ran++; };
 		const ext: Extension = {

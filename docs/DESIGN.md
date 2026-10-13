@@ -36,7 +36,7 @@ The dispatcher wraps every extension call with an exception handler and a per-ex
 
 **Why:** a hook that fails delivers nothing, so one broken extension would silence every other one. Failing open protects the rest. Reporting the failure keeps it from going unnoticed: a skipped extension that left no trace would look exactly like an extension with nothing to say.
 
-An extension can also register an effect: a call made for its side effect alone, such as refreshing a search index after a write, before a compaction or at Stop. An effect is held to the same rule. It runs isolated under its time limit, a failure is reported, and it returns nothing, so the model's output never comes from an effect. At the limit the hook stops waiting, but work still running in its process either holds the hook open or dies with it. So work that must outlast the limit goes to a detached process the effect starts itself.
+An extension can also register an effect: a call made for its side effect alone, such as refreshing a search index at session start, after a write, before a compaction or at Stop. An effect is held to the same rule. It runs isolated under its time limit, a failure is reported, and it returns nothing, so the model's output never comes from an effect. At the limit the hook stops waiting, but work still running in its process either holds the hook open or dies with it. So work that must outlast the limit goes to a detached process the effect starts itself.
 
 **Why:** without an effect point, background work lives in each vault's entry points, outside the registry, where nothing isolates it, orders it or reports its failure.
 

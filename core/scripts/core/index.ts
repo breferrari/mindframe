@@ -43,6 +43,9 @@ export { extractWikilinkTargets } from "../lib/wikilinks.ts";
 /** Write a whole file or none of it: a reader never sees half a note, and a process killed mid-write leaves the old one. */
 export { writeFileAtomic } from "../lib/atomic-write.ts";
 
+/** A trace line on stderr when HOOK_DEBUG=1, and nothing otherwise: hooks print nothing else of their own. */
+export { debug } from "../lib/hook-io.ts";
+
 /** The vault root, walked up from the agent's project folder or a fallback (documented on the function). */
 export { resolveProjectDir } from "../lib/project-dir.ts";
 

@@ -17,7 +17,7 @@ docs/          design rationale: the extension contract and why it is shaped tha
 
 The build order is in [ROADMAP.md](ROADMAP.md); how to work on the repo is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- **The core declares extension points per lifecycle event:** session-start sections, Stop and hygiene detectors, prompt signals, write validators, effects on write, pre-compact and Stop, pre-tool guards, and MCP tools.
+- **The core declares extension points per lifecycle event:** session-start sections, Stop and hygiene detectors, prompt signals, write validators, effects at session start, on write, pre-compact and Stop, pre-tool guards, and MCP tools.
 - **A vault's own behaviour lives outside the core,** in its `.claude/extensions/`, declared in `vault-manifest.json`. Updating the core never touches it.
 - **The core owns what an extension must not get wrong:** ordering, the session-start byte budget (low-priority sections degrade first), and failure isolation (an extension that throws is reported and skipped, and never blocks the hook).
 - **Vaults vendor it.** A vault keeps working with no network and no package manager, so it carries a copy of the core and its chosen extensions, recorded in a `VENDOR.json` that names the commit it came from.
