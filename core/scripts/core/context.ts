@@ -30,20 +30,22 @@ export function readManifest(vaultRoot: string): Manifest {
 }
 
 /**
- * The manifest, the registry for `event`, and the context handed to every
- * extension call. The registry already isolates each extension's failures,
- * so this throws only on a fault in the core itself; an entry point that
- * must answer anyway wraps it, as session-start does.
+ * The manifest, the registry for `event`, the context handed to every
+ * extension call, and the migration notes for the meter line
+ * (`migrationNotes`), so no entry point has to remember them (#111). The
+ * registry already isolates each extension's failures, so this throws only on
+ * a fault in the core itself; an entry point that must answer anyway wraps
+ * it, as session-start does.
  */
 export async function openVault(
 	vaultRoot: string,
 	event: HookEvent,
 	env: NodeJS.ProcessEnv = process.env,
 	now: number = Date.now(),
-): Promise<{ manifest: Manifest; registry: Registry; ctx: HookContext }> {
+): Promise<{ manifest: Manifest; registry: Registry; ctx: HookContext; notes: string[] }> {
 	const manifest = readManifest(vaultRoot);
 	const registry = await loadRegistry(vaultRoot, manifest, event, env);
-	return { manifest, registry, ctx: { vaultRoot, manifest, now } };
+	return { manifest, registry, ctx: { vaultRoot, manifest, now }, notes: migrationNotes(manifest) };
 }
 
 /** The events the qmd extension runs on: its sections at session start, and its refresh effects (#95). */
