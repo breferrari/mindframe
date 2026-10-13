@@ -55,6 +55,8 @@ export {
 	AGENTS_MD_MAX_BYTES,
 	INSTRUCTION_FILE,
 	RETIRED_INSTRUCTION_FILES,
+	filesystemIgnoresCase,
+	isInstructionFile,
 	isRetiredInstructionFile,
 } from "../lib/instruction-files.ts";
 

@@ -4,9 +4,9 @@
  */
 
 import { frontmatterBlock } from "./frontmatter-block.ts";
-import { basename, posix } from "node:path";
+import { basename, dirname, posix, resolve } from "node:path";
 import { readFileSync } from "node:fs";
-import { INSTRUCTION_FILE, RETIRED_INSTRUCTION_FILES } from "./instruction-files.ts";
+import { INSTRUCTION_FILE, RETIRED_INSTRUCTION_FILES, isInstructionFile } from "./instruction-files.ts";
 import { hardWrappedParagraphs } from "./prose-width.ts";
 import { stripCodeRegions } from "./wikilinks.ts";
 
@@ -53,14 +53,24 @@ export function isBlockedMemoryPath(filePath: string): boolean {
 /**
  * Return true if the file should be skipped (not validated).
  * Skips non-markdown, dotfiles, templates, root docs, and translated READMEs.
+ *
+ * Root names match exactly, at any depth. Given the vault root, an
+ * instruction file at the root is also matched the way the agent loads it
+ * (#91): `claude.md` is skipped where the filesystem ignores case, and is a
+ * note on Linux. Without the root, matching stays exact, so a nested note
+ * named like one (`people/Claude.md`) is never skipped for its name.
  */
-export function shouldSkipFile(filePath: string): boolean {
+export function shouldSkipFile(
+	filePath: string,
+	opts: { readonly vaultRoot?: string; readonly platform?: NodeJS.Platform } = {},
+): boolean {
 	if (!filePath || !filePath.endsWith(".md")) return true;
 
 	const normalized = filePath.replaceAll("\\", "/");
 	const base = basename(normalized);
 
 	if (ROOT_FILES.has(base)) return true;
+	if (opts.vaultRoot !== undefined && dirname(resolve(filePath)) === resolve(opts.vaultRoot) && isInstructionFile(base, opts.platform)) return true;
 
 	if (base.startsWith("README.") && base.endsWith(".md")) return true;
 

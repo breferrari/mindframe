@@ -39,10 +39,33 @@ export const AGENTS_MD_FLAG_BYTES = 23_000;
 export const RETIRED_INSTRUCTION_FILES: readonly string[] = Object.freeze([CLAUDE_MD, GEMINI_MD]);
 
 /**
- * Whether a root file name is a retired instruction file, ignoring case:
- * Windows and macOS resolve `claude.md` as `CLAUDE.md`, so an agent loads it.
+ * Whether the platform's filesystem ignores case, so `claude.md` opens
+ * `CLAUDE.md`: Windows, and macOS, whose default APFS is case-insensitive. A
+ * case-sensitive APFS volume is an opt-in exception this doesn't detect; on it
+ * a vault is read as macOS's default (#91).
  */
-export function isRetiredInstructionFile(name: string): boolean {
+export function filesystemIgnoresCase(platform: NodeJS.Platform = process.platform): boolean {
+	return platform === "win32" || platform === "darwin";
+}
+
+/** Whether `name` is one of `names` as the agent would open it on `platform`. */
+function opensAs(name: string, names: readonly string[], platform: NodeJS.Platform): boolean {
+	if (!filesystemIgnoresCase(platform)) return names.includes(name);
 	const lower = name.toLowerCase();
-	return RETIRED_INSTRUCTION_FILES.some((f) => f.toLowerCase() === lower);
+	return names.some((f) => f.toLowerCase() === lower);
+}
+
+/**
+ * Whether a root file name is a retired instruction file, matched the way the
+ * agent loads it (#91): in any case where the filesystem ignores case, as
+ * Windows and macOS resolve `claude.md` as `CLAUDE.md`, and in exact case on
+ * Linux, where the agent never loads a `claude.md`.
+ */
+export function isRetiredInstructionFile(name: string, platform: NodeJS.Platform = process.platform): boolean {
+	return opensAs(name, RETIRED_INSTRUCTION_FILES, platform);
+}
+
+/** Whether a root file name is `AGENTS.md` or a retired instruction file, by the same rule (#91). */
+export function isInstructionFile(name: string, platform: NodeJS.Platform = process.platform): boolean {
+	return opensAs(name, [INSTRUCTION_FILE, ...RETIRED_INSTRUCTION_FILES], platform);
 }

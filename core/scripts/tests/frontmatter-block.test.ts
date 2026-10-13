@@ -7,6 +7,7 @@
  * together.
  */
 import { describe, test } from "node:test";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import { frontmatterBlock, frontmatterLines } from "../lib/frontmatter-block.ts";
 import { countTicketIdWikilinks, shouldSkipFile, validateContent } from "../lib/frontmatter.ts";
@@ -81,6 +82,19 @@ describe("frontmatter.ts's other readers (#82)", () => {
 	test("an instruction file, current or retired, is not a note; a note merely named like one is", () => {
 		for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]) assert.equal(shouldSkipFile(`/v/${name}`), true, name);
 		for (const path of ["/v/people/Claude.md", "/v/topics/Gemini.md", "/v/x/agents.md", "/v/notes/Claude notes.md"]) assert.equal(shouldSkipFile(path), false, path);
+	});
+
+	test("given the vault root, a root instruction file is skipped in the case the agent loads it (#91)", () => {
+		const root = join("/", "v");
+		for (const platform of ["win32", "darwin"] as const) {
+			for (const name of ["claude.md", "Gemini.MD", "agents.md"]) assert.equal(shouldSkipFile(join(root, name), { vaultRoot: root, platform }), true, `${platform} ${name}`);
+		}
+		for (const name of ["claude.md", "Gemini.MD", "agents.md"]) assert.equal(shouldSkipFile(join(root, name), { vaultRoot: root, platform: "linux" }), false, `linux ${name} is a note`);
+		for (const name of ["CLAUDE.md", "AGENTS.md"]) assert.equal(shouldSkipFile(join(root, name), { vaultRoot: root, platform: "linux" }), true, name);
+		for (const platform of ["win32", "darwin", "linux"] as const) {
+			assert.equal(shouldSkipFile(join(root, "people", "Claude.md"), { vaultRoot: root, platform }), false, `${platform}: a nested note named like one stays a note`);
+		}
+		assert.equal(shouldSkipFile(join(root, "claude.md")), false, "no vault root: exact, as before");
 	});
 
 	test("a fence-looking line inside a yaml value doesn't hide the body's links", () => {

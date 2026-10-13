@@ -86,9 +86,25 @@ describe("instruction files, through index.ts", () => {
 		assert.ok(core.AGENTS_MD_FLAG_BYTES < ANTIGRAVITY_LAST_READ_BYTE);
 	});
 
-	test("a retired file is recognised in any case, as Windows and macOS resolve it, and nothing else is", () => {
-		for (const name of ["CLAUDE.md", "claude.md", "Gemini.MD"]) assert.equal(core.isRetiredInstructionFile(name), true, name);
-		for (const name of ["AGENTS.md", "CLAUDE.md.bak", "notes/CLAUDE.md", "README.md"]) assert.equal(core.isRetiredInstructionFile(name), false, name);
+	test("a retired file is matched the way the agent loads it: any case where the filesystem ignores case, exact on Linux (#91)", () => {
+		for (const platform of ["win32", "darwin"] as const) {
+			assert.equal(core.filesystemIgnoresCase(platform), true, platform);
+			for (const name of ["CLAUDE.md", "claude.md", "Gemini.MD"]) assert.equal(core.isRetiredInstructionFile(name, platform), true, `${platform} ${name}`);
+		}
+		assert.equal(core.filesystemIgnoresCase("linux"), false);
+		for (const name of ["CLAUDE.md", "GEMINI.md"]) assert.equal(core.isRetiredInstructionFile(name, "linux"), true, name);
+		for (const name of ["claude.md", "Gemini.MD"]) assert.equal(core.isRetiredInstructionFile(name, "linux"), false, `linux ${name}: the agent never loads it`);
+		for (const platform of ["win32", "darwin", "linux"] as const) {
+			for (const name of ["AGENTS.md", "CLAUDE.md.bak", "notes/CLAUDE.md", "README.md"]) assert.equal(core.isRetiredInstructionFile(name, platform), false, `${platform} ${name}`);
+		}
+		assert.equal(core.isRetiredInstructionFile("claude.md"), core.filesystemIgnoresCase(), "one argument: this machine's rule");
+	});
+
+	test("isInstructionFile: AGENTS.md and the retired names, by the same rule (#91)", () => {
+		assert.equal(core.isInstructionFile("agents.md", "win32"), true);
+		assert.equal(core.isInstructionFile("agents.md", "linux"), false);
+		assert.equal(core.isInstructionFile("AGENTS.md", "linux"), true);
+		assert.equal(core.isInstructionFile("README.md", "win32"), false);
 	});
 });
 
