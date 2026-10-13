@@ -46,6 +46,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#107](https://github.com/breferrari/mindframe/issues/107) | Read a heading on a note's first line after a BOM: lineRegions strips a line-0 BOM | ⬜ |
 | [#110](https://github.com/breferrari/mindframe/issues/110) | Report a checklist item whose getter throws, instead of letting it escape the dispatch | ⬜ |
 | [#111](https://github.com/breferrari/mindframe/issues/111) | Return the migration notes from openVault, so no entry point calls migrationNotes itself | ⬜ |
+| [#112](https://github.com/breferrari/mindframe/issues/112) | Probe the vault root's filesystem for case sensitivity, in place of the platform guess | ⬜ |
 
 ## Phase 3: first-party extensions
 

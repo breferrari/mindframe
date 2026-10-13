@@ -21,7 +21,7 @@ diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instructio
   */
  
  export const INSTRUCTION_FILE = "AGENTS.md";
-@@ -20,28 +20,58 @@
+@@ -20,28 +20,59 @@
  export const GEMINI_SETTINGS = ".gemini/settings.json";
  
  /**
@@ -55,9 +55,10 @@ diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instructio
 - * Whether a root file name is a retired instruction file, ignoring case:
 - * Windows and macOS resolve `claude.md` as `CLAUDE.md`, so an agent loads it.
 + * Whether the platform's filesystem ignores case, so `claude.md` opens
-+ * `CLAUDE.md`: Windows, and macOS, whose default APFS is case-insensitive. A
-+ * case-sensitive APFS volume is an opt-in exception this doesn't detect; on it
-+ * a vault is read as macOS's default (#91).
++ * `CLAUDE.md`: Windows, and macOS, whose default APFS is case-insensitive.
++ * Known gaps, read by the platform's default (#91): a case-sensitive APFS
++ * volume, and WSL on an NTFS mount (`/mnt/c`), which reports linux but ignores
++ * case. #112 probes the vault root's filesystem instead.
   */
 -export function isRetiredInstructionFile(name: string): boolean {
 -	const lower = name.toLowerCase();

@@ -43,9 +43,10 @@ export const INSTRUCTION_FILES: readonly string[] = Object.freeze([INSTRUCTION_F
 
 /**
  * Whether the platform's filesystem ignores case, so `claude.md` opens
- * `CLAUDE.md`: Windows, and macOS, whose default APFS is case-insensitive. A
- * case-sensitive APFS volume is an opt-in exception this doesn't detect; on it
- * a vault is read as macOS's default (#91).
+ * `CLAUDE.md`: Windows, and macOS, whose default APFS is case-insensitive.
+ * Known gaps, read by the platform's default (#91): a case-sensitive APFS
+ * volume, and WSL on an NTFS mount (`/mnt/c`), which reports linux but ignores
+ * case. #112 probes the vault root's filesystem instead.
  */
 export function filesystemIgnoresCase(platform: NodeJS.Platform = process.platform): boolean {
 	return platform === "win32" || platform === "darwin";
