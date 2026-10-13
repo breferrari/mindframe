@@ -556,43 +556,61 @@ export type UpdatePlan = {
 	 * the vault: left as they are and not recorded here (#117). `missing` is the
 	 * names the importer imports that the kept copy doesn't export by name.
 	 */
-	readonly kept: ReadonlyArray<Kept>;
+	readonly kept: ReadonlyArray<{ readonly file: string; readonly importedBy: string; readonly owner: string; readonly missing: readonly string[] }>;
 };
 
-export type Kept = { readonly file: string; readonly importedBy: string; readonly owner: string; readonly missing: readonly string[] };
+type Kept = UpdatePlan["kept"][number];
 
 /**
- * The names `source` imports by name from `spec`: `import { a, b as c, type T }`
- * and `export { a } from`, each by the name the target exports. A text scan:
- * a namespace or default import names nothing here.
+ * A module's code as the name scans read it: comments become a space, and a
+ * string's text is kept only where an import puts a specifier (after `from`),
+ * so import- or export-like text in a comment or a string reads as nothing.
  */
-export function namedImportsOf(source: string, spec: string): string[] {
-	const names: string[] = [];
-	for (const m of source.matchAll(/\b(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\s*(["'])([^"'\n]+)\2/g)) {
-		if (m[3] !== spec) continue;
-		for (const part of m[1]!.split(",")) {
-			const name = part.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]!.trim();
-			if (name !== "" && !names.includes(name)) names.push(name);
-		}
-	}
-	return names;
+function codeOf(source: string): string {
+	return source.replace(
+		/("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g,
+		(match, string: string | undefined, offset: number) => {
+			if (string === undefined) return " ";
+			return /\bfrom\s*$/.test(source.slice(Math.max(0, offset - 16), offset)) ? string : '""';
+		},
+	);
+}
+
+/** The names in a `{ a, b as c, type T }` list: as the importer names them (`imported`), or as the module exports them (`exported`). */
+function namesIn(list: string, side: "imported" | "exported"): string[] {
+	return list
+		.split(",")
+		.map((part) => {
+			const [name, alias] = part.trim().replace(/^type\s+/, "").split(/\s+as\s+/);
+			return (side === "exported" ? (alias ?? name) : name)!.trim();
+		})
+		.filter((name) => name !== "");
 }
 
 /**
- * The names a module exports by name, as a text scan reads them: declarations
- * (`export const`, `function`, `class`, `type`, `interface`, `enum`…) and
- * `export { a, b as c }`. It can't see `export *`, so a name missing here is a
- * warning, never a refusal (#117).
+ * The names `source` imports by name from `spec`: `import { a, b as c, type T }`,
+ * `import D, { a }` and `export { a } from`, each by the name the target
+ * exports. A namespace or default import names nothing here.
  */
-export function exportedNamesOf(source: string): Set<string> {
+function namedImportsOf(source: string, spec: string): string[] {
 	const names = new Set<string>();
-	for (const m of source.matchAll(/\bexport\s+(?:declare\s+)?(?:default\s+)?(?:async\s+)?(?:abstract\s+)?(?:const|let|var|function\*?|class|type|interface|enum|namespace)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
-	for (const m of source.matchAll(/\bexport\s+(?:type\s+)?\{([^}]*)\}/g)) {
-		for (const part of m[1]!.split(",")) {
-			const name = part.trim().replace(/^type\s+/, "").split(/\s+as\s+/).pop()!.trim();
-			if (name !== "") names.add(name);
-		}
+	for (const m of codeOf(source).matchAll(/\b(?:import|export)\s+(?:type\s+)?(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*(["'])([^"'\n]+)\2/g)) {
+		if (m[3] === spec) for (const name of namesIn(m[1]!, "imported")) names.add(name);
 	}
+	return [...names];
+}
+
+/**
+ * The names a module exports by name, as a text scan reads its code:
+ * declarations (`export const`, `function`, `class`, `type`, `interface`,
+ * `enum`…) and `export { a, b as c }`. It can't see `export *`, so a name
+ * missing here is a warning, never a refusal (#117).
+ */
+function exportedNamesOf(source: string): Set<string> {
+	const code = codeOf(source);
+	const names = new Set<string>();
+	for (const m of code.matchAll(/\bexport\s+(?:declare\s+)?(?:default\s+)?(?:async\s+)?(?:abstract\s+)?(?:const|let|var|function\*?|class|type|interface|enum|namespace)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]!);
+	for (const m of code.matchAll(/\bexport\s+(?:type\s+)?\{([^}]*)\}/g)) for (const name of namesIn(m[1]!, "exported")) names.add(name);
 	return names;
 }
 
@@ -705,13 +723,13 @@ function closeImports(
 	files: Array<{ file: string; bytes: Uint8Array }>,
 	entries: Record<string, FileEntry>,
 	problems: string[],
-	kept: Kept[],
-): Array<{ file: string; importedBy: string }> {
+): { added: Array<{ file: string; importedBy: string }>; kept: Kept[] } {
 	const { record } = input;
 	const short = input.commit.slice(0, 7);
 	const text = (b: Uint8Array | null) => (b === null ? "" : Buffer.from(b).toString("utf8"));
 	const seen = new Set<string>();
 	const added: Array<{ file: string; importedBy: string }> = [];
+	const kept: Kept[] = [];
 	const queue: Array<{ file: string; upstream: string; fresh: string; was: string }> = [];
 	for (const f of files) {
 		if (!MODULE_FILE.test(f.file)) continue;
@@ -728,38 +746,40 @@ function closeImports(
 			const upstream = path.posix.normalize(path.posix.join(path.posix.dirname(next.upstream), spec));
 			if (upstream === ".." || upstream.startsWith("../")) continue;
 			const file = path.posix.normalize(path.posix.join(path.posix.dirname(next.file), spec));
-			if (record.files[file] !== undefined || entries[file] !== undefined || seen.has(file)) continue;
+			if (record.files[file] !== undefined || entries[file] !== undefined) continue;
+			// A kept file is checked against each importer's names; anything else is decided once.
+			const first = !seen.has(file);
 			seen.add(file);
 			let target: string;
 			try {
 				target = resolveInside(input.vault, file);
 			} catch (e) {
-				problems.push(`${file}, which ${next.file} now imports: ${(e as Error).message}`);
+				if (first) problems.push(`${file}, which ${next.file} now imports: ${(e as Error).message}`);
 				continue;
 			}
+			const stat = lstatSync(target, { throwIfNoEntry: false });
 			const owner = input.ownerOf?.(file);
 			if (owner) {
-				if (!existsSync(target)) {
-					problems.push(`${file} is owned by ${owner} and missing from the vault, and ${next.file} now imports it; restore it through that record, then update`);
-				} else if (!lstatSync(target).isFile()) {
-					problems.push(`${file} is owned by ${owner} and isn't a file, and ${next.file} now imports it; restore it through that record, then update`);
-				} else {
+				if (stat?.isFile()) {
 					const exported = exportedNamesOf(readFileSync(target, "utf8"));
 					kept.push({ file, importedBy: next.file, owner, missing: namedImportsOf(next.fresh, spec).filter((name) => !exported.has(name)) });
+				} else if (first) {
+					problems.push(`${file} is owned by ${owner} and ${stat === undefined ? "missing from the vault" : "isn't a file"}, and ${next.file} now imports it; restore it through that record, then update`);
 				}
 				continue;
 			}
+			if (!first) continue;
 			const bytes = readOrNull(resolveInside(input.upstreamRoot, withSourceRoot(record, upstream)));
 			if (bytes === null) {
 				problems.push(`${next.file} imports ${file}, which upstream doesn't have at ${short}`);
 				continue;
 			}
 			const hash = contentHash(bytes);
-			if (existsSync(target) && !lstatSync(target).isFile()) {
+			if (stat !== undefined && !stat.isFile()) {
 				problems.push(`${file} is in the vault and isn't a file; ${next.file} now imports it. Move it aside, then update`);
 				continue;
 			}
-			const present = existsSync(target) ? readFileSync(target) : null;
+			const present = stat !== undefined ? readFileSync(target) : null;
 			if (present !== null && contentHash(present) !== hash) {
 				problems.push(`${file} is in the vault, unrecorded, and differs from upstream; ${next.file} now imports it. Move it aside, or record it, then update`);
 				continue;
@@ -770,7 +790,7 @@ function closeImports(
 			if (MODULE_FILE.test(file)) queue.push({ file, upstream, fresh: text(bytes), was: "" });
 		}
 	}
-	return added;
+	return { added, kept };
 }
 
 /**
@@ -928,8 +948,7 @@ export function planUpdate(input: UpdateInput): UpdatePlan {
 		if (!("stuck" in done)) settle(done, text(done.at));
 	}
 	// Run even when other problems were found, so every refusal is named at once.
-	const kept: Kept[] = [];
-	const added = conflicts.length === 0 ? closeImports(input, files, entries, problems, kept) : [];
+	const { added, kept } = conflicts.length === 0 ? closeImports(input, files, entries, problems) : { added: [], kept: [] };
 
 	if (problems.length) throw new VendorError(problems.join("\n"));
 

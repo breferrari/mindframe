@@ -348,6 +348,30 @@ test("a kept file that doesn't export a name the importer imports is a warning; 
 	assert.notEqual(s.vaultLib(), LIB, "the importer is updated");
 });
 
+test("the name check reads code, not comments or strings, and a default-plus-named import is checked (#117)", (t) => {
+	const s = imports(t);
+	otherRecord(s, "export const u = 0;\n// export const gone = 1;\nconst doc = \"export const ghost = 2\";\n");
+	s.commit({
+		"lib.ts": 'import D, { u, gone } from "./util.ts";\n// import { commented } from "./util.ts";\nconst fixture = \'import { quoted } from "./util.ts"\';\nimport { ghost } from "./util.ts";\n' + LIB,
+		"util.ts": "export const u = 1;\nexport const gone = 1;\nexport const ghost = 2;\nexport default 0;\n",
+	});
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	const warning = s.lines.find((l) => l.startsWith("vendor: warning:")) ?? "";
+	assert.match(warning, /doesn't export gone, ghost, which/, s.lines.join("\n"));
+});
+
+test("each updated file that imports a kept file is checked, not only the first (#117)", (t) => {
+	const s = imports(t);
+	otherRecord(s, "export const u = 0;\n");
+	put(s.vault, ".claude/scripts/two.ts", "export const t = 0;\n");
+	const rec = s.record();
+	const h = contentHash(Buffer.from("export const t = 0;\n"));
+	writeFileSync(s.recFile, formatRecord({ ...rec, files: { ...rec.files, ".claude/scripts/two.ts": { upstream: "two.ts", sha256: h, upstreamSha256: h } } }));
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "two.ts": 'import { w } from "./util.ts";\nexport const t = w;\n', "util.ts": "export const u = 1;\nexport const w = 2;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(s.lines.some((l) => l.includes("doesn't export w, which .claude/scripts/two.ts imports")), s.lines.join("\n"));
+});
+
 test("a kept file's own new imports are its record's, not followed (#117)", (t) => {
 	const s = imports(t);
 	otherRecord(s, "export const u = 0;\n");
