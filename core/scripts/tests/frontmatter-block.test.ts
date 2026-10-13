@@ -7,7 +7,7 @@
  * together.
  */
 import { describe, test } from "node:test";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
 import { frontmatterBlock, frontmatterLines } from "../lib/frontmatter-block.ts";
 import { countTicketIdWikilinks, shouldSkipFile, validateContent } from "../lib/frontmatter.ts";
@@ -95,6 +95,13 @@ describe("frontmatter.ts's other readers (#82)", () => {
 			assert.equal(shouldSkipFile(join(root, "people", "Claude.md"), { vaultRoot: root, platform }), false, `${platform}: a nested note named like one stays a note`);
 		}
 		assert.equal(shouldSkipFile(join(root, "claude.md")), false, "no vault root: exact, as before");
+	});
+
+	test("where the filesystem ignores case, the vault root matches in any case: a drive letter as c: or C: (#91)", () => {
+		const root = resolve("Vault");
+		for (const platform of ["win32", "darwin"] as const) {
+			assert.equal(shouldSkipFile(join(root.toUpperCase(), "claude.md"), { vaultRoot: root.toLowerCase(), platform }), true, platform);
+		}
 	});
 
 	test("a fence-looking line inside a yaml value doesn't hide the body's links", () => {

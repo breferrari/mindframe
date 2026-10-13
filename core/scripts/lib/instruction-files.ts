@@ -38,6 +38,9 @@ export const AGENTS_MD_FLAG_BYTES = 23_000;
 /** Frozen: every extension shares one process, so none may change the list the others' checks read. */
 export const RETIRED_INSTRUCTION_FILES: readonly string[] = Object.freeze([CLAUDE_MD, GEMINI_MD]);
 
+/** `AGENTS.md` and the retired instruction files: every name an agent loads at the vault root (#91). */
+export const INSTRUCTION_FILES: readonly string[] = Object.freeze([INSTRUCTION_FILE, ...RETIRED_INSTRUCTION_FILES]);
+
 /**
  * Whether the platform's filesystem ignores case, so `claude.md` opens
  * `CLAUDE.md`: Windows, and macOS, whose default APFS is case-insensitive. A
@@ -67,5 +70,5 @@ export function isRetiredInstructionFile(name: string, platform: NodeJS.Platform
 
 /** Whether a root file name is `AGENTS.md` or a retired instruction file, by the same rule (#91). */
 export function isInstructionFile(name: string, platform: NodeJS.Platform = process.platform): boolean {
-	return opensAs(name, [INSTRUCTION_FILE, ...RETIRED_INSTRUCTION_FILES], platform);
+	return opensAs(name, INSTRUCTION_FILES, platform);
 }
