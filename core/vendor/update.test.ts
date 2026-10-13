@@ -2,7 +2,7 @@
 // `patch upstream --pr` may post publicly. Real git repos, a stand-in gh.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test, type TestContext } from "node:test";
@@ -399,6 +399,24 @@ test("a kept copy written without semicolons: each export statement is read on i
 	s.commit({ "lib.ts": 'import { a, b } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
 	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
 	assert.ok(!s.lines.some((l) => l.includes("warning")), s.lines.join("\n"));
+});
+
+test("a kept copy that can't be read is a warning, not a silent pass (#117)", { skip: process.platform === "win32" && "a file's read permission can't be taken away here" }, (t) => {
+	const s = imports(t);
+	otherRecord(s, "export const u = 0;\n");
+	const kept = path.join(s.vault, ".claude", "scripts", "util.ts");
+	chmodSync(kept, 0o000);
+	t.after(() => chmodSync(kept, 0o644));
+	try {
+		readFileSync(kept);
+		t.skip("this user reads every file (root)");
+		return;
+	} catch {
+		// unreadable, as the test needs
+	}
+	s.commit({ "lib.ts": 'import { u } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(s.lines.some((l) => l.includes("can't be read, so the names .claude/scripts/lib.ts imports from it went unchecked")), s.lines.join("\n"));
 });
 
 test("a package specifier that happens to join to the kept file's path is no import of it (#117)", (t) => {
