@@ -390,6 +390,14 @@ test("the kept copy's exports read as a module declares them: const enums, sever
 	assert.ok(!s.lines.some((l) => l.includes("warning")), s.lines.join("\n"));
 });
 
+test("a kept copy written without semicolons: each export statement is read on its own (#117)", (t) => {
+	const s = imports(t);
+	otherRecord(s, "export const a = 1\nexport const b = 2\n");
+	s.commit({ "lib.ts": 'import { a, b } from "./util.ts";\n' + LIB, "util.ts": "export const u = 1;\n" });
+	assert.equal(s.cli("update", ...s.at()), 0, s.lines.join("\n"));
+	assert.ok(!s.lines.some((l) => l.includes("warning")), s.lines.join("\n"));
+});
+
 test("a package specifier that happens to join to the kept file's path is no import of it (#117)", (t) => {
 	const s = imports(t);
 	otherRecord(s, "export const u = 0;\n");
