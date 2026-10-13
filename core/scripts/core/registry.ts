@@ -197,6 +197,8 @@ type Entry<T> = {
 	readonly ext: string;
 	/** The item's id, as `ordered` read and checked it: the id is never read from the item again (#110). */
 	readonly id: string;
+	/** The item's own priority, as `ordered` read and checked it, before the declaration's fills in (#110). */
+	readonly own: number | undefined;
 	/** The events the extension's declaration lists. */
 	readonly events: readonly HookEvent[];
 	readonly item: T;
@@ -252,6 +254,7 @@ function ordered<T extends { readonly id: string; readonly priority?: number }>(
 			entries.push({
 				ext,
 				id,
+				own: priority as number | undefined,
 				events: declaration.events,
 				item,
 				priority: (priority as number | undefined) ?? declaration.priority ?? Number.POSITIVE_INFINITY,
@@ -400,10 +403,10 @@ export async function collectSections(
 			if (!isString(header) || !(pointer === undefined || isString(pointer))) throw new Error("`header` and `pointer` must be strings");
 			return { header, pointer };
 		});
-		return fields === undefined ? [] : [{ ...fields, entry, pointed: mode === "pointer" && fields.pointer !== undefined }];
+		return fields === undefined ? [] : [{ ...fields, entry, pointed: mode === "pointer" ? fields.pointer : undefined }];
 	});
 	const rendered = await each(
-		entries.filter(({ pointed }) => !pointed).map(({ entry }) => entry),
+		entries.filter(({ pointed }) => pointed === undefined).map(({ entry }) => entry),
 		failures,
 		"section",
 		(item) => item.render(ctx),
@@ -415,7 +418,7 @@ export async function collectSections(
 	const sections: BudgetSection[] = [];
 	for (const { entry, header, pointer, pointed } of entries) {
 		const priority = budgetPriority(entry.priority);
-		if (pointed) sections.push({ header, body: pointer ?? "", priority });
+		if (pointed !== undefined) sections.push({ header, body: pointed, priority });
 		else {
 			const body = bodies.get(entry);
 			if (body !== undefined) sections.push({ header, body, priority, fallback: pointer });
@@ -440,11 +443,10 @@ export function collectChecklist(registry: Registry): Dispatch<ChecklistItem[]> 
 		const fields = fieldsOf(entry, "checklist", failures, (item) => {
 			const full: unknown = item.full;
 			const short: unknown = item.short;
-			const priority: unknown = item.priority;
 			if (!isString(full) || !isString(short)) throw new Error("`full` and `short` must be strings");
-			return typeof priority === "number" ? { full, short, priority } : { full, short };
+			return { full, short };
 		});
-		if (fields !== undefined) items.push({ id: entry.id, ...fields });
+		if (fields !== undefined) items.push(entry.own === undefined ? { id: entry.id, ...fields } : { id: entry.id, ...fields, priority: entry.own });
 	}
 	return { result: items, failures };
 }

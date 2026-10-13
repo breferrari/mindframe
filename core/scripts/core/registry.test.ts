@@ -399,6 +399,14 @@ describe("rule 5: nothing an extension returns reaches the output unchecked", ()
 		assert.deepEqual(failures.map((f) => [f.extension, f.point, f.message]), [["a", "checklist", "getter"]]);
 	});
 
+	test("a checklist item's priority is read once, by ordered: a getter that throws on a second read can't drop the item (#110)", () => {
+		const priority = once(3);
+		const ext = { id: "a", checklist: [{ id: "a.1", full: "F", short: "S", get priority() { return priority(); } }] } as unknown as Extension;
+		const { result, failures } = collectChecklist(fromLoaded([declared(ext)]));
+		assert.deepEqual(result, [{ id: "a.1", full: "F", short: "S", priority: 3 }]);
+		assert.deepEqual(failures, []);
+	});
+
 	test("a checklist item keeps its own priority (#110)", () => {
 		const ext: Extension = { id: "a", checklist: [{ id: "a.1", full: "F", short: "S", priority: 3 }, { id: "a.2", full: "F", short: "S" }] };
 		assert.deepEqual(collectChecklist(fromLoaded([declared(ext)])).result, [
