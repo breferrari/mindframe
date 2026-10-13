@@ -1,11 +1,11 @@
-Description: mindframe: RETIRED_INSTRUCTION_FILES frozen, and comments saying mindframe absorbed it from obsidian-mind #333 (#89, #90); retired and instruction files matched without case where the filesystem ignores it, win32 and darwin (#91); GEMINI.md retired only where the vault's Gemini settings read AGENTS.md, with the settings reader lifted from obsidian-mind's hygiene scan, its comments dropped before a strict parse in place of the narrow fallback, the v1 contextFileName read, and names trimmed as Gemini trims them (#104); a BOM kept, so a BOM'd settings file names nothing, as Gemini refuses it (#119)
+Description: mindframe: RETIRED_INSTRUCTION_FILES frozen, and comments saying mindframe absorbed it from obsidian-mind #333 (#89, #90); retired and instruction files matched without case where the filesystem ignores it, win32 and darwin (#91); GEMINI.md retired only where the vault's Gemini settings read AGENTS.md, with the settings reader lifted from obsidian-mind's hygiene scan, its comments dropped before a strict parse in place of the narrow fallback, the v1 contextFileName read, and names trimmed as Gemini trims them (#104); a BOM kept, so a BOM'd settings file names nothing, as Gemini refuses it, and comments dropped by strip-json-comments' own scan (#119)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
 diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instruction-files.ts
 --- a/core/scripts/lib/instruction-files.ts
 +++ b/core/scripts/lib/instruction-files.ts
-@@ -1,47 +1,147 @@
+@@ -1,47 +1,176 @@
  /**
 - * The vault's instruction files (#321). `AGENTS.md` is the one every agent
 + * The vault's instruction files (obsidian-mind #321). `AGENTS.md` is the one every agent
@@ -118,11 +118,12 @@ diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instructio
 + * (`context.fileName`, or the older top-level `contextFileName` Gemini still
 + * migrates; a string or a list), or [] when there is none. The file is parsed
 + * as gemini-cli 51617c1 parses it: comments are dropped by strip-json-comments'
-+ * rules, then a strict `JSON.parse`. A file that doesn't parse names nothing,
-+ * because Gemini applies none of it either. A BOM is kept, so a BOM'd file
-+ * doesn't parse, as Gemini refuses it (#119). What Gemini does after parsing
-+ * is left out: `$VAR` expansion in values, skipping an untrusted folder's
-+ * settings, and merging user-level settings. Lifted from obsidian-mind's
++ * scan (`stripJsonComments`), then a strict `JSON.parse`. A file that doesn't
++ * parse names nothing, because Gemini applies none of it either. A BOM is
++ * kept, so a BOM'd file doesn't parse, as Gemini refuses it (#119). What Gemini
++ * does after parsing is left out: `$VAR` expansion in values, skipping an
++ * untrusted folder's settings, and merging the user, system and
++ * system-default settings. Lifted from obsidian-mind's
 + * hygiene scan (#104), which falls back to a narrow read of the raw text at
 + * the recorded commit; dropping comments instead, the v1 key, and keeping the
 + * BOM are mindframe's changes to it (obsidian-mind #377 keeps the BOM too).
@@ -132,12 +133,7 @@ diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instructio
 +	try {
 +		// Only a regular file: a FIFO at that path would block the hook on read.
 +		if (statSync(path, { throwIfNoEntry: false })?.isFile() !== true) return [];
-+		// Strings are matched first (a double quote, past escapes, an escaped line
-+		// break too), so a `//` inside one is no comment; an unterminated block
-+		// comment runs to the end, in one pass; a comment becomes a space, so
-+		// `tr/**/ue` stays two tokens.
-+		const text = readFileSync(path, "utf8")
-+			.replace(/("(?:[^"\\]|\\[\s\S])*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g, (_, string: string | undefined) => string ?? " ");
++		const text = stripJsonComments(readFileSync(path, "utf8"));
 +		const settings = JSON.parse(text) as { context?: { fileName?: unknown }; contextFileName?: unknown } | null;
 +		const names = settings?.context?.fileName ?? settings?.contextFileName;
 +		// Gemini trims each name, so " AGENTS.md" names AGENTS.md there too.
@@ -145,6 +141,39 @@ diff --git a/core/scripts/lib/instruction-files.ts b/core/scripts/lib/instructio
 +	} catch {
 +		return [];
 +	}
++}
++
++/**
++ * A settings file's text with its comments gone, by strip-json-comments 3.1.1's
++ * scan, as gemini-cli reads settings through it: a double quote with an even
++ * run of backslashes before it opens or closes a string, so `\"` stays inside
++ * one and `\\"` closes it; outside a string, a line comment runs to the line's
++ * end and a block comment to its close, or to the end of the file; each comment
++ * becomes a space, so `true` split by an empty block comment stays two tokens.
++ * A string that never closes runs to the end. One pass, so a damaged file costs
++ * no more than a sound one.
++ */
++function stripJsonComments(text: string): string {
++	let out = "";
++	let from = 0;
++	let inString = false;
++	for (let i = 0; i < text.length; i++) {
++		if (text[i] === '"') {
++			let slashes = 0;
++			for (let j = i - 1; j >= from && text[j] === "\\"; j--) slashes++;
++			if (slashes % 2 === 0) inString = !inString;
++			continue;
++		}
++		if (inString) continue;
++		const two = text.slice(i, i + 2);
++		if (two !== "//" && two !== "/*") continue;
++		const close = two === "//" ? text.indexOf("\n", i) : text.indexOf("*/", i + 2);
++		const end = close === -1 ? text.length : two === "//" ? close : close + 2;
++		out += `${text.slice(from, i)} `;
++		from = end;
++		i = end - 1;
++	}
++	return out + text.slice(from);
 +}
 +
 +/**
