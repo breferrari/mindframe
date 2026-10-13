@@ -171,6 +171,14 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), true);
 	});
 
+	test("a commented-out fileName doesn't count: the narrow read skips comments", () => {
+		settings('{\n  // was: "fileName": "AGENTS.md"\n  /* "fileName": ["AGENTS.md"] */\n  "context": { "fileName": "GEMINI.md" }\n}\n');
+		assert.deepEqual(core.geminiContextFiles(root), ["GEMINI.md"]);
+		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), false);
+		settings('{\n  // a comment\n  "$schema": "https://example.com/settings.json",\n  "context": { "fileName": "AGENTS.md" }\n}\n');
+		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "a // inside a string is no comment");
+	});
+
 	test("names match by #91's rule: agents.md names AGENTS.md where the filesystem ignores case", () => {
 		fileName("agents.md");
 		assert.equal(core.geminiReadsAgentsMd(root, "win32"), true);

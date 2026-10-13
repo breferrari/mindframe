@@ -88,14 +88,18 @@ export function isInstructionFile(name: string, platform: NodeJS.Platform = proc
 /**
  * The context files the vault's `.gemini/settings.json` names
  * (`context.fileName`, a string or a list), or [] when there is none. Gemini
- * accepts comments and a BOM in that file, so a strict `JSON.parse` is tried
- * first and a narrow read of the fileName value second. Lifted from
- * obsidian-mind's hygiene scan (#104).
+ * accepts comments and a BOM in that file, so the comments are dropped (a
+ * commented-out fileName names nothing), then a strict `JSON.parse` is tried
+ * and a narrow read of the fileName value second. Lifted from obsidian-mind's
+ * hygiene scan (#104).
  */
 export function geminiContextFiles(vaultRoot: string): string[] {
 	let text: string;
 	try {
-		text = readFileSync(join(vaultRoot, GEMINI_SETTINGS), "utf8").replace(/^\uFEFF/, "");
+		// Strings are matched first and kept, so a `//` inside one (a URL) is no comment.
+		text = readFileSync(join(vaultRoot, GEMINI_SETTINGS), "utf8")
+			.replace(/^\uFEFF/, "")
+			.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (_, string: string | undefined) => string ?? "");
 	} catch {
 		return [];
 	}
@@ -127,6 +131,6 @@ export function geminiReadsAgentsMd(vaultRoot: string, platform: NodeJS.Platform
  * frozen list of the names that can be retired.
  */
 export function retiredInVault(vaultRoot: string, platform: NodeJS.Platform = process.platform): (name: string) => boolean {
-	const retired = geminiReadsAgentsMd(vaultRoot, platform) ? RETIRED_INSTRUCTION_FILES : RETIRED_INSTRUCTION_FILES.filter((f) => f !== GEMINI_MD);
-	return (name) => opensAs(name, retired, platform);
+	const geminiRetired = geminiReadsAgentsMd(vaultRoot, platform);
+	return (name) => isRetiredInstructionFile(name, platform) && (geminiRetired || !sameOnDisk(name, GEMINI_MD, platform));
 }
