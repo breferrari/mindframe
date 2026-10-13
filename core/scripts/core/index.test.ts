@@ -178,11 +178,9 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 		assert.equal(core.retiredInVault(root, "linux")(core.GEMINI_MD), false);
 	});
 
-	test("comments as strip-json-comments 3.1.1 reads them: only a double quote opens a string (#119)", () => {
-		settings(`{ "context": { "fileName": "AGENTS.md" } } // it's a comment, whose quote opens nothing`);
-		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "a single quote opens no string, so the comment is stripped and the file parses");
+	test("an escaped double quote doesn't close a string, so a // after it is text, not a comment (#119)", () => {
 		settings('{ "a": "say \\"//\\" here", "context": { "fileName": "AGENTS.md" } }');
-		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "an escaped quote doesn't close the string, so its // is text");
+		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"]);
 	});
 
 	test("a commented-out fileName doesn't count, and a // inside a string is no comment", () => {

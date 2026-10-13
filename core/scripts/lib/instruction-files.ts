@@ -98,7 +98,8 @@ export function isInstructionFile(name: string, platform: NodeJS.Platform = proc
  * because Gemini applies none of it either. A BOM is kept, so a BOM'd file
  * doesn't parse, as Gemini refuses it (#119). Lifted from obsidian-mind's
  * hygiene scan (#104), which falls back to a narrow read of the raw text;
- * dropping comments instead, and the v1 key, are mindframe's.
+ * dropping comments instead, the v1 key, and keeping the BOM (as obsidian-mind
+ * #377 does too) are mindframe's.
  */
 export function geminiContextFiles(vaultRoot: string): string[] {
 	const path = join(vaultRoot, GEMINI_SETTINGS);
