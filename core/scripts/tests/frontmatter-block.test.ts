@@ -87,9 +87,9 @@ describe("frontmatter.ts's other readers (#82)", () => {
 	test("given the vault root, a root instruction file is skipped in the case the agent loads it (#91)", () => {
 		const root = join("/", "v");
 		for (const platform of ["win32", "darwin"] as const) {
-			for (const name of ["claude.md", "Gemini.MD", "agents.md"]) assert.equal(shouldSkipFile(join(root, name), { vaultRoot: root, platform }), true, `${platform} ${name}`);
+			for (const name of ["claude.md", "Gemini.md", "agents.md"]) assert.equal(shouldSkipFile(join(root, name), { vaultRoot: root, platform }), true, `${platform} ${name}`);
 		}
-		for (const name of ["claude.md", "Gemini.MD", "agents.md"]) assert.equal(shouldSkipFile(join(root, name), { vaultRoot: root, platform: "linux" }), false, `linux ${name} is a note`);
+		for (const name of ["claude.md", "Gemini.md", "agents.md"]) assert.equal(shouldSkipFile(join(root, name), { vaultRoot: root, platform: "linux" }), false, `linux ${name} is a note`);
 		for (const name of ["CLAUDE.md", "AGENTS.md"]) assert.equal(shouldSkipFile(join(root, name), { vaultRoot: root, platform: "linux" }), true, name);
 		for (const platform of ["win32", "darwin", "linux"] as const) {
 			assert.equal(shouldSkipFile(join(root, "people", "Claude.md"), { vaultRoot: root, platform }), false, `${platform}: a nested note named like one stays a note`);
