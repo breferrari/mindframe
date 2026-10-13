@@ -42,6 +42,11 @@ describe("the qmd extension hides every console window it could open (#96)", () 
 		assert.deepEqual(spawnCalls('spawnSync("x", ["a"], { shell: true, windowsHide: true });\ndeps.spawnSync(a, b);'), ['spawnSync("x", ["a"], { shell: true, windowsHide: true })']);
 	});
 
+	test("a /* inside a string opens no comment, so the code after it is still scanned", () => {
+		assert.deepEqual(spawnCalls('const glob = "**/*.md";\nspawnSync("x");\n/** a doc */'), ['spawnSync("x")']);
+		assert.deepEqual(spawnCalls('// spawnSync("in a comment")\n/* spawnSync("too") */'), []);
+	});
+
 	test("every direct spawn in the extension's code passes windowsHide", () => {
 		const missing = extensionSources(DIR).flatMap((path) => spawnCalls(readFileSync(path, "utf8")).filter((call) => !call.includes("windowsHide")).map((call) => `${path}: ${call.slice(0, 80)}`));
 		assert.deepEqual(missing, []);
