@@ -105,11 +105,9 @@ export function geminiContextFiles(vaultRoot: string): string[] {
 	try {
 		// Only a regular file: a FIFO at that path would block the hook on read.
 		if (statSync(path, { throwIfNoEntry: false })?.isFile() !== true) return [];
-		// strip-json-comments 3.1.1's rules: only a double quote opens a string,
-		// and one escaped doesn't close it, so a `//` inside a string (a URL) is no
-		// comment; an unterminated block comment runs to the end, in one pass; a
-		// comment becomes a space, so `tr/**/ue` stays two tokens and fails to
-		// parse there and here alike. A BOM is kept, so a BOM'd file fails (#119).
+		// Strings are matched first (a double quote, past escapes), so a `//` inside
+		// one is no comment; an unterminated block comment runs to the end, in one
+		// pass; a comment becomes a space, so `tr/**/ue` stays two tokens.
 		const text = readFileSync(path, "utf8")
 			.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g, (_, string: string | undefined) => string ?? " ");
 		const settings = JSON.parse(text) as { context?: { fileName?: unknown }; contextFileName?: unknown } | null;

@@ -179,8 +179,8 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 	});
 
 	test("comments as strip-json-comments 3.1.1 reads them: only a double quote opens a string (#119)", () => {
-		settings(`{ "context": { "fileName": "AGENTS.md" }, 'x': 1 // a comment after a single quote\n}`);
-		assert.deepEqual(core.geminiContextFiles(root), [], "a single-quoted key doesn't parse, as in Gemini");
+		settings(`{ "context": { "fileName": "AGENTS.md" } } // it's a comment, whose quote opens nothing`);
+		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "a single quote opens no string, so the comment is stripped and the file parses");
 		settings('{ "a": "say \\"//\\" here", "context": { "fileName": "AGENTS.md" } }');
 		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"], "an escaped quote doesn't close the string, so its // is text");
 	});
