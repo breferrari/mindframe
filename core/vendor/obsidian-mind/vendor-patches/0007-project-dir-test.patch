@@ -1,0 +1,33 @@
+Description: mindframe: the vault-root walk-up exported to extensions (#86)
+Forwarded: https://github.com/breferrari/mindframe/issues/19
+Last-Update: 2026-10-13
+
+diff --git a/core/scripts/tests/project-dir.test.ts b/core/scripts/tests/project-dir.test.ts
+--- a/core/scripts/tests/project-dir.test.ts
++++ b/core/scripts/tests/project-dir.test.ts
+@@ -7,7 +7,7 @@
+ import assert from "node:assert/strict";
+ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+ import { tmpdir } from "node:os";
+-import { join } from "node:path";
++import { join, relative } from "node:path";
+ import { nearestVaultRoot, resolveProjectDir, VAULT_MARKER } from "../lib/project-dir.ts";
+ 
+ describe("resolveProjectDir", () => {
+@@ -100,3 +100,16 @@
+ 		}
+ 	});
+ });
++
++test("a relative name is walked from the working directory, and the root found is absolute", () => {
++	const root = mkdtempSync(join(tmpdir(), "pd-rel-"));
++	try {
++		writeFileSync(join(root, "vault-manifest.json"), "{}");
++		mkdirSync(join(root, "a", "b"), { recursive: true });
++		const rel = relative(process.cwd(), join(root, "a", "b"));
++		assert.equal(resolveProjectDir("/fb", { CLAUDE_PROJECT_DIR: rel }), root);
++		assert.equal(resolveProjectDir(rel, {}), root);
++	} finally {
++		rmSync(root, { recursive: true, force: true });
++	}
++});

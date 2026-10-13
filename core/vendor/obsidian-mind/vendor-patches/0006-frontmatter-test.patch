@@ -1,0 +1,34 @@
+Description: mindframe: the lift's fixtures; frontmatter by its delimiter lines (#64); the CRLF case made to fail without CRLF parsing (#68); the one frontmatter rule (#82)
+Forwarded: https://github.com/breferrari/mindframe/issues/19
+Last-Update: 2026-10-13
+
+diff --git a/core/scripts/tests/frontmatter.test.ts b/core/scripts/tests/frontmatter.test.ts
+--- a/core/scripts/tests/frontmatter.test.ts
++++ b/core/scripts/tests/frontmatter.test.ts
+@@ -108,7 +108,7 @@
+ 		assert.deepEqual(missing(w), ["date"]);
+ 	});
+ 
+-	test("the shipped Work Note template declares every field the shipped manifest requires of a work note", () => {
++	test("the shipped Work Note template declares every field the shipped manifest requires of a work note", { skip: "wiki-mind ships neither obsidian-mind's Work Note template nor its manifest" }, () => {
+ 		const manifest = JSON.parse(readFileSync(join(VAULT, "vault-manifest.json"), "utf-8"));
+ 		const tpl = readFileSync(join(VAULT, "templates", "Work Note.md"), "utf-8");
+ 		const w = validateContent(tpl, { required: parseFrontmatterRequired(manifest), relPath: "work/active/New.md" });
+@@ -291,6 +291,17 @@
+ 		// All three field checks should accept the alternate spacing.
+ 		assert.deepEqual(validateContent(c), []);
+ 	});
++
++	test("a value containing --- doesn't end the frontmatter", () => {
++		const c = "---\ndate: 2026-04-05\ndescription: before --- after\ntags: [x]\n---\nShort note.";
++		assert.deepEqual(validateContent(c), []);
++		assert.deepEqual(validateContent(c.replaceAll("\n", "\r\n")), []);
++		// A CRLF frontmatter is found, not skipped: a key it really lacks is still reported.
++		const noTags = "---\r\ndate: 2026-04-05\r\ndescription: before --- after\r\n---\r\nShort note.";
++		assert.deepEqual(validateContent(noTags), ["Missing `tags` in frontmatter"]);
++		// Unclosed frontmatter is no frontmatter (#82): it is reported missing, and its keys aren't read.
++		assert.deepEqual(validateContent("---\ndate: 2026-04-05\n\nShort note.").filter((w) => w.startsWith("Missing")), ["Missing YAML frontmatter"]);
++	});
+ });
+ 
+ describe("isBlockedMemoryPath", () => {

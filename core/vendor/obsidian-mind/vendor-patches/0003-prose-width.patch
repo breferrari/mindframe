@@ -1,0 +1,70 @@
+Description: mindframe: fences closed as CommonMark closes them (#87); the one frontmatter rule (#82)
+Forwarded: https://github.com/breferrari/mindframe/issues/19
+Last-Update: 2026-10-13
+
+diff --git a/core/scripts/lib/prose-width.ts b/core/scripts/lib/prose-width.ts
+--- a/core/scripts/lib/prose-width.ts
++++ b/core/scripts/lib/prose-width.ts
+@@ -23,7 +23,9 @@
+  * out.
+  */
+ 
+-const FENCE = /^(```|~~~)/;
++import { frontmatterBlock, frontmatterLines } from "./frontmatter-block.ts";
++import { fenceStep, type OpenFence } from "./fences.ts";
++
+ const LIST_ITEM = /^(?:[-*+]|\d+[.)])(?:\s|$)/;
+ /**
+  * A line led by a closed bold run: field lines (`**Door:** …`,
+@@ -50,11 +52,8 @@
+ 
+ /** Whether the note opts out with `verbatim: true` in its frontmatter. */
+ export function isVerbatim(content: string): boolean {
+-	const text = content.replace(/\r\n/g, "\n");
+-	if (!text.startsWith("---\n")) return false;
+-	const end = text.indexOf("\n---", 4);
+-	if (end === -1) return false;
+-	return /^verbatim:\s*true\s*$/m.test(text.slice(4, end));
++	const yaml = frontmatterBlock(content)?.yaml;
++	return yaml !== undefined && /^verbatim:\s*true\s*$/m.test(yaml);
+ }
+ 
+ /**
+@@ -66,13 +65,9 @@
+ 	const lines = content.replace(/\r\n/g, "\n").split("\n");
+ 	const out: number[] = [];
+ 
+-	let i = 0;
+-	if (lines[0] === "---") {
+-		const close = lines.indexOf("---", 1);
+-		i = close === -1 ? 0 : close + 1;
+-	}
++	let i = (frontmatterLines(lines)?.close ?? -1) + 1;
+ 
+-	let fence: string | null = null;
++	let fence: OpenFence = null;
+ 	let inComment = false; // <!-- … -->
+ 	let inObsidianComment = false; // %% … %%
+ 	let inMath = false; // $$ … $$
+@@ -91,17 +86,13 @@
+ 			previousProse = false;
+ 		};
+ 
+-		if (fence !== null) {
+-			if (line.trimStart().startsWith(fence)) fence = null;
++		// The raw line: fences.ts reads quote markers itself, by quote depth.
++		const step = fenceStep(raw, fence);
++		fence = step.open;
++		if (step.fenced) {
+ 			notProse();
+ 			continue;
+ 		}
+-		const fenceOpen = FENCE.exec(line.trimStart());
+-		if (fenceOpen && !/^\s{4,}/.test(line)) {
+-			fence = fenceOpen[1] ?? null;
+-			notProse();
+-			continue;
+-		}
+ 		if (inComment) {
+ 			if (line.includes("-->")) inComment = false;
+ 			notProse();

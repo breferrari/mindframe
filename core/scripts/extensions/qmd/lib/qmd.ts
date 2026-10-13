@@ -20,10 +20,11 @@
  * a test failure on the CI matrix rather than a silent platform bug.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join } from "node:path";
+import { debug } from "../../../core/index.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -151,6 +152,41 @@ export function buildQmdCommand(
 				args: [],
 				shell: true,
 			};
+}
+
+// The switch lives in lib/switches.ts, the extension's one home for both of
+// its switches (#95); re-exported here, where obsidian-mind #351 defines it.
+import { REFRESH_SWITCH, refreshDisabled } from "./switches.ts";
+export { REFRESH_SWITCH, refreshDisabled };
+
+/**
+ * Spawn `command` detached, unless the switch is off: then log under `label`
+ * and spawn nothing. The one place a detached qmd process starts, so no
+ * caller can forget the switch. Its stdio is ignored, it gets no console
+ * window on Windows, and a spawn error (qmd missing) is logged, never thrown
+ * as an unhandled `error` event. Returns whether it spawned.
+ */
+// In mindframe nothing calls it yet: session.ts and lib/refresh.ts start their
+// own detached processes, each guarded by the switch (#102).
+export function spawnDetachedQmd(
+	command: { readonly cmd: string; readonly args: readonly string[]; readonly shell: boolean },
+	label: string,
+	cwd?: string,
+): boolean {
+	if (refreshDisabled()) {
+		debug(`${label}: qmd refresh off (${REFRESH_SWITCH}=off); nothing spawned`);
+		return false;
+	}
+	const child = spawn(command.cmd, [...command.args], {
+		stdio: "ignore",
+		shell: command.shell,
+		detached: true,
+		windowsHide: true,
+		...(cwd !== undefined ? { cwd } : {}),
+	});
+	child.on("error", (err) => debug(`${label}: detached qmd failed to start: ${err.message}`));
+	child.unref();
+	return true;
 }
 
 /**

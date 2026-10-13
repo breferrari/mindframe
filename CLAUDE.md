@@ -24,7 +24,7 @@ Update this table in the PR that adds or removes a top-level path.
 | Path | What |
 |------|------|
 | `core/scripts/` | The core as a vault carries it, mirroring `.claude/scripts/`: `core/` (the extension registry, types, public `index.ts`, `context.ts`), `lib/` (hook I/O, the budget, wikilinks) and `extensions/<id>/` (first-party extensions, such as `qmd`). Lifted from wiki-mind; see its README |
-| `core/vendor/` | The `VENDOR.json` record and offline drift check |
+| `core/vendor/` | The `VENDOR.json` record and offline drift check, and `obsidian-mind/`: the record of the core files obsidian-mind is upstream of, with mindframe's patches |
 | `testbed/` | Runs a vault's hooks and mod in real or dry sessions and grades them: `bin/`, `lib/`, `specs/`, `fixtures/`, `ci/pins.json`, tests |
 | `docs/DESIGN.md` | The core's contract, rule by rule, with the failure each prevents |
 | `ROADMAP.md` | Phases as milestones, one issue per row |

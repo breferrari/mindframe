@@ -1,0 +1,235 @@
+Description: mindframe: line regions and link offsets exported (#81); fences closed as CommonMark closes them (#87); obsidian-mind #333's comments (#90); the one frontmatter rule, code read in the body only (#82)
+Forwarded: https://github.com/breferrari/mindframe/issues/19
+Last-Update: 2026-10-13
+
+diff --git a/core/scripts/lib/wikilinks.ts b/core/scripts/lib/wikilinks.ts
+--- a/core/scripts/lib/wikilinks.ts
++++ b/core/scripts/lib/wikilinks.ts
+@@ -24,6 +24,9 @@
+  *    case-insensitive basename or alias.
+  */
+ 
++import { frontmatterBlock, frontmatterLines } from "./frontmatter-block.ts";
++import { fenceStep, type OpenFence } from "./fences.ts";
++
+ const ASSET_EXTENSIONS = new Set([
+ 	"png",
+ 	"jpg",
+@@ -44,38 +47,125 @@
+ ]);
+ 
+ /**
+- * Remove fenced code blocks (``` / ~~~) and inline code spans so literal
++ * Remove fenced code blocks (lib/fences.ts) and inline code spans so literal
+  * wikilink examples inside them never count as edges. Fence-aware line
+  * scan (not a lazy regex) so an unclosed fence strips to EOF instead of
+  * leaking the tail.
+  */
+ export function stripCodeRegions(content: string): string {
+ 	const out: string[] = [];
+-	let inFence = false;
+-	let fenceMarker = "";
+-	for (const line of content.split("\n")) {
+-		const trimmed = line.trimStart();
+-		if (inFence) {
+-			if (trimmed.startsWith(fenceMarker)) inFence = false;
++	let open: OpenFence = null;
++	const lines = content.split("\n");
++	// Frontmatter is yaml, not markdown: its inline code is removed, but a
++	// fence-looking line in a value opens no fence, or it would hide the body.
++	const close = frontmatterLines(lines)?.close ?? -1;
++	for (const [i, line] of lines.entries()) {
++		if (i <= close) {
++			out.push(line.replace(INLINE_CODE, ""));
+ 			continue;
+ 		}
+-		if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+-			inFence = true;
+-			fenceMarker = trimmed.slice(0, 3);
+-			continue;
+-		}
+-		// Inline code spans: remove `...` runs, including multi-backtick
+-		// spans (``…`` — CommonMark closes N backticks with exactly N, and
+-		// shorter runs are legal INSIDE the span, so ``[[x]]`` and
+-		// ``code with ` inside`` must both strip whole). Content charwise
+-		// forbids starting the same-length run early; the trailing (?!`)
+-		// pins the closer to an exact-length run.
+-		out.push(line.replace(/(`+)(?:(?!\1)[^\n])*?\1(?!`)/g, ""));
++		const step = fenceStep(line, open);
++		open = step.open;
++		if (step.fenced) continue;
++		out.push(line.replace(INLINE_CODE, ""));
+ 	}
+ 	return out.join("\n");
+ }
+ 
+ /**
++ * Inline code spans: `...` runs, including multi-backtick spans (``…`` —
++ * CommonMark closes N backticks with exactly N, and shorter runs are legal
++ * INSIDE the span, so ``[[x]]`` and ``code with ` inside`` both match
++ * whole). Content charwise forbids starting the same-length run early; the
++ * trailing (?!`) pins the closer to an exact-length run.
++ */
++const INLINE_CODE = /(`+)(?:(?!\1)[^\n])*?\1(?!`)/g;
++
++/** A wikilink or embed, `[[...]]` or `![[...]]`, on one line. */
++const WIKILINK = /!?\[\[([^\[\]\n]+?)\]\]/g;
++
++/** An ATX heading: up to three spaces, one to six #s, then a space, a tab or the end of the line. */
++const HEADING = /^ {0,3}#{1,6}([ \t]|$)/;
++
++/** Which part of a note a line is in. */
++export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
++
++/**
++ * The region of each line of a note, for an extension that rewrites a note
++ * line by line. Lines may keep a trailing \r (CRLF split on \n).
++ *
++ * - Frontmatter is what lib/frontmatter-block.ts finds, the core's one rule
++ *   (#82): a first line of `---` (a BOM may precede it), to the first later
++ *   `---` line. A `---` inside a value or a `----` line doesn't end it, an
++ *   unterminated block is no frontmatter, and a first line of `----` or
++ *   `---x` opens nothing.
++ * - Fences are the ones stripCodeRegions finds in the note without its
++ *   frontmatter, so the links on body and heading lines are exactly
++ *   extractWikilinkTargets(stripFrontmatter(note)).
++ * - A heading is up to three spaces, one to six #s, then a space, a tab
++ *   or the end of the line.
++ */
++export function lineRegions(lines: readonly string[]): LineRegion[] {
++	const bare = lines.map((l) => l.replace(/\r$/, ""));
++	// The core's one frontmatter rule (lib/frontmatter-block.ts, #82).
++	const close = frontmatterLines(bare)?.close ?? -1;
++	let open: OpenFence = null;
++	return bare.map((line, i): LineRegion => {
++		if (i <= close) return "frontmatter";
++		const step = fenceStep(line, open);
++		open = step.open;
++		if (step.fenced) return "fence";
++		return HEADING.test(line) ? "heading" : "body";
++	});
++}
++
++/** A wikilink on a line: its target as extractWikilinkTargets reads it, and where the whole link sits. */
++export type WikilinkSpan = { readonly target: string; readonly start: number; readonly end: number };
++
++/**
++ * Every wikilink on one line, with its offsets: `line.slice(start, end)`
++ * is the whole link as written, `!` and alias tail included. Links are
++ * found after inline code is removed, as stripCodeRegions removes it, so
++ * a link extraction reads is a link here too; inline code written inside
++ * or between a link's brackets falls inside its span, so replacing the
++ * span replaces that code as well. Each target is read as
++ * extractWikilinkTargets reads it, so aliases, table escapes, fragments,
++ * embeds, assets and placeholders follow its rules: a link it drops has
++ * no span. Fences span lines; use lineRegions for them.
++ */
++export function wikilinkSpans(line: string): WikilinkSpan[] {
++	// Remove inline code as stripCodeRegions does, and keep where each kept
++	// character came from: links are found in what's left, as extraction
++	// finds them (`[[A`x`B]]` reads as AB), and their offsets map back.
++	let kept = line;
++	let from = (i: number) => i;
++	if (line.includes("`")) {
++		const at: number[] = [];
++		const parts: string[] = [];
++		let next = 0;
++		for (const code of line.matchAll(INLINE_CODE)) {
++			parts.push(line.slice(next, code.index));
++			for (let i = next; i < code.index; i++) at.push(i);
++			next = code.index + code[0].length;
++		}
++		parts.push(line.slice(next));
++		for (let i = next; i < line.length; i++) at.push(i);
++		kept = parts.join("");
++		from = (i) => {
++			const original = at[i];
++			if (original === undefined) throw new Error(`wikilinkSpans: no source offset for ${i}`);
++			return original;
++		};
++	}
++	const spans: WikilinkSpan[] = [];
++	for (const m of kept.matchAll(WIKILINK)) {
++		const target = targetOf(m[1] ?? "");
++		if (target !== null) spans.push({ target, start: from(m.index), end: from(m.index + m[0].length - 1) + 1 });
++	}
++	return spans;
++}
++
++/**
+  * Extract resolution targets from every `[[...]]` in the content
+  * (code regions pre-stripped). Returns raw target strings — alias tails,
+  * fragments, and embed prefixes removed; empties/placeholders/assets
+@@ -83,26 +173,30 @@
+  */
+ export function extractWikilinkTargets(content: string): string[] {
+ 	const targets: string[] = [];
+-	const re = /!?\[\[([^\[\]\n]+?)\]\]/g;
+-	for (const m of stripCodeRegions(content).matchAll(re)) {
+-		let inner = m[1] ?? "";
+-		// Table-escaped alias pipes — both forms Obsidian accepts inside
+-		// tables: backslash (`[[Target\|alias]]`) and HTML entity
+-		// (`[[Target&#124;alias]]`). Normalize before splitting so the
+-		// target doesn't keep a trailing `\` or `&`.
+-		inner = inner.replaceAll("\\|", "|").replaceAll("&#124;", "|");
+-		const target = (inner.split("|")[0] ?? "").split("#")[0]?.trim() ?? "";
+-		if (target === "") continue; // [[#heading]] / [[|alias]] — same-file
+-		if (target.includes("{{")) continue; // template placeholder
+-		const ext = target.includes(".")
+-			? (target.split(".").pop() ?? "").toLowerCase()
+-			: "";
+-		if (ASSET_EXTENSIONS.has(ext)) continue;
+-		targets.push(target);
++	for (const m of stripCodeRegions(content).matchAll(WIKILINK)) {
++		const target = targetOf(m[1] ?? "");
++		if (target !== null) targets.push(target);
+ 	}
+ 	return targets;
+ }
+ 
++/** The target inside one `[[...]]`, or null for a link that isn't a note edge. */
++function targetOf(inner: string): string | null {
++	// Table-escaped alias pipes — both forms Obsidian accepts inside
++	// tables: backslash (`[[Target\|alias]]`) and HTML entity
++	// (`[[Target&#124;alias]]`). Normalize before splitting so the
++	// target doesn't keep a trailing `\` or `&`.
++	const normal = inner.replaceAll("\\|", "|").replaceAll("&#124;", "|");
++	const target = (normal.split("|")[0] ?? "").split("#")[0]?.trim() ?? "";
++	if (target === "") return null; // [[#heading]] / [[|alias]] — same-file
++	if (target.includes("{{")) return null; // template placeholder
++	const ext = target.includes(".")
++		? (target.split(".").pop() ?? "").toLowerCase()
++		: "";
++	if (ASSET_EXTENSIONS.has(ext)) return null;
++	return target;
++}
++
+ /**
+  * Split a YAML inline list's contents on its SEPARATORS.
+  *
+@@ -158,18 +252,13 @@
+  * whole check, not one link.
+  */
+ export function extractAliases(content: string): string[] {
+-	if (!content.startsWith("---")) return [];
+-	// CRLF first, and before anything indexes or matches. Obsidian-on-Windows
+-	// rewrites LF to CRLF on edit (the reason .gitattributes normalizes), and
+-	// `.` does not match CR — it is a line terminator — while `$` without `m`
+-	// anchors past it. The block-list item pattern therefore failed on item
+-	// ONE of every CRLF note, and `break` read that as an empty list, so the
+-	// file's whole alias set went missing with nothing to distinguish it from
+-	// a note that declares none.
+-	const text = content.replace(/\r\n/g, "\n");
+-	const end = text.indexOf("\n---", 3);
+-	if (end === -1) return [];
+-	const fm = text.slice(3, end);
++	const block = frontmatterBlock(content);
++	if (block === null) return [];
++	// frontmatterBlock reads CRLF notes as LF (it drops each line's \r), which
++	// matters: Obsidian-on-Windows rewrites LF to CRLF on edit, and `.` doesn't
++	// match CR, so a CRLF block list used to read as empty. The leading newline
++	// keeps the line indexes below as they were.
++	const fm = `\n${block.yaml}`;
+ 	const lines = fm.split("\n");
+ 	const idx = lines.findIndex((l) => /^aliases:\s*(\[.*\])?\s*$/.test(l.trim()) || /^aliases:\s*\[/.test(l.trim()));
+ 	if (idx === -1) return [];

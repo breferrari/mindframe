@@ -7,7 +7,8 @@
  * to drift is to bypass this module.
  *
  * Lifted from obsidian-mind 0a58edf's `.claude/scripts/lib/qmd-refresh.ts`
- * (#95). Changed: the imports, the worker is told its vault and index
+ * (#95); mindframe's vendor record of obsidian-mind holds the commit it is
+ * recorded against. Changed: the imports, the worker is told its vault and index
  * (`--vault`, `--index`) instead of deriving them from its own path, and
  * the switch reads an injected environment. A vault's own triggers that
  * still call obsidian-mind's copy share this one's sentinel, so both
