@@ -3,17 +3,17 @@
   "files": {
     "core/scripts/extensions/qmd/lib/qmd.ts": {
       "patches": [
-        "0008-qmd-extension.patch"
+        "0013-qmd-extension.patch"
       ],
-      "sha256": "3ef76b60b4e6014009474d2bb9c441d868399844b479af8d588397a0e906f73a",
+      "sha256": "6032ae8466fa4da4e6fe1435645abd17a473a1c5483e3279d42a4764ad6e6a8d",
       "upstream": "lib/qmd.ts",
       "upstreamSha256": "03cdc7cf64f0779157818f4048c0803d95b493bf879e7a34bb34fb91c4618067"
     },
     "core/scripts/extensions/qmd/lib/refresh.ts": {
       "patches": [
-        "0010-qmd-refresh.patch"
+        "0014-qmd-refresh.patch"
       ],
-      "sha256": "575722a340f90f1527cec495f4c12d8fd9d63d1d221cf49468d1d12f86f4ec87",
+      "sha256": "f1d6966fc887f834d27fb1af00dac4168e07fdf1f8fc1f69bcbfd7cd07eebce4",
       "upstream": "lib/qmd-refresh.ts",
       "upstreamSha256": "7b48b64e26100151e0083e6f164c2643dfd4a664a2567b9b1385a96d904da00e"
     },

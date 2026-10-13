@@ -1,11 +1,11 @@
-Description: mindframe: the refresh as the qmd extension's effects: imports from the extension and the core, the worker told its vault and index (--vault, --index), the switch from lib/switches.ts read from a given environment (#94), a missing worker reported (#95)
+Description: mindframe: the refresh as the qmd extension's effects: imports from the extension and the core, the worker told its vault and index (--vault, --index), the switch from lib/switches.ts read from a given environment rather than re-exported from qmd.ts (#94), a missing worker reported (#95)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
 diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extensions/qmd/lib/refresh.ts
 --- a/core/scripts/extensions/qmd/lib/refresh.ts
 +++ b/core/scripts/extensions/qmd/lib/refresh.ts
-@@ -1,12 +1,18 @@
+@@ -1,12 +1,19 @@
  /**
   * Mid-session QMD refresh — pure predicates, spawn composition, and the
 - * shared debounced-trigger flow. Consumed by the PostToolUse hook
@@ -21,7 +21,8 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
 + * to drift is to bypass this module.
   *
 + * Lifted from obsidian-mind 0a58edf's `.claude/scripts/lib/qmd-refresh.ts`
-+ * (#95). Changed: the imports, the worker is told its vault and index
++ * (#95), and recorded against obsidian-mind 9bf6081
++ * (core/vendor/obsidian-mind). Changed: the imports, the worker is told its vault and index
 + * (`--vault`, `--index`) instead of deriving them from its own path, and
 + * the switch reads an injected environment. A vault's own triggers that
 + * still call obsidian-mind's copy share this one's sentinel, so both
@@ -30,7 +31,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
   * The pure helpers at the top of this file (path filter, debounce math,
   * vault-root resolver, invocation composer) run identically on Windows,
   * macOS, and Linux and are exercised in the CI matrix without side
-@@ -15,11 +21,11 @@
+@@ -15,11 +22,11 @@
   */
  
  import { spawn } from "node:child_process";
@@ -47,7 +48,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
  
  /**
   * Path segments that must never trigger a QMD refresh — writes into these
-@@ -156,20 +162,34 @@
+@@ -156,20 +163,34 @@
  }
  
  /**
@@ -86,7 +87,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
  	const afterRaw = get("after");
  	const after = afterRaw === null || afterRaw === "" ? Number.NaN : Number(afterRaw);
  	return {
-@@ -178,25 +198,12 @@
+@@ -178,25 +199,12 @@
  			sentinelPath,
  			afterMs: Number.isFinite(after) ? after : null,
  		},
@@ -114,7 +115,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
   * A single qmd subcommand spawn — cmd, args, shell flag (from
   * `buildQmdCommand`) plus the per-step timeout budget. Pairing the
   * timeout with its invocation keeps the worker's execution loop from
-@@ -276,10 +283,6 @@
+@@ -276,10 +284,6 @@
  	}
  }
  
@@ -125,7 +126,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
  /**
   * Spawn the detached worker. `stdio: 'ignore'` + `.unref()` + `detached`
   * survive parent exit without leaving file descriptors open, and
-@@ -330,6 +333,16 @@
+@@ -330,6 +334,16 @@
  	readonly workerPath: string;
  	readonly debounceMs: number;
  	readonly logPrefix: string;
@@ -142,7 +143,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
  	/** Test seams; production uses the real resolver and spawn. */
  	readonly qmdAvailable?: () => boolean;
  	readonly spawnWorker?: (workerPath: string, args: readonly string[]) => void;
-@@ -357,13 +370,17 @@
+@@ -357,13 +371,17 @@
  	// as usual, so the trigger's observable behaviour is unchanged (#337).
  	const spawnWorker =
  		opts.spawnWorker ??
@@ -162,7 +163,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
  		return;
  	}
  
-@@ -387,5 +404,6 @@
+@@ -387,5 +405,6 @@
  		`--trailing=${opts.sentinelPath}`,
  		`--delay-ms=${remaining}`,
  		`--after=${mtime ?? ""}`,

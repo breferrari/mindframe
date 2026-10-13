@@ -1,4 +1,4 @@
-Description: mindframe: the qmd extension takes debug from the core's public entry point, not a copy of hook-io, and its switch from lib/switches.ts, the extension's one home for both switches (#94, #95, #102)
+Description: mindframe: the qmd extension takes debug from the core's public entry point, not a copy of hook-io, and its switch from lib/switches.ts, the extension's one home for both switches (#94, #95, #102); spawnDetachedQmd kept, with no caller yet
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
@@ -14,7 +14,7 @@ diff --git a/core/scripts/extensions/qmd/lib/qmd.ts b/core/scripts/extensions/qm
  
  const require = createRequire(import.meta.url);
  
-@@ -154,24 +154,12 @@
+@@ -154,30 +154,20 @@
  			};
  }
  
@@ -43,3 +43,11 @@ diff --git a/core/scripts/extensions/qmd/lib/qmd.ts b/core/scripts/extensions/qm
   * Spawn `command` detached, unless the switch is off: then log under `label`
   * and spawn nothing. The one place a detached qmd process starts, so no
   * caller can forget the switch. Its stdio is ignored, it gets no console
+  * window on Windows, and a spawn error (qmd missing) is logged, never thrown
+  * as an unhandled `error` event. Returns whether it spawned.
+  */
++// In mindframe nothing calls it yet: session.ts and lib/refresh.ts start their
++// own detached processes, each guarded by the switch (#102).
+ export function spawnDetachedQmd(
+ 	command: { readonly cmd: string; readonly args: readonly string[]; readonly shell: boolean },
+ 	label: string,

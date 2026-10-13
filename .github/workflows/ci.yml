@@ -52,13 +52,14 @@ jobs:
           #
           # Excluded:
           # - test files, test helpers and fixtures, which hold paths on
-          #   purpose to exercise Windows and POSIX handling;
+          #   purpose to exercise Windows and POSIX handling, and the vendor
+          #   patches of test files, which carry those lines (#102);
           # - this workflow, whose pattern line matches itself.
           # The folder excludes need `glob`: without it, `**/` only matches
           # below another folder, and a top-level tests/ would be scanned.
           pattern='claude\.ai/(code/)?session|^Claude-Session:|(^|[^A-Za-z0-9/])[A-Za-z]:(\\{1,2}|/)[A-Za-z0-9_.-]+(\\{1,2}|/)[A-Za-z0-9_.-]+(\\{1,2}|/)|/Users/[^/[:space:]]+/|/home/[^/[:space:]]+/'
           hits=$(git grep -nIE "$pattern" -- . \
-            ':(exclude)*.test.*' ':(exclude,glob)**/tests/**' ':(exclude,glob)**/fixtures/**' \
+            ':(exclude)*.test.*' ':(exclude,glob)**/tests/**' ':(exclude,glob)**/fixtures/**' ':(exclude,glob)**/vendor-patches/*-test.patch' \
             ':(exclude).github/workflows/ci.yml' || true)
           if [ -n "$hits" ]; then
             echo "::error::agent-session artifacts or local paths in tracked files"

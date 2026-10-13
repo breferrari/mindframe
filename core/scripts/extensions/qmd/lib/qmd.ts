@@ -166,6 +166,8 @@ export { REFRESH_SWITCH, refreshDisabled };
  * window on Windows, and a spawn error (qmd missing) is logged, never thrown
  * as an unhandled `error` event. Returns whether it spawned.
  */
+// In mindframe nothing calls it yet: session.ts and lib/refresh.ts start their
+// own detached processes, each guarded by the switch (#102).
 export function spawnDetachedQmd(
 	command: { readonly cmd: string; readonly args: readonly string[]; readonly shell: boolean },
 	label: string,
