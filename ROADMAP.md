@@ -56,6 +56,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#95](https://github.com/breferrari/mindframe/issues/95) | Run qmd's index refresh as the qmd extension's effects | ✅ |
 | [#96](https://github.com/breferrari/mindframe/issues/96) | Move qmd's bootstrap and model setup into the qmd extension | ⏳ after #95 |
 | [#101](https://github.com/breferrari/mindframe/issues/101) | Add the contract-spec row for effects (DESIGN rule 10) once a vault calls runEffects | ⏳ after wiki-mind calls runEffects |
+| [#106](https://github.com/breferrari/mindframe/issues/106) | Run the qmd refresh worker from the temp folder, not the vault, so it never holds the vault open on Windows | ⬜ |
 | [#14](https://github.com/breferrari/mindframe/issues/14) | Ship the memory MCP server as an optional extension | ⬜ |
 | [#15](https://github.com/breferrari/mindframe/issues/15) | Ship the guards as an optional extension | ⬜ |
 | [#16](https://github.com/breferrari/mindframe/issues/16) | Ship ripple as an optional extension | ⬜ |
