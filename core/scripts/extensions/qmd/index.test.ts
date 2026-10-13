@@ -216,3 +216,14 @@ describe("the qmd extension's effects (#95)", () => {
 		}
 	});
 });
+
+test("one hook's sections and session-start effect resolve QMD once between them (#95)", async () => {
+	let resolved = 0;
+	const { deps } = fakeDeps({ version: "qmd 1.0.0\n" });
+	const counting: QmdDeps = { ...deps, resolveEntry: () => (resolved++, deps.resolveEntry()) };
+	const registry = fromLoaded([{ declaration, extension: qmdExtension(counting) }]);
+	const one = ctx();
+	await collectSections(registry, one, "full");
+	await runEffects(registry, { event: "session-start" }, one);
+	assert.equal(resolved, 1);
+});
