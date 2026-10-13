@@ -224,7 +224,7 @@ describe("the qmd extension's effects (#95)", () => {
 		try {
 			await s.run(write("notes/a.md"));
 			assert.equal(s.workers.length, 1);
-			assert.ok(s.workers[0]?.path.endsWith(join("extensions", "qmd", "refresh-run.ts")), s.workers[0]?.path);
+			assert.ok(s.workers[0]?.path.endsWith(join("extensions", "qmd", "qmd-refresh-run.ts")), s.workers[0]?.path);
 			const derived = basename(s.dir).toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
 			assert.deepEqual(s.workers[0]?.args, [`--vault=${s.dir}`, `--index=${derived}`]);
 		} finally {

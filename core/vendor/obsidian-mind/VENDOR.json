@@ -11,15 +11,15 @@
     },
     "core/scripts/extensions/qmd/lib/refresh.ts": {
       "patches": [
-        "0014-qmd-refresh.patch"
+        "0028-qmd-refresh.patch"
       ],
-      "sha256": "94c2d8679eaa21ddd9d5eab622f53ed22a22529de9e97f5dd98f3b2ce97a353b",
+      "sha256": "02e84f9aacabf52915bded46c4d4064cb9ff7d76697a05b811bc22861f8f445d",
       "upstream": "lib/qmd-refresh.ts",
       "upstreamSha256": "7b48b64e26100151e0083e6f164c2643dfd4a664a2567b9b1385a96d904da00e"
     },
-    "core/scripts/extensions/qmd/refresh-run.ts": {
+    "core/scripts/extensions/qmd/qmd-refresh-run.ts": {
       "patches": [
-        "0011-qmd-refresh-run.patch"
+        "0027-qmd-refresh-run.patch"
       ],
       "sha256": "ffb6d3749685341cacb12bd1ceccc7d3c95184f3c75dc73e10b84f1c56fb4b8f",
       "upstream": "qmd-refresh-run.ts",
