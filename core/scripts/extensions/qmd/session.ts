@@ -1,8 +1,7 @@
 /**
- * QMD's session-start work, as core code any vault's session-start runs
- * (SPEC.md §7.2, seam S5). Lift candidate: obsidian-mind keeps this logic
- * inside its session-start entry point; here it is a function over the
- * vendored QMD libraries, so the extracted core gives it to every vault.
+ * QMD's session-start work, which the qmd extension's sections run
+ * (index.ts). It was the core's `core/qmd-session.ts` until #70 moved it
+ * here: a vault that wants it declares the extension.
  *
  * Gated on an installed QMD: a machine without one gets no probes, no
  * spawn, no notes. With one:
@@ -26,8 +25,8 @@
 import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from "node:child_process";
 import { statSync as nodeStatSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { buildQmdCommand, qmdVersionAtLeast, resolveQmdEntry } from "../lib/qmd.ts";
-import { manifestOf, type ManifestObject } from "../lib/manifest.ts";
+import type { ManifestObject } from "../../core/index.ts";
+import { buildQmdCommand, qmdVersionAtLeast, resolveQmdEntry } from "./lib/qmd.ts";
 import {
 	isQmdNativeAbiMismatch,
 	qmdArgsWithIndex,
@@ -35,7 +34,11 @@ import {
 	qmdPackageRootFromEntry,
 	resolveIndexStorePath,
 	resolveQmdIndexOf,
-} from "../lib/session-start.ts";
+} from "./lib/index-name.ts";
+
+/** The notes' headings, one section each in the extension. */
+export const SELF_HEAL_HEADER = "### QMD Self-Heal";
+export const VERSION_HEADER = "### QMD Version";
 
 /** A store below this size holds no indexed notes: bootstrap rather than update. */
 export const EMPTY_STORE_BYTES = 500_000;
@@ -86,19 +89,10 @@ export type QmdSessionResult = {
 };
 
 /**
- * QMD's session-start work for the vault at `vaultRoot`. `bootstrapScript`
- * is the vault-relative bootstrap path (run with the vault as cwd).
+ * QMD's session-start work for the vault at `vaultRoot`, on its parsed
+ * manifest. `bootstrapScript` is the vault-relative bootstrap path (run with
+ * the vault as cwd).
  */
-export function qmdSessionStart(
-	vaultRoot: string,
-	manifestJson: string | null,
-	bootstrapScript = ".scripts/qmd-bootstrap.ts",
-	deps: QmdDeps = realDeps,
-): QmdSessionResult {
-	return qmdSessionStartOf(vaultRoot, manifestOf(manifestJson), bootstrapScript, deps);
-}
-
-/** qmdSessionStart on the parsed manifest, as openVault returns it (#52). */
 export function qmdSessionStartOf(
 	vaultRoot: string,
 	manifest: ManifestObject,
@@ -119,7 +113,7 @@ export function qmdSessionStartOf(
 			if (root !== null) {
 				const rebuild = deps.spawnSync("npm rebuild better-sqlite3", [], { cwd: root, timeout: 20_000, shell: true });
 				notes.push({
-					header: "### QMD Self-Heal",
+					header: SELF_HEAL_HEADER,
 					body:
 						rebuild.status === 0
 							? "⚠️ QMD's native module (better-sqlite3) was ABI-mismatched against this machine's Node version and was rebuilt this session. Search may need one more `qmd update` to catch up; if the qmd MCP tools are still missing, a session restart picks them up."
@@ -135,7 +129,7 @@ export function qmdSessionStartOf(
 		const v = deps.spawnSync(cmd.cmd, cmd.args, { timeout: 5_000, shell: cmd.shell });
 		if (v.status === 0 && !qmdVersionAtLeast(v.stdout ?? "", minVersion)) {
 			notes.push({
-				header: "### QMD Version",
+				header: VERSION_HEADER,
 				body: `⚠️ Installed qmd (${(v.stdout ?? "").trim()}) is below this vault's minimum (${minVersion}), so search may misbehave. Update with \`npm i -g @tobilu/qmd\`, then re-run the bootstrap.`,
 			});
 		}

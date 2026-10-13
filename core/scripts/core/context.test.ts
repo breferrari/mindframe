@@ -1,9 +1,11 @@
-import { test } from "node:test";
+import { describe, test } from "node:test";
+import { parseDeclarations } from "./registry.ts";
+import { INJECTION_CEILING_BYTES, METER_HEADROOM, formatInjectionSize } from "../lib/session-start.ts";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openVault, readManifest } from "./context.ts";
+import { QMD_DECLARATION, migrationNotes, openVault, readManifest } from "./context.ts";
 
 function vault(t: { after: (fn: () => void) => void }, manifest?: string): string {
 	const root = mkdtempSync(join(tmpdir(), "mf-context-"));
@@ -50,4 +52,69 @@ test("openVault honours the kill switch", async (t) => {
 	const { registry } = await openVault(root, "session-start", { VAULT_EXTENSIONS: "off" });
 	assert.equal(registry.loaded.length, 0);
 	assert.equal(registry.off, true);
+});
+
+describe("migrationNotes: qmd set in the manifest, no qmd extension declared (#70)", () => {
+	const qmd = { id: "qmd", module: ".claude/scripts/extensions/qmd/index.ts", events: ["session-start"] };
+	const notes = (m: Record<string, unknown> | null) => migrationNotes(m === null ? null : Object.freeze(m));
+
+	test("a note naming the declaration to add, for either key", () => {
+		for (const m of [{ qmd_index: "my-wiki" }, { qmd_min_version: "2.0.0" }, { qmd_index: "x", qmd_min_version: "2.0.0", extensions: [] }]) {
+			const out = notes(m);
+			assert.equal(out.length, 1, JSON.stringify(m));
+			assert.ok(out[0]?.includes(QMD_DECLARATION), "names the line to add");
+		}
+	});
+
+	test("an empty qmd_index counts as set: it means derive the name, still a qmd vault", () => {
+		assert.equal(notes({ template: "obsidian-mind", qmd_index: "" }).length, 1);
+	});
+
+	test("no note once a qmd extension is declared, enabled or not, whatever its module path", () => {
+		assert.deepEqual(notes({ qmd_index: "", extensions: [qmd] }), []);
+		assert.deepEqual(notes({ qmd_index: "", extensions: [{ ...qmd, enabled: false }] }), []);
+		assert.deepEqual(notes({ qmd_min_version: "2.0.0", extensions: [{ ...qmd, module: "ext/my-qmd.ts" }] }), []);
+	});
+
+	test("no note when qmd isn't set, or there is no manifest", () => {
+		assert.deepEqual(notes({ template: "demo", extensions: [] }), []);
+		assert.deepEqual(notes({ qmd_index: null, qmd_min_version: 2 }), [], "only a string value sets a key");
+		assert.deepEqual(notes(null), []);
+	});
+
+	test("a malformed extensions value declares nothing: the note still shows, and nothing throws", () => {
+		for (const extensions of ["qmd", { qmd }, [null, 3, "qmd", { id: 7 }]]) assert.equal(notes({ qmd_index: "", extensions }).length, 1, JSON.stringify(extensions));
+	});
+
+	test("a qmd declaration that doesn't run at session start doesn't count: QMD's work would never run", () => {
+		const [note] = notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop"] }] });
+		assert.match(note ?? "", /make the qmd entry/, "fix the entry, not add a second one the registry would refuse");
+		assert.match(notes({ qmd_index: "" })[0] ?? "", /: add /);
+		assert.deepEqual(notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop", "session-start"] }] }), []);
+	});
+
+	test("the note and a full meter fit the room the budget keeps for the meter", () => {
+		const [note] = notes({ qmd_index: "", extensions: [{ ...qmd, events: ["stop"] }] });
+		assert.ok(note !== undefined);
+		const meter = formatInjectionSize(INJECTION_CEILING_BYTES, {
+			budgetBytes: INJECTION_CEILING_BYTES,
+			clampedFrom: 99_000,
+			collapsed: ["Recent Changes", "Open Tasks"],
+			degraded: [{ section: "North Star", level: "headlines" }],
+			cutSections: [{ section: "Open Tasks", note: "10 of 14" }],
+			cut: true,
+			notes: [note],
+		});
+		assert.ok(Buffer.byteLength(meter, "utf-8") <= METER_HEADROOM, `${Buffer.byteLength(meter, "utf-8")} bytes: ${meter}`);
+	});
+
+	test("a qmd declaration the registry refuses doesn't count: it would never load", () => {
+		for (const bad of [{ ...qmd, module: "/abs/qmd.ts" }, { ...qmd, events: [] }, { ...qmd, timeoutMs: -1 }]) {
+			assert.equal(notes({ qmd_index: "", extensions: [bad] }).length, 1, JSON.stringify(bad));
+		}
+	});
+
+	test("QMD_DECLARATION is a declaration the registry accepts", () => {
+		assert.deepEqual(parseDeclarations(Object.freeze({ extensions: [JSON.parse(QMD_DECLARATION)] })).failures, []);
+	});
 });
