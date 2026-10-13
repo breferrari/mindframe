@@ -6,24 +6,29 @@
  *     if (isMainModule(import.meta.url)) main();
  *
  * Equivalent of CommonJS's `require.main === module`. `fileURLToPath` strips
- * the `file://` prefix and URL-encoded segments so the comparison against
- * `process.argv[1]` (which is already an absolute resolved path) is
- * apples-to-apples on every platform.
+ * the `file://` prefix and URL-encoded segments. Node gives the entry module
+ * its real path, while `process.argv[1]` keeps the path as typed, so a
+ * symlinked folder on the way (macOS's /var, a link to /private/var, or a
+ * Windows junction) is resolved on the argv side too.
  */
 
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export function isMainModule(importMetaUrl: string): boolean {
-	const entry = process.argv[1];
-	if (entry === undefined) return false;
-	const self = fileURLToPath(importMetaUrl);
-	if (self === entry) return true;
-	// import.meta.url is the module's real path; argv[1] is the path as typed, which a
-	// linked folder (macOS's /var → /private/var, a junction) makes differ (obsidian-mind#391).
+/** The real path, or the path itself when it can't be resolved. */
+const real = (path: string): string => {
 	try {
-		return realpathSync(self) === realpathSync(entry);
+		return realpathSync(path);
 	} catch {
-		return false;
+		return path;
 	}
+};
+
+export function isMainModule(importMetaUrl: string): boolean {
+	const argv1 = process.argv[1];
+	if (argv1 === undefined) return false;
+	const modulePath = fileURLToPath(importMetaUrl);
+	// The module's path is already real (the loader resolved it), so only
+	// argv[1] needs resolving.
+	return modulePath === argv1 || modulePath === real(argv1);
 }

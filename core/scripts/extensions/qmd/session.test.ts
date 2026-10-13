@@ -50,6 +50,12 @@ describe("QMD's session-start work", () => {
 		assert.equal(basename(BOOTSTRAP_PATH), "qmd-bootstrap.ts");
 	});
 
+	test("a bootstrap that isn't there is reported, not spawned to die silently (#96)", () => {
+		const { deps, calls } = fakeDeps({ storeBytes: null });
+		assert.throws(() => qmdSessionRefreshOf(VAULT, manifestOf(MANIFEST), { ...deps, bootstrapPath: "/no/such/qmd-bootstrap.ts" }), /qmd bootstrap is missing/);
+		assert.equal(calls.detached.length, 0, "nothing spawned");
+	});
+
 	test("a missing or near-empty store: the idempotent bootstrap, run from the vault", () => {
 		for (const storeBytes of [null, 98_304]) {
 			const { deps, calls } = fakeDeps({ storeBytes });

@@ -25,7 +25,7 @@
  */
 
 import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from "node:child_process";
-import { statSync as nodeStatSync } from "node:fs";
+import { existsSync, statSync as nodeStatSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import type { ManifestObject } from "../../core/index.ts";
@@ -60,6 +60,8 @@ export type QmdDeps = {
 	readonly spawnDetached: (cmd: string, args: readonly string[], opts: { cwd: string; shell: boolean }) => void;
 	readonly storeSize: (path: string) => number | null;
 	readonly home: string;
+	/** The bootstrap script session start runs; BOOTSTRAP_PATH unless a test names another. */
+	readonly bootstrapPath?: string;
 };
 
 export const realDeps: QmdDeps = {
@@ -143,7 +145,11 @@ export function qmdSessionRefreshOf(vaultRoot: string, manifest: ManifestObject,
 	const size = index === null ? null : deps.storeSize(resolveIndexStorePath(index, deps.env, deps.home));
 	const empty = index !== null && (size === null || size < EMPTY_STORE_BYTES);
 	if (empty) {
-		deps.spawnDetached(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", BOOTSTRAP_PATH], { cwd: vaultRoot, shell: false });
+		const script = deps.bootstrapPath ?? BOOTSTRAP_PATH;
+		// Spawned by path, so `vendor update` doesn't bring it in (#133): a vault that missed the copy is told,
+		// as a missing refresh worker is, rather than a detached node dying with no one to see it.
+		if (!existsSync(script)) throw new Error(`the qmd bootstrap is missing: ${script}; copy it from mindframe and record it (core/scripts/README.md)`);
+		deps.spawnDetached(process.execPath, ["--disable-warning=ExperimentalWarning", "--experimental-strip-types", script], { cwd: vaultRoot, shell: false });
 	} else {
 		// cwd is the OS temp folder, so a lingering QMD process never holds the vault folder open on Windows.
 		const update = buildQmdCommand(entry, qmdArgsWithIndex(index, ["update"]));

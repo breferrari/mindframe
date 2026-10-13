@@ -73,17 +73,9 @@ function readManifestRaw(): string | null {
 	}
 }
 
+/** The manifest by the core's one rule (`manifestOf`): an object, or null for none, malformed JSON or a non-object. */
 function parseManifest(raw: string | null): ManifestSubset | null {
-	if (raw === null) return null;
-	try {
-		const parsed = JSON.parse(raw) as unknown;
-		if (parsed !== null && typeof parsed === "object") {
-			return parsed as ManifestSubset;
-		}
-	} catch {
-		/* handled by caller */
-	}
-	return null;
+	return raw === null ? null : (manifestOf(raw) as ManifestSubset | null);
 }
 
 type SpawnOutcome = {

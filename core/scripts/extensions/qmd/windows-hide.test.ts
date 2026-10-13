@@ -19,7 +19,8 @@ const DIR = fileURLToPath(new URL(".", import.meta.url));
 /** The text of each direct spawn call in `source`: from the name to its closing parenthesis. */
 export function spawnCalls(text: string): string[] {
 	// Comments mention spawn calls too (`spawnSync("qmd", ...)`); only code counts.
-	const source = text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
+	// Strings are matched first and kept, so a `/*` inside one ("**/*.md") opens no comment.
+	const source = text.replace(/("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m, string) => string ?? " ");
 	const calls: string[] = [];
 	for (const m of source.matchAll(/(?<![.\w])(?:node)?(?:spawn|spawnSync|Spawn|SpawnSync)\(/g)) {
 		let depth = 0;

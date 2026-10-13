@@ -1,4 +1,4 @@
-Description: mindframe: beside the lifted library in the qmd extension, with the extension's test helpers (#96); a module reached through a junction or symlink, with two false controls, upstream at obsidian-mind#391
+Description: mindframe: beside the lifted library in the qmd extension, with the extension's test helpers (#96); a module reached through a junction or symlink, with two false controls, upstream at 7724dba (obsidian-mind#391)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
@@ -9,7 +9,7 @@ diff --git a/core/scripts/extensions/qmd/main-guard.test.ts b/core/scripts/exten
  
  import { test, describe, afterEach } from "node:test";
  import assert from "node:assert/strict";
-+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
++import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 +import { tmpdir } from "node:os";
 +import { join } from "node:path";
  import { pathToFileURL } from "node:url";
@@ -21,7 +21,7 @@ diff --git a/core/scripts/extensions/qmd/main-guard.test.ts b/core/scripts/exten
  
  const ORIGINAL_ARGV1: string | undefined = process.argv[1];
  
-@@ -57,3 +60,49 @@
+@@ -57,3 +60,51 @@
  		assert.equal(isMainModule(pathToFileURL(path).href), true);
  	});
  });
@@ -31,7 +31,9 @@ diff --git a/core/scripts/extensions/qmd/main-guard.test.ts b/core/scripts/exten
 +// folder never ran its guarded main block.
 +describe("isMainModule through a linked folder (obsidian-mind#391)", () => {
 +	const linked = () => {
-+		const root = mkdtempSync(join(tmpdir(), "mf-main-guard-"));
++		// The loader hands a module its real path, so the module side is real here too: macOS's
++		// tmpdir is itself under a link (/var → /private/var).
++		const root = realpathSync(mkdtempSync(join(tmpdir(), "mf-main-guard-")));
 +		const real = join(root, "real");
 +		mkdirSync(real);
 +		writeFileSync(join(real, "foo.ts"), "");

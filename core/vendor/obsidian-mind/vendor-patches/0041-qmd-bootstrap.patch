@@ -1,10 +1,17 @@
-Description: mindframe: lifted into the qmd extension, importing from the extension and the core's public entry (#96)
+Description: mindframe: lifted into the qmd extension, importing from the extension and the core's public entry (#96); its header names the extension's bootstrap as its caller
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-13
 
 diff --git a/core/scripts/extensions/qmd/lib/qmd-bootstrap.ts b/core/scripts/extensions/qmd/lib/qmd-bootstrap.ts
 --- a/core/scripts/extensions/qmd/lib/qmd-bootstrap.ts
 +++ b/core/scripts/extensions/qmd/lib/qmd-bootstrap.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Pure helpers for `.scripts/qmd-bootstrap.ts`, factored out for unit-testing
++ * Pure helpers for the qmd extension's `qmd-bootstrap.ts`, factored out for unit-testing
+  * without spawning qmd.
+  *
+  * Two qmd-2.x quirks drive the shape here. Its CLI runs `util.parseArgs` with
 @@ -9,8 +9,8 @@
   * which mis-fires on native Windows backslash paths.
   */

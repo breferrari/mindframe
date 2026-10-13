@@ -8,7 +8,7 @@
 
 import { test, describe, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -66,7 +66,9 @@ describe("isMainModule", () => {
 // folder never ran its guarded main block.
 describe("isMainModule through a linked folder (obsidian-mind#391)", () => {
 	const linked = () => {
-		const root = mkdtempSync(join(tmpdir(), "mf-main-guard-"));
+		// The loader hands a module its real path, so the module side is real here too: macOS's
+		// tmpdir is itself under a link (/var → /private/var).
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "mf-main-guard-")));
 		const real = join(root, "real");
 		mkdirSync(real);
 		writeFileSync(join(real, "foo.ts"), "");

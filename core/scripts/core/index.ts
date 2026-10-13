@@ -44,7 +44,14 @@ export { extractWikilinkTargets } from "../lib/wikilinks.ts";
 export { writeFileAtomic } from "../lib/atomic-write.ts";
 
 /** A trace line on stderr when HOOK_DEBUG=1, and nothing otherwise: hooks print nothing else of their own. */
-export { debug, warn } from "../lib/hook-io.ts";
+export { debug } from "../lib/hook-io.ts";
+
+/**
+ * A warning on stderr, always: for a standalone script an extension ships
+ * (the qmd extension's bootstrap, #96), never for a hook, whose output is
+ * the core's to write. Use `debug` in a hook.
+ */
+export { warn } from "../lib/hook-io.ts";
 
 /** A string as a literal inside a RegExp: for an extension that builds a pattern from a name (the qmd extension's ignore and collection rules, #96). */
 export { escapeRegex } from "../lib/regex.ts";

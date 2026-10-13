@@ -3,17 +3,17 @@
   "files": {
     "core/scripts/extensions/qmd/lib/main-guard.ts": {
       "patches": [
-        "0032-main-guard.patch"
+        "0039-main-guard.patch"
       ],
-      "sha256": "10231c62e394fd3e23e5b63a7852b32b0b6c36b4dc203fb487869abb733284b1",
+      "sha256": "f2e1160383969539ab10d5245eb015c9058e9d4df16660c7f7d2416c4abece94",
       "upstream": "lib/main-guard.ts",
       "upstreamSha256": "e76f8a95c5ee9c015f8afe455707660db40e3494405697d528aae5cf6965244c"
     },
     "core/scripts/extensions/qmd/lib/qmd-bootstrap.ts": {
       "patches": [
-        "0029-qmd-bootstrap.patch"
+        "0041-qmd-bootstrap.patch"
       ],
-      "sha256": "3b0f2c530adb3efac49c0fa6c2200f49002b92fcc30553317a69fa65b68413d9",
+      "sha256": "ecc2594f7ffa6c1cb14e14fb3bc4f9d17af103cdc80124d08e973d1db31dd9fe",
       "upstream": "lib/qmd-bootstrap.ts",
       "upstreamSha256": "8e138c5afdd9bfcb41abf4803e8736185f0de0cfe82d12fea93cf388e88268d6"
     },
@@ -35,7 +35,7 @@
     },
     "core/scripts/extensions/qmd/lib/qmd.ts": {
       "patches": [
-        "0037-qmd-extension.patch"
+        "0042-qmd-extension.patch"
       ],
       "sha256": "8f01c8f8faddbca855a3bbe5327545325020647613eb94ff67260877a9b95bb5",
       "upstream": "lib/qmd.ts",
@@ -51,9 +51,9 @@
     },
     "core/scripts/extensions/qmd/main-guard.test.ts": {
       "patches": [
-        "0036-main-guard-test.patch"
+        "0040-main-guard-test.patch"
       ],
-      "sha256": "9fca4ff8b28f3b1f39e8ec8e2a1bd086ced37ad644f4ed165d61e14164d4c9a0",
+      "sha256": "dcb269c134e1215f07ee2e5382449f8d43c4c8a61e2a1003457b7e35f23f9464",
       "upstream": "tests/main-guard.test.ts",
       "upstreamSha256": "11c030c708423358a78248fc7a4f308584c1b7e808985cf85de6a8ea83d74ff5"
     },
