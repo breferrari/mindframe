@@ -39,6 +39,15 @@ test("openVault loads the registry for its event only, and hands back one contex
 	assert.equal(stop.registry.loaded.length, 0, "an extension declared for session-start is not loaded at Stop");
 });
 
+test("openVault returns the migration notes, so no entry point has to call migrationNotes itself (#111)", async (t) => {
+	const qmdOnly = await openVault(vault(t, '{"qmd_index":"notes"}'), "session-start", {});
+	assert.deepEqual(qmdOnly.notes, migrationNotes(qmdOnly.manifest));
+	assert.match(qmdOnly.notes.join("\n"), /QMD off: extensions needs/);
+	assert.deepEqual((await openVault(vault(t), "session-start", {})).notes, [], "nothing to migrate, no notes");
+	const migrated = JSON.stringify({ qmd_index: "notes", extensions: [JSON.parse(QMD_DECLARATION)] });
+	assert.deepEqual((await openVault(vault(t, migrated), "session-start", {})).notes, [], "qmd set and declared: migrated, no notes");
+});
+
 test("openVault with no manifest: no extensions, no throw", async (t) => {
 	const { manifest, registry } = await openVault(vault(t), "prompt", {});
 	assert.equal(manifest, null);
