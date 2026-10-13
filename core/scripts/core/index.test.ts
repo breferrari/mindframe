@@ -184,7 +184,8 @@ describe("a vault's retired instruction files: GEMINI.md only where Gemini reads
 	});
 
 	test("an escaped backslash before a quote doesn't escape it: the string closes, and a // after it is a comment (#119)", () => {
-		settings('{ "dir": "C:\\\\", "context": { "fileName": "AGENTS.md" } } // a Windows path ends in a backslash\n');
+		// The quotes in the comment make a mispaired reading keep the comment as text, so the file wouldn't parse.
+		settings('{ "dir": "C:\\\\", "context": { "fileName": "AGENTS.md" } } // a "Windows" path ends in a backslash\n');
 		assert.deepEqual(core.geminiContextFiles(root), ["AGENTS.md"]);
 	});
 
