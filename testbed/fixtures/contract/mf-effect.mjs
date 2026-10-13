@@ -27,7 +27,9 @@ const extension = {
         } catch {
           return [{ claim: 'MF-EFFECT-RAN: none', lines: [] }]
         }
-        const events = [...new Set(marks.split('\n').filter(Boolean))].sort()
+        // Each event once, in the order it first ran. The contract spec's turn-1 Stop row is the
+        // one that proves effects run before the detectors: from turn 2 on, stop is already marked.
+        const events = [...new Set(marks.split('\n').filter(Boolean))]
         return [{ claim: `MF-EFFECT-RAN: ${events.join(', ')}`, lines: [] }]
       },
     },
