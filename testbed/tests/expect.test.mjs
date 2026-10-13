@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { evaluate, isNone, isSilent, locate, matches, validateExpectation } from '../lib/expect.mjs'
+import { contextOf, evaluate, isNone, isSilent, locate, matches, validateExpectation } from '../lib/expect.mjs'
 import { validateSpec } from '../lib/spec.mjs'
 import { minimalSpec } from './_helpers.mjs'
 
@@ -120,6 +120,24 @@ test('order: presence is checked before position', () => {
   const missing = ev({ id: 'o', turn: 1, order: { in: 'hook:SessionStart', items: ['## Z', '## A'] } }, r)
   assert.equal(missing.pass, false, 'a missing first item (-1) must not pass as "before"')
   assert.match(missing.detail, /missing/)
+})
+
+const envelope = (event, context) => JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: context } })
+
+test('a hook context is graded as the agent receives it: the JSON envelope unwrapped, anything else as it stands (#129)', () => {
+  assert.equal(contextOf(envelope('SessionStart', '## A\n## B')), '## A\n## B')
+  assert.equal(contextOf('## A\n## B'), '## A\n## B', 'plain stdout')
+  assert.equal(contextOf('{"hookSpecificOutput": '), '{"hookSpecificOutput": ', 'malformed JSON, as it stands')
+  assert.equal(contextOf('{"systemMessage":"x"}'), '{"systemMessage":"x"}', 'JSON with no context, as it stands')
+  assert.equal(contextOf(JSON.stringify({ hookSpecificOutput: { hookEventName: 'Stop' } })), JSON.stringify({ hookSpecificOutput: { hookEventName: 'Stop' } }), 'an envelope with no context, as it stands')
+  assert.equal(contextOf(undefined), '')
+})
+
+test('order, hook output and isolates read an enveloped SessionStart by its context (#129)', () => {
+  const r = run({ turns: [turn(1, { hooks: [hook('SessionStart', envelope('SessionStart', '## A\n⚠️ extension thrower: skipped\n## B\n## C'))] })] })
+  assert.equal(ev({ id: 'o', turn: 1, order: { in: 'hook:SessionStart', items: ['## A', '## B', '## C'] } }, r).pass, true)
+  assert.equal(ev({ id: 'h', turn: 1, hook: { event: 'SessionStart', output: { re: '^## B$', flags: 'm' } } }, r).pass, true, 'a line, not an escaped \\n')
+  assert.equal(ev({ id: 'i', turn: 1, isolates: { event: 'SessionStart', extension: 'thrower', present: ['## A', '## C'] } }, r).pass, true)
 })
 
 test('budget: bytes counted exactly, last line, survivors and dropped sections', () => {

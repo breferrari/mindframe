@@ -284,12 +284,29 @@ export const isSilent = (output) => {
   return s === '' || s === '{}'
 }
 
+/**
+ * A hook's output as the agent receives it (#129). A hook that answers in the
+ * JSON envelope, `{"hookSpecificOutput":{"additionalContext":"…"}}`, hands the
+ * agent its additionalContext, so that is what is graded; anything else,
+ * plain stdout, other JSON or JSON that doesn't parse, is graded as it stands.
+ */
+export function contextOf(output) {
+  const raw = String(output ?? '')
+  if (!raw.trimStart().startsWith('{')) return raw
+  try {
+    const context = JSON.parse(raw)?.hookSpecificOutput?.additionalContext
+    return typeof context === 'string' ? context : raw
+  } catch {
+    return raw
+  }
+}
+
 export function sourceText(t, src) {
   if (src === 'answer') return t.answer
   if (src === 'deliver') return t.deliver ?? ''
   if (src === 'shown') return t.informational.join('\n')
   const event = src.slice('hook:'.length)
-  return t.hooks.filter((h) => h.event === event).map((h) => h.output).join('\n')
+  return t.hooks.filter((h) => h.event === event).map((h) => contextOf(h.output)).join('\n')
 }
 
 function evalHook(v, ts) {
@@ -306,10 +323,10 @@ function evalHook(v, ts) {
   if (v.silent === false && hooks.every((h) => isSilent(h.output))) return [false, 'silent']
   // output: at least one run's output matches. everyOutput: every run's
   // does, which is what a negative ("no MF- marker anywhere") needs.
-  if (v.output !== undefined && !hooks.some((h) => matches(v.output, h.output))) return [false, `output does not match ${describe(v.output)}`]
+  if (v.output !== undefined && !hooks.some((h) => matches(v.output, contextOf(h.output)))) return [false, `output does not match ${describe(v.output)}`]
   if (v.everyOutput !== undefined) {
-    const off = hooks.find((h) => !matches(v.everyOutput, h.output))
-    if (off) return [false, `a ${off.name} output does not match ${describe(v.everyOutput)}: ${JSON.stringify(off.output.slice(0, 80))}`]
+    const off = hooks.find((h) => !matches(v.everyOutput, contextOf(h.output)))
+    if (off) return [false, `a ${off.name} output does not match ${describe(v.everyOutput)}: ${JSON.stringify(contextOf(off.output).slice(0, 80))}`]
   }
   return [true, `${hooks.length}x ok`]
 }
@@ -397,7 +414,7 @@ function evalOnTurn(kind, v, t) {
     if (hooks.length === 0) return [false, `${v.event} did not run`]
     const bad = hooks.find((h) => !ok(h))
     if (bad) return [false, `${v.event} failed: exit ${bad.exitCode}`]
-    const text = hooks.map((h) => h.output).join('\n')
+    const text = hooks.map((h) => contextOf(h.output)).join('\n')
     if (!text.includes(v.extension)) return [false, `output does not name ${v.extension}`]
     const missing = (v.present ?? []).filter((m) => !matches(m, text))
     if (missing.length) return [false, `other sections missing: ${missing.map(describe).join(', ')}`]
