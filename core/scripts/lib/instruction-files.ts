@@ -103,7 +103,6 @@ export function geminiContextFiles(vaultRoot: string): string[] {
 	const path = join(vaultRoot, GEMINI_SETTINGS);
 	try {
 		// Only a regular file: a FIFO at that path would block the hook on read.
-		if (statSync(path, { throwIfNoEntry: false })?.isFile() !== true) return [];
 		// Strings are matched first and kept, so a `//` inside one (a URL) is no
 		// comment; an unterminated block comment runs to the end, in one pass. A
 		// comment becomes a space, as Gemini's reader makes it, so `tr/**/ue`
