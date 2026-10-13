@@ -68,3 +68,15 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#45](https://github.com/breferrari/mindframe/issues/45) | Move the Stop flow into the core for every vault | ⬜ |
 | [#46](https://github.com/breferrari/mindframe/issues/46) | Split obsidian-mind's formatters out of lib/session-start (S2) | ⬜ |
 | [#47](https://github.com/breferrari/mindframe/issues/47) | Generate each vault's mod from one template | ⬜ |
+
+## Shelf: parked (one at a time, later)
+
+Parked issues, taken one at a time. The milestone's `Shelf:` description keeps `next.sh` from taking them. A taken issue moves into a phase.
+
+| Issue | What | Status |
+|-------|------|--------|
+| [#57](https://github.com/breferrari/mindframe/issues/57) | Let update fold a merge into a patch when later patches change the same file | ⬜ |
+| [#59](https://github.com/breferrari/mindframe/issues/59) | Delete retired patches instead of keeping them in vendor-patches | ⬜ |
+| [#65](https://github.com/breferrari/mindframe/issues/65) | Make the vendor guard's suggested commands work for a file in any record | ⬜ |
+| [#66](https://github.com/breferrari/mindframe/issues/66) | Let patch new --issue say what is wrong, not only show the diff | ⬜ |
+| [#92](https://github.com/breferrari/mindframe/issues/92) | Let a vault choose its instruction file | ⬜ |
