@@ -17,5 +17,16 @@ const extension = {
   signals: [{ id: 'hangs', match: () => new Promise(() => {}), hint: 'MF-THROWER-HINT' }],
   // Wrong shape: a string where a list of warnings belongs.
   validators: [{ id: 'wrong-shape', appliesTo: () => true, validate: () => 'MF-THROWER-NOT-A-LIST' }],
+  // Priority 1 runs it before mf-effect's effect, so that one still running shows a throw stops nothing after it.
+  effects: [
+    {
+      id: 'throws',
+      priority: 1,
+      on: ['stop'],
+      run: () => {
+        throw new Error('mf-thrower effect failed on purpose')
+      },
+    },
+  ],
 }
 export default extension

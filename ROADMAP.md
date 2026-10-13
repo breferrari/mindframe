@@ -15,6 +15,7 @@ Status: ✅ done · 🔨 in progress · ⏳ blocked · ⬜ not started
 | [#5](https://github.com/breferrari/mindframe/issues/5) | Run the obsidian-mind baseline spec in real sessions | 🔨 Windows done; POSIX leg pending |
 | [#74](https://github.com/breferrari/mindframe/issues/74) | Let expectations read the mod's delivery in dry runs, and dry-run it in CI | ✅ |
 | [#99](https://github.com/breferrari/mindframe/issues/99) | Fail a test bed run that leaves a detached process behind, and move the pins past VAULT_QMD_REFRESH | ⬜ |
+| [#129](https://github.com/breferrari/mindframe/issues/129) | Grade a hook's context as the agent receives it: the test bed unwraps the SessionStart JSON envelope | ⬜ |
 
 ## Phase 2: the core
 
@@ -51,6 +52,8 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#115](https://github.com/breferrari/mindframe/issues/115) | Give fitWithMeter's meter one size base, so the uncut figure needs no caller special case | ⬜ |
 | [#117](https://github.com/breferrari/mindframe/issues/117) | Accept a newly followed import whose target another record keeps, when the target is present | ✅ |
 | [#119](https://github.com/breferrari/mindframe/issues/119) | Read a BOM'd Gemini settings file as Gemini does: it doesn't parse, so it names nothing | ✅ |
+| [#126](https://github.com/breferrari/mindframe/issues/126) | Give write hooks the payload's targets from the core, with removed files and one effect run per call | ⬜ |
+| [#128](https://github.com/breferrari/mindframe/issues/128) | Build openVault's migration notes from what the registry did: none under the kill switch, one for a refused qmd module | ⬜ |
 
 ## Phase 3: first-party extensions
 
@@ -63,7 +66,9 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#94](https://github.com/breferrari/mindframe/issues/94) | Skip session-start's detached qmd refresh when VAULT_QMD_REFRESH=off, as obsidian-mind #338 does | ✅ |
 | [#95](https://github.com/breferrari/mindframe/issues/95) | Run qmd's index refresh as the qmd extension's effects | ✅ |
 | [#96](https://github.com/breferrari/mindframe/issues/96) | Move qmd's bootstrap and model setup into the qmd extension | ⏳ after #95 |
-| [#101](https://github.com/breferrari/mindframe/issues/101) | Add the contract-spec row for effects (DESIGN rule 10) once a vault calls runEffects | ⏳ after wiki-mind calls runEffects |
+| [#101](https://github.com/breferrari/mindframe/issues/101) | Add the contract-spec row for effects (DESIGN rule 10) once a vault calls runEffects | ✅ |
+| [#123](https://github.com/breferrari/mindframe/issues/123) | Find a global qmd where npm keeps it, without spawning npm root -g | ⬜ |
+| [#125](https://github.com/breferrari/mindframe/issues/125) | Name the qmd extension's refresh worker qmd-refresh-run, so obsidian-mind's leftover-worker guard sees it | ⬜ |
 | [#106](https://github.com/breferrari/mindframe/issues/106) | Run the qmd refresh worker from the temp folder, not the vault, so it never holds the vault open on Windows | ⬜ |
 | [#14](https://github.com/breferrari/mindframe/issues/14) | Ship the memory MCP server as an optional extension | ⬜ |
 | [#15](https://github.com/breferrari/mindframe/issues/15) | Ship the guards as an optional extension | ⬜ |
