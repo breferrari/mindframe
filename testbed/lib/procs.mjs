@@ -5,9 +5,9 @@
 // every new one still alive that the bed started as a leak. It never kills
 // one: a leak is for a person to look at.
 //
-// After obsidian-mind's tests/_proc.ts (its #337, #350): Windows filters on
-// the command line server-side, POSIX lists everything with -ww so a long
-// command line is never cut before the match.
+// After obsidian-mind's tests/_proc.ts (its #337, #350): one listing of
+// every process with its full command line, -ww on POSIX so a long one is
+// never cut before the match.
 
 import { spawnSync } from 'node:child_process'
 
@@ -51,25 +51,27 @@ export function listProcesses(runner = run, platform = process.platform) {
   return { procs: parseProcessList(r.stdout).filter((p) => p.pid !== process.pid) }
 }
 
-// obsidian-mind's session-start runs its bootstrap by a path relative to the
-// vault, so its command line names no bed folder: that relative path counts
-// too. A worker by name alone doesn't: the suite's own qmd tests run in
-// parallel and start workers named the same, from their own folders.
-const RELATIVE_WORKER = /(^|[\s"'])\.scripts[\\/]qmd-bootstrap\.ts/
+// Windows paths match whatever their case and slashes.
+const pathForm = (platform) => (platform === 'win32' ? (s) => s.toLowerCase().replaceAll('/', '\\') : (s) => s)
 
 /**
  * The processes `after` holds that `before` didn't, and that the run
- * started: their command line names one of `folders` (the bed, the run's
- * output) or obsidian-mind's bootstrap by its relative path. As leaks, the residue check's shape. A listing
- * that failed is a leak too: the check didn't run, so the run can't pass.
+ * started: their command line names one of `folders`, as obsidian-mind
+ * #338's runner checks. As leaks, in the residue check's shape, with the
+ * pid. A listing that failed is a leak too: the check didn't run, so the
+ * run can't pass.
  */
-export function leftovers(before, after, folders) {
+export function leftovers(before, after, folders, platform = process.platform) {
   if ('failed' in before || 'failed' in after) {
     return [{ kind: 'process', file: ('failed' in before ? before : after).failed, change: 'not checked' }]
   }
   const had = new Set(before.procs.map((p) => p.pid))
-  const named = (cmd) => RELATIVE_WORKER.test(cmd) || folders.some((f) => cmd.includes(f))
+  const form = pathForm(platform)
+  const named = (cmd) => folders.some((f) => form(cmd).includes(form(f)))
   return after.procs
     .filter((p) => !had.has(p.pid) && named(p.cmd))
-    .map((p) => ({ kind: 'process', file: `${p.pid} ${p.cmd}`, change: 'left running' }))
+    .map((p) => ({ kind: 'process', pid: p.pid, file: `${p.pid} ${p.cmd}`, change: 'left running' }))
 }
+
+/** The residue check's result, with `procs` added to its leaks. */
+export const withLeftovers = (residue, procs) => ({ ...residue, leaks: [...residue.leaks, ...procs] })

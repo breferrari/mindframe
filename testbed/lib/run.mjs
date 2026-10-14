@@ -7,8 +7,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { buildBed, vaultCommit } from './bed.mjs'
-import { bedEnv, withLeftovers } from './dry.mjs'
-import { leftovers, listProcesses } from './procs.mjs'
+import { bedEnv } from './dry.mjs'
+import { leftovers, listProcesses, withLeftovers } from './procs.mjs'
 import { diff, snapshot, userQmdDirs } from './residue.mjs'
 import { buildRun } from './results.mjs'
 import { runSession } from './session.mjs'
@@ -31,6 +31,8 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
     started: new Date().toISOString(),
     runs: [],
   }
+  // One session's after listing is the next one's before.
+  let procs = null
   for (const s of spec.scenarios) {
     if (only && !only.includes(s.id)) continue
     for (const arm of s.arms) {
@@ -43,7 +45,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
       const session = { ...spec.session, env, allowedTools: s.allowedTools ?? spec.session.allowedTools, disallowedTools: s.disallowedTools ?? spec.session.disallowedTools, tools: s.tools ?? spec.session.tools }
       const dirs = userQmdDirs({ ...process.env, ...env })
       const before = snapshot(dirs)
-      const procsBefore = processes()
+      const procsBefore = procs ?? processes()
       const r = await runSession({ cmd, arm, bed, mod: spec.mod, session, turns: s.turns, logDir: path.join(out, 'logs'), name })
       const run = buildRun({
         scenario: s.id,
@@ -53,7 +55,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
         debugText: readOr(r.files.debug),
         exitCode: r.code,
         feed: r.feed,
-        residue: withLeftovers(diff(before, snapshot(dirs), name), leftovers(procsBefore, processes(), [bed, out])),
+        residue: withLeftovers(diff(before, snapshot(dirs), name), leftovers(procsBefore, (procs = processes()), [out])),
       })
       record.runs.push(run)
       onRun(run)

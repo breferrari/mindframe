@@ -236,7 +236,7 @@ The runner never deletes anything, leaks included.
 
 A detached process can also outlive the run, and one that writes after the "after" snapshot would slip past the folder check. So the runner lists the processes before and after each session too (PowerShell's `Get-CimInstance Win32_Process` on Windows, `ps -ax -ww` elsewhere):
 - a process that is new and still running, and that the bed started, is a **leak** of kind `process`, listed under its own heading in `results.md`, and fails the grade;
-- the bed started it when its command line names the bed or the run's output folder, or runs obsidian-mind's bootstrap by its vault-relative path `.scripts/qmd-bootstrap.ts`;
+- the bed started it when its command line names the run's output folder, which holds the bed (on Windows, in any case and either slash). A worker run by a path relative to the vault names no folder, so it isn't seen; under `VAULT_QMD_REFRESH=off`, obsidian-mind from its #338 starts none;
 - a listing that fails is a leak too (`not checked`), so a run can't pass on a check that didn't run.
 
 The runner never kills one: a leftover is for a person to look at.

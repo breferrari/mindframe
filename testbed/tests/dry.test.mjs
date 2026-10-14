@@ -102,7 +102,7 @@ test('a process the run started and left running is a leak, and fails the grade 
   const bed = path.join(out, 'beds', 'd-dry')
   const listings = [{ procs: [] }, { procs: [{ pid: 4242, cmd: `node ${path.join(bed, 'worker.js')}` }, { pid: 4243, cmd: 'node /elsewhere.js' }] }]
   const record = dryRun({ spec: spec(), vault: vaultWithScripts(t), out, processes: () => listings.shift() })
-  assert.deepEqual(record.runs[0].residue.leaks, [{ kind: 'process', file: `4242 node ${path.join(bed, 'worker.js')}`, change: 'left running' }])
+  assert.deepEqual(record.runs[0].residue.leaks, [{ kind: 'process', pid: 4242, file: `4242 node ${path.join(bed, 'worker.js')}`, change: 'left running' }])
   const g = grade(record, record.specDoc)
   assert.equal(g.outcome, 'fail')
   const md = renderMarkdown(record, g)
@@ -127,7 +127,7 @@ test('a detached sleeper the vault starts is found by the real listing, and name
   t.after(() => {
     for (const l of leaks) {
       try {
-        process.kill(Number.parseInt(l.file, 10))
+        process.kill(l.pid)
       } catch {}
     }
   })

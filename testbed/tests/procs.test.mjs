@@ -25,26 +25,32 @@ test('a listing that fails says why, never reads as no processes', () => {
   assert.deepEqual(listProcesses(() => ({ status: 0, stdout: `1 init\n${process.pid} me\n` }), 'linux'), { procs: [{ pid: 1, cmd: 'init' }] }, 'not this process')
 })
 
-test("a leftover is new since the run began, and the run started it: it names the bed or the output, or is obsidian-mind's relative bootstrap", () => {
+test('a leftover is new since the run began, and the run started it: its command line names one of the run folders', () => {
   const before = { procs: [{ pid: 1, cmd: 'node /out/bed/old.ts' }] }
   const after = {
     procs: [
       { pid: 1, cmd: 'node /out/bed/old.ts' },
       { pid: 2, cmd: 'node /out/bed/.claude/scripts/extensions/qmd/qmd-refresh-run.ts --vault=/out/bed' },
-      { pid: 3, cmd: 'node --experimental-strip-types .scripts/qmd-bootstrap.ts' },
       { pid: 4, cmd: 'node /elsewhere/server.js' },
       { pid: 5, cmd: 'sleep 60 /out/x' },
       { pid: 6, cmd: 'node /repo/core/scripts/extensions/qmd/qmd-refresh-run.ts --vault=/tmp/other' },
-      { pid: 7, cmd: '"C:\\node.exe" --experimental-strip-types .scripts\\qmd-bootstrap.ts' },
+      { pid: 7, cmd: 'node --experimental-strip-types .scripts/qmd-bootstrap.ts' },
     ],
   }
+  const got = leftovers(before, after, ['/out/bed', '/out/x'], 'linux')
   assert.deepEqual(
-    leftovers(before, after, ['/out/bed', '/out/x']).map((l) => l.file),
-    ['2 node /out/bed/.claude/scripts/extensions/qmd/qmd-refresh-run.ts --vault=/out/bed', '3 node --experimental-strip-types .scripts/qmd-bootstrap.ts', '5 sleep 60 /out/x', '7 "C:\\node.exe" --experimental-strip-types .scripts\\qmd-bootstrap.ts'],
-    'a worker another test started from its own folder is not ours',
+    got.map((l) => l.file),
+    ['2 node /out/bed/.claude/scripts/extensions/qmd/qmd-refresh-run.ts --vault=/out/bed', '5 sleep 60 /out/x'],
+    "a worker another test started from its own folder is not ours, and nor is one that names no folder",
   )
-  assert.ok(leftovers(before, after, ['/out/bed']).every((l) => l.kind === 'process' && l.change === 'left running'))
-  assert.deepEqual(leftovers(before, before, ['/out/bed']), [], 'nothing new, nothing left')
+  assert.deepEqual(got.map((l) => [l.kind, l.pid, l.change]), [['process', 2, 'left running'], ['process', 5, 'left running']])
+  assert.deepEqual(leftovers(before, before, ['/out/bed'], 'linux'), [], 'nothing new, nothing left')
+})
+
+test('on Windows a folder matches in any case and with either slash; elsewhere case counts', () => {
+  const after = { procs: [{ pid: 2, cmd: 'node c:/users/runneradmin/OUT/bed/w.js' }] }
+  assert.deepEqual(leftovers({ procs: [] }, after, ['C:\\Users\\runneradmin\\out'], 'win32').map((l) => l.pid), [2])
+  assert.deepEqual(leftovers({ procs: [] }, { procs: [{ pid: 2, cmd: 'node /tmp/OUT/w.js' }] }, ['/tmp/out'], 'linux'), [])
 })
 
 test("a listing that failed is a leak: the check didn't run, so the run can't pass", () => {

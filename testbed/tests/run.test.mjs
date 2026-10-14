@@ -32,6 +32,16 @@ test('both arms run in their own bed and come back valid, turn by turn', async (
   assert.ok(existsSync(path.join(out, 'logs', 'basic-mod.debug')))
 })
 
+test('a live run records a process it started and left running as a leak, and lists each session once (#99)', async (t) => {
+  const vault = makeVault(t)
+  const out = path.join(tmp(t), 'out')
+  const worker = { pid: 77, cmd: `node ${path.join(out, 'beds', 'basic-settings', 'w.js')}` }
+  const listings = [{ procs: [] }, { procs: [worker] }, { procs: [worker] }]
+  const record = await runSpec({ spec: validateSpec(minimalSpec()), vault, out, cmd: FAKE_CLAUDE, processes: () => listings.shift() })
+  assert.deepEqual(record.runs.map((r) => r.residue.leaks.map((l) => l.pid)), [[77], []], "the mod arm starts from the settings arm's after listing")
+  assert.equal(listings.length, 0, 'three listings for two sessions')
+})
+
 test('a mod that never loads makes the mod-arm run invalid', async (t) => {
   const vault = makeVault(t)
   const out = path.join(tmp(t), 'out')

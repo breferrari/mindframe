@@ -19,7 +19,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { buildBed, vaultCommit } from './bed.mjs'
-import { leftovers, listProcesses } from './procs.mjs'
+import { leftovers, listProcesses, withLeftovers } from './procs.mjs'
 import { diff, qmdEnv, snapshot, userQmdDirs } from './residue.mjs'
 import { hookRow } from './results.mjs'
 
@@ -59,6 +59,8 @@ export function dryRun({ spec, vault, out, only, deliver = false, runner = execF
   if (existsSync(out)) throw new Error(`output folder exists, pick a new one: ${out}`)
   mkdirSync(out, { recursive: true })
   const record = { spec: spec.name, specDoc: spec, dry: true, vault: { commit: vaultCommit(vault) }, started: new Date().toISOString(), runs: [] }
+  // One session's after listing is the next one's before.
+  let procs = null
   for (const s of spec.scenarios) {
     if (only && !only.includes(s.id)) continue
     if (!s.arms.includes('settings')) continue
@@ -68,7 +70,7 @@ export function dryRun({ spec, vault, out, only, deliver = false, runner = execF
     const env = { ...bedEnv({ stateDir: path.join(out, 'state', name), spec, scenario: s }), CLAUDE_PROJECT_DIR: bed }
     const dirs = userQmdDirs(env)
     const before = snapshot(dirs)
-    const procsBefore = processes()
+    const procsBefore = procs ?? processes()
 
     const hook = (event, input, hookName = event) => {
       const script = path.join(bed, '.claude', 'scripts', DRY_SCRIPTS[event])
@@ -142,16 +144,13 @@ export function dryRun({ spec, vault, out, only, deliver = false, runner = execF
       debugHooks: [],
       feed: [],
       ...(delivered ? { deliver: { exitCode: delivered.exitCode, output: delivered.output } } : {}),
-      residue: withLeftovers(diff(before, snapshot(dirs), name), leftovers(procsBefore, processes(), [bed, out])),
+      residue: withLeftovers(diff(before, snapshot(dirs), name), leftovers(procsBefore, (procs = processes()), [out])),
     })
   }
   record.finished = new Date().toISOString()
   writeFileSync(path.join(out, 'results.json'), JSON.stringify(record, null, 1))
   return record
 }
-
-/** The residue check's leaks, with the processes the run left running (#99). */
-export const withLeftovers = (residue, procs) => ({ ...residue, leaks: [...residue.leaks, ...procs] })
 
 function applyBefore(bed, a) {
   const file = path.join(bed, ...(a.append ?? a.write).split('/'))
