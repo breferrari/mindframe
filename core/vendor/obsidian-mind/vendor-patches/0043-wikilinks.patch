@@ -1,4 +1,4 @@
-Description: mindframe: line regions and link offsets exported (#81); fences closed as CommonMark closes them (#87); obsidian-mind #333's comments (#90); the one frontmatter rule, code read in the body only (#82); a line-0 BOM read past by every region test (#107)
+Description: mindframe: line regions and link offsets exported (#81); fences closed as CommonMark closes them (#87); obsidian-mind #333's comments (#90); the one frontmatter rule, code read in the body only (#82); a line-0 BOM read past by every region test and by the fence rule in stripCodeRegions (#107)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-14
 
@@ -15,7 +15,7 @@ diff --git a/core/scripts/lib/wikilinks.ts b/core/scripts/lib/wikilinks.ts
  const ASSET_EXTENSIONS = new Set([
  	"png",
  	"jpg",
-@@ -44,38 +47,128 @@
+@@ -44,38 +47,129 @@
  ]);
  
  /**
@@ -55,7 +55,8 @@ diff --git a/core/scripts/lib/wikilinks.ts b/core/scripts/lib/wikilinks.ts
 -		// forbids starting the same-length run early; the trailing (?!`)
 -		// pins the closer to an exact-length run.
 -		out.push(line.replace(/(`+)(?:(?!\1)[^\n])*?\1(?!`)/g, ""));
-+		const step = fenceStep(line, open);
++		// A line-0 BOM is the file's: the fence rule reads past it, as lineRegions does (#107).
++		const step = fenceStep(i === 0 ? line.replace(/^\uFEFF/, "") : line, open);
 +		open = step.open;
 +		if (step.fenced) continue;
 +		out.push(line.replace(INLINE_CODE, ""));
@@ -163,7 +164,7 @@ diff --git a/core/scripts/lib/wikilinks.ts b/core/scripts/lib/wikilinks.ts
   * Extract resolution targets from every `[[...]]` in the content
   * (code regions pre-stripped). Returns raw target strings — alias tails,
   * fragments, and embed prefixes removed; empties/placeholders/assets
-@@ -83,26 +176,30 @@
+@@ -83,26 +177,30 @@
   */
  export function extractWikilinkTargets(content: string): string[] {
  	const targets: string[] = [];
@@ -210,7 +211,7 @@ diff --git a/core/scripts/lib/wikilinks.ts b/core/scripts/lib/wikilinks.ts
  /**
   * Split a YAML inline list's contents on its SEPARATORS.
   *
-@@ -158,18 +255,13 @@
+@@ -158,18 +256,13 @@
   * whole check, not one link.
   */
  export function extractAliases(content: string): string[] {

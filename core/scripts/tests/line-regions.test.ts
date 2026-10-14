@@ -127,6 +127,9 @@ describe("agreement with the whole-note readers", () => {
 		["----", "a: [[X]]", "---", "[[Y]]"].join("\n"),
 		["---", "a: [[X]]", "[[Y]]"].join("\n"),
 		["\uFEFF---", "a: 1", "---", "[[Z]]"].join("\n"),
+		// A BOM before an indented or quoted fence opener: both readers read past it (#107).
+		["\uFEFF    " + fence, "[[a]]", "    " + fence, "[[b]]"].join("\n"),
+		["\uFEFF> " + fence, "> [[a]]", "> " + fence, "[[c]]"].join("\n"),
 	];
 
 	test("the frontmatter lines are the ones stripFrontmatter removes", () => {

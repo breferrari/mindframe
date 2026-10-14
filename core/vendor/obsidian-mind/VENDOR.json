@@ -156,7 +156,7 @@
       "patches": [
         "0043-wikilinks.patch"
       ],
-      "sha256": "f1fc07acd81cf52cf88bdef1245108f86a228150d38d02e3cc6c093a122e7786",
+      "sha256": "61b5bad4780e37f6caecff571e85427d0cb3541fe88049c6c6b137ff82dfa8f3",
       "upstream": "lib/wikilinks.ts",
       "upstreamSha256": "907af9107546cdba542405c3661fba7d77458e2381494f36d38d5617510e2540"
     },

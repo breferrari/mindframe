@@ -64,7 +64,8 @@ export function stripCodeRegions(content: string): string {
 			out.push(line.replace(INLINE_CODE, ""));
 			continue;
 		}
-		const step = fenceStep(line, open);
+		// A line-0 BOM is the file's: the fence rule reads past it, as lineRegions does (#107).
+		const step = fenceStep(i === 0 ? line.replace(/^\uFEFF/, "") : line, open);
 		open = step.open;
 		if (step.fenced) continue;
 		out.push(line.replace(INLINE_CODE, ""));
