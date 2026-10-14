@@ -35,6 +35,19 @@ describe("lineRegions", () => {
 		assert.deepEqual(lineRegions(["----", "a: 1", "---", "x"]), ["body", "body", "body", "body"]);
 	});
 
+	test("a BOM on line 0 is not the note's text: a heading after it is a heading, a fence after it a fence (#107)", () => {
+		assert.deepEqual(lineRegions(["\uFEFF# Title", "text"]), ["heading", "body"]);
+		assert.deepEqual(lineRegions(["\uFEFF" + fence, "# not a heading", fence, "## Part"]), ["fence", "fence", "fence", "heading"]);
+		assert.deepEqual(lineRegions("\uFEFF# Title\r\ntext\r\n## Part\r\n".split("\n")), ["heading", "body", "heading", "body"], "CRLF with a BOM");
+		assert.deepEqual(lineRegions("\uFEFF---\r\na: 1\r\n---\r\n# T\r\n".split("\n")), ["frontmatter", "frontmatter", "frontmatter", "heading", "body"], "a BOM before --- still opens frontmatter, CRLF too");
+	});
+
+	test("a BOM on a later line is content there, and left alone (#107)", () => {
+		assert.deepEqual(lineRegions(["text", "\uFEFF# not a heading"]), ["body", "body"]);
+		assert.deepEqual(lineRegions(["\uFEFF\uFEFF# x"]), ["body"], "only the file's one BOM: a second is content");
+		assert.deepEqual(lineRegions(["---", "a: 1", "---", "\uFEFF# x"]), ["frontmatter", "frontmatter", "frontmatter", "body"]);
+	});
+
 	test("``` and ~~~ fences, a fence that never closes, and #s inside a fence", () => {
 		const lines = [fence + "ts", "# not a heading", "[[x]]", fence, "~~~", "a", "~~~", "text", fence, "open to the end"];
 		assert.deepEqual(lineRegions(lines), ["fence", "fence", "fence", "fence", "fence", "fence", "fence", "body", "fence", "fence"]);
@@ -114,6 +127,9 @@ describe("agreement with the whole-note readers", () => {
 		["----", "a: [[X]]", "---", "[[Y]]"].join("\n"),
 		["---", "a: [[X]]", "[[Y]]"].join("\n"),
 		["\uFEFF---", "a: 1", "---", "[[Z]]"].join("\n"),
+		// A BOM before an indented or quoted fence opener: both readers read past it (#107).
+		["\uFEFF    " + fence, "[[a]]", "    " + fence, "[[b]]"].join("\n"),
+		["\uFEFF> " + fence, "> [[a]]", "> " + fence, "[[c]]"].join("\n"),
 	];
 
 	test("the frontmatter lines are the ones stripFrontmatter removes", () => {

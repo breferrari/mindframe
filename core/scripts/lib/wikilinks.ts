@@ -64,7 +64,8 @@ export function stripCodeRegions(content: string): string {
 			out.push(line.replace(INLINE_CODE, ""));
 			continue;
 		}
-		const step = fenceStep(line, open);
+		// A line-0 BOM is the file's: the fence rule reads past it, as lineRegions does (#107).
+		const step = fenceStep(i === 0 ? line.replace(/^\uFEFF/, "") : line, open);
 		open = step.open;
 		if (step.fenced) continue;
 		out.push(line.replace(INLINE_CODE, ""));
@@ -106,7 +107,10 @@ export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
  *   or the end of the line.
  */
 export function lineRegions(lines: readonly string[]): LineRegion[] {
-	const bare = lines.map((l) => l.replace(/\r$/, ""));
+	// A BOM on line 0 is the file's, not the note's text: every region test
+	// reads past it, so a BOM then `# Title` is a heading (#107). Later lines
+	// are read as written.
+	const bare = lines.map((l, i) => (i === 0 ? l.replace(/^\uFEFF/, "") : l).replace(/\r$/, ""));
 	// The core's one frontmatter rule (lib/frontmatter-block.ts, #82).
 	const close = frontmatterLines(bare)?.close ?? -1;
 	let open: OpenFence = null;

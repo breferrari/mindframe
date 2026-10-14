@@ -44,7 +44,8 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#102](https://github.com/breferrari/mindframe/issues/102) | Record obsidian-mind as upstream for the core libraries absorbed from it | ✅ |
 | [#91](https://github.com/breferrari/mindframe/issues/91) | Match a retired instruction file the way the agent loads it: any case where the filesystem ignores case, exact case on Linux | ✅ |
 | [#104](https://github.com/breferrari/mindframe/issues/104) | Retire GEMINI.md only where the vault points Gemini at AGENTS.md: a vault-aware retired-file predicate | ✅ |
-| [#107](https://github.com/breferrari/mindframe/issues/107) | Read a heading on a note's first line after a BOM: lineRegions strips a line-0 BOM | ⬜ |
+| [#107](https://github.com/breferrari/mindframe/issues/107) | Read a heading on a note's first line after a BOM: lineRegions strips a line-0 BOM | ✅ |
+| [#146](https://github.com/breferrari/mindframe/issues/146) | Read past a line-0 BOM in prose-width, as lineRegions and stripCodeRegions do | ⬜ |
 | [#110](https://github.com/breferrari/mindframe/issues/110) | Report an extension field whose getter throws, instead of letting it escape the dispatch | ✅ |
 | [#111](https://github.com/breferrari/mindframe/issues/111) | Return the migration notes from openVault, so no entry point calls migrationNotes itself | ✅ |
 | [#112](https://github.com/breferrari/mindframe/issues/112) | Probe the vault root's filesystem for case sensitivity, in place of the platform guess | ⬜ |

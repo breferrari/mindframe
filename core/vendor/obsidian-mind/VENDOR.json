@@ -154,9 +154,9 @@
     },
     "core/scripts/lib/wikilinks.ts": {
       "patches": [
-        "0005-wikilinks.patch"
+        "0043-wikilinks.patch"
       ],
-      "sha256": "4d25440ae887a631fa6edfbe453100580d17e2263415888b4c89db829523ffaa",
+      "sha256": "61b5bad4780e37f6caecff571e85427d0cb3541fe88049c6c6b137ff82dfa8f3",
       "upstream": "lib/wikilinks.ts",
       "upstreamSha256": "907af9107546cdba542405c3661fba7d77458e2381494f36d38d5617510e2540"
     },
