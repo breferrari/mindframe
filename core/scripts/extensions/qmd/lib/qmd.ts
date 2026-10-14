@@ -221,6 +221,8 @@ function globalQmdEntry(): string | null {
 	// shell:true (the args get concatenated into the shell command unescaped,
 	// a real injection risk in the general case). Our command is a literal
 	// constant — no user input — so the concatenated form is safe.
+	// windowsHide: under a detached, windowless parent (the bootstrap that
+	// session-start spawns), a shell started without it opens a console window.
 	const npmRoot = spawnSync("npm root -g", {
 		shell: true,
 		encoding: "utf8",
@@ -233,9 +235,7 @@ function globalQmdEntry(): string | null {
 
 	const root = (npmRoot.stdout ?? "").trim();
 	if (root === "" || !isAbsolute(root)) return null;
-
-	const entry = join(root, "@tobilu", "qmd", "dist", "cli", "qmd.js");
-	return existsSync(entry) ? entry : null;
+	return qmdEntryUnder(root);
 }
 
 /**

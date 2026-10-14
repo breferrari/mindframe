@@ -10,14 +10,13 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { npmGlobalRoot as npmGlobalRootTs } from "./lib/qmd.ts";
+import { npmGlobalRoot } from "./lib/qmd.ts";
 
-// Where npm keeps global packages, without spawning npm (#349): only the
+// Where npm keeps global packages, without spawning npm (obsidian-mind #349): only the
 // cheap exact cases npmGlobalRoot's doc lists, and null (ask npm) for the
-// rest. Both copies of the resolver run the same cases; the last checks the
-// real npm on this machine.
+// rest. The last case checks the real npm on this machine.
 
-/** The real npm's answer on this machine, asked at most once for both copies; null without npm. */
+/** The real npm's answer on this machine, asked at most once; null without npm. */
 let npmAsked: string | null | undefined;
 const npmAnswer = (): string | null => {
 	if (npmAsked === undefined) {
@@ -28,8 +27,8 @@ const npmAnswer = (): string | null => {
 	return npmAsked;
 };
 
-for (const [label, npmGlobalRoot] of [["lib/qmd.ts", npmGlobalRootTs]] as const) {
-	describe(`${label} npmGlobalRoot`, () => {
+{
+	describe("npmGlobalRoot", () => {
 		const home = join(tmpdir(), "home");
 		const nodeDir = join(tmpdir(), "nodejs");
 		const winNpm = join(nodeDir, "node_modules", "npm");
