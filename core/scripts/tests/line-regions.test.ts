@@ -44,6 +44,7 @@ describe("lineRegions", () => {
 
 	test("a BOM on a later line is content there, and left alone (#107)", () => {
 		assert.deepEqual(lineRegions(["text", "\uFEFF# not a heading"]), ["body", "body"]);
+		assert.deepEqual(lineRegions(["\uFEFF\uFEFF# x"]), ["body"], "only the file's one BOM: a second is content");
 		assert.deepEqual(lineRegions(["---", "a: 1", "---", "\uFEFF# x"]), ["frontmatter", "frontmatter", "frontmatter", "body"]);
 	});
 
