@@ -70,7 +70,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#96](https://github.com/breferrari/mindframe/issues/96) | Move qmd's bootstrap and model setup into the qmd extension | ✅ |
 | [#135](https://github.com/breferrari/mindframe/issues/135) | Remove the core's qmd re-exports once no vendored file outside the extension imports them | ⏳ after breferrari/wiki-mind#112 |
 | [#101](https://github.com/breferrari/mindframe/issues/101) | Add the contract-spec row for effects (DESIGN rule 10) once a vault calls runEffects | ✅ |
-| [#123](https://github.com/breferrari/mindframe/issues/123) | Find a global qmd where npm keeps it, without spawning npm root -g | ⬜ |
+| [#123](https://github.com/breferrari/mindframe/issues/123) | Find a global qmd where npm keeps it, without spawning npm root -g | ✅ |
 | [#125](https://github.com/breferrari/mindframe/issues/125) | Name the qmd extension's refresh worker qmd-refresh-run, so obsidian-mind's leftover-worker guard sees it | ✅ |
 | [#106](https://github.com/breferrari/mindframe/issues/106) | Run the qmd refresh worker from the temp folder, not the vault, so it never holds the vault open on Windows | ⬜ |
 | [#14](https://github.com/breferrari/mindframe/issues/14) | Ship the memory MCP server as an optional extension | ⬜ |
