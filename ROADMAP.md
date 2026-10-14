@@ -48,7 +48,7 @@ Starts when the registry prototype in [wiki-mind](https://github.com/breferrari/
 | [#146](https://github.com/breferrari/mindframe/issues/146) | Read past a line-0 BOM in prose-width, as lineRegions and stripCodeRegions do | ⬜ |
 | [#110](https://github.com/breferrari/mindframe/issues/110) | Report an extension field whose getter throws, instead of letting it escape the dispatch | ✅ |
 | [#111](https://github.com/breferrari/mindframe/issues/111) | Return the migration notes from openVault, so no entry point calls migrationNotes itself | ✅ |
-| [#112](https://github.com/breferrari/mindframe/issues/112) | Probe the vault root's filesystem for case sensitivity, in place of the platform guess | ⬜ |
+| [#112](https://github.com/breferrari/mindframe/issues/112) | Probe the vault root's filesystem for case sensitivity, in place of the platform guess | ✅ |
 | [#114](https://github.com/breferrari/mindframe/issues/114) | Emit the session context from one core function, in place of each entry point's four paired delivery choices | ⬜ |
 | [#115](https://github.com/breferrari/mindframe/issues/115) | Give fitWithMeter's meter one size base, so the uncut figure needs no caller special case | ⬜ |
 | [#117](https://github.com/breferrari/mindframe/issues/117) | Accept a newly followed import whose target another record keeps, when the target is present | ✅ |
