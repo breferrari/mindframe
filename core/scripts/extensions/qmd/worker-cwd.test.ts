@@ -1,79 +1,95 @@
 /**
  * The refresh worker and its qmd steps run from the OS temp folder, not the
- * vault, so a worker that lasts minutes never holds the vault open on
+ * vault, so a worker that lasts minutes doesn't hold the vault open on
  * Windows (#106). What the vault cwd used to supply is passed explicitly: a
  * relative INDEX_PATH or QMD_CONFIG_DIR resolves against the vault. The one
  * thing qmd can't be told is a project-local `.qmd/index.y(a)ml`, which it
  * finds from its cwd when no `--index` is given (read in @tobilu/qmd
- * 2.5.3's `findLocalConfigPath`), so that case keeps the vault.
+ * 2.5.3's `findLocalConfigPath`), so the vault stays the cwd whenever the
+ * temp folder would find a different one.
  */
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { sentinelPathFor } from "./index.ts";
-import { localQmdConfigAt, qmdStepOptions, workerArgsFor, workerSpawnOptions } from "./lib/refresh.ts";
-import { rmTemp } from "./test-fakes.ts";
+import { localQmdConfigAt, qmdCwdFor, qmdPathsAgainst } from "./lib/index-name.ts";
+import { rmTemp, spawnCalls } from "./test-fakes.ts";
 
-const step = { cmd: "node", args: ["qmd.js", "update"], shell: false, timeoutMs: 60_000 };
+const DIR = fileURLToPath(new URL(".", import.meta.url));
 
-function vaultIn(t: { after: (fn: () => void) => void }, layout: Record<string, string> = {}): { root: string; vault: string } {
+/** A fresh root holding a vault `v` and a temp folder `t`, plus `files` (paths as segment lists). */
+function layout(t: { after: (fn: () => void) => void }, files: string[][] = []): { root: string; vault: string; temp: string } {
 	const root = mkdtempSync(join(tmpdir(), "qmd-cwd-"));
 	t.after(() => rmTemp(root));
 	const vault = join(root, "v");
+	const temp = join(root, "t");
 	mkdirSync(vault);
-	for (const [rel, body] of Object.entries(layout)) {
-		mkdirSync(join(root, rel, ".."), { recursive: true });
-		writeFileSync(join(root, rel), body);
+	mkdirSync(temp);
+	for (const segments of files) {
+		const file = join(root, ...segments);
+		mkdirSync(dirname(file), { recursive: true });
+		writeFileSync(file, "collections: {}\n");
 	}
-	return { root, vault };
+	return { root, vault, temp };
 }
 
 describe("the refresh worker runs from the temp folder (#106)", () => {
-	test("the worker's own spawn: detached, hidden, from the temp folder", () => {
-		assert.deepEqual(workerSpawnOptions(), { detached: true, stdio: "ignore", windowsHide: true, cwd: tmpdir() });
+	test("with --index, qmd's steps run from the temp folder, even beside a local config", (t) => {
+		const { vault, temp } = layout(t, [["v", ".qmd", "index.yml"]]);
+		assert.equal(qmdCwdFor(vault, "idx", temp), temp);
+		assert.equal(qmdCwdFor(vault, "idx"), tmpdir(), "the OS temp folder by default");
 	});
 
-	test("each qmd step, with --index, runs from the temp folder, hidden, on the step's limit", (t) => {
-		const { vault } = vaultIn(t, { "v/.qmd/index.yml": "collections: {}\n" });
-		const opts = qmdStepOptions(step, vault, "idx", { HOME: "/h" });
-		assert.equal(opts.cwd, tmpdir(), "an --index wins over a local config, so the vault isn't needed");
-		assert.deepEqual({ ...opts, cwd: "", env: {} }, { stdio: "ignore", timeout: 60_000, shell: false, windowsHide: true, cwd: "", env: {} });
-		assert.equal(opts.env["HOME"], "/h", "the rest of the environment passes through");
+	test("without --index and no local config on either side, the temp folder too", (t) => {
+		const { vault, temp } = layout(t);
+		assert.equal(qmdCwdFor(vault, null, temp), temp);
 	});
 
-	test("without --index and no local config, the temp folder too", (t) => {
-		const { vault } = vaultIn(t);
-		assert.equal(qmdStepOptions(step, vault, null, {}).cwd, tmpdir());
-	});
-
-	test("without --index, a local .qmd config at or above the vault keeps the vault, so qmd still finds it", (t) => {
-		const here = vaultIn(t, { "v/.qmd/index.yml": "collections: {}\n" });
-		assert.equal(qmdStepOptions(step, here.vault, null, {}).cwd, here.vault);
-		const above = vaultIn(t, { ".qmd/index.yaml": "collections: {}\n" });
-		assert.equal(qmdStepOptions(step, above.vault, null, {}).cwd, above.vault);
+	test("without --index, a local config at or above the vault keeps the vault, so qmd still finds it", (t) => {
+		const here = layout(t, [["v", ".qmd", "index.yml"]]);
+		assert.equal(qmdCwdFor(here.vault, null, here.temp), here.vault);
+		const above = layout(t, [[".qmd", "index.yaml"]]);
 		assert.equal(localQmdConfigAt(above.vault), join(above.root, ".qmd", "index.yaml"));
-		const neither = vaultIn(t, { "v/.qmd/other.yml": "" });
-		assert.equal(localQmdConfigAt(neither.vault), null, "only index.yaml or index.yml counts, as in qmd");
+		assert.equal(qmdCwdFor(above.vault, null, above.temp), above.temp, "the temp folder finds the same one");
+	});
+
+	test("without --index, a local config only the temp folder would find keeps the vault, so qmd doesn't take it", (t) => {
+		// On Windows the temp folder sits in the user profile, where a .qmd/ can be.
+		const { vault, temp } = layout(t, [["t", ".qmd", "index.yml"]]);
+		assert.equal(qmdCwdFor(vault, null, temp), vault);
+	});
+
+	test("only .qmd/index.yaml or .qmd/index.yml counts, as in qmd", (t) => {
+		const { vault } = layout(t, [["v", ".qmd", "other.yml"]]);
+		assert.equal(localQmdConfigAt(join(vault, "deeper")), null);
 	});
 
 	test("a relative INDEX_PATH or QMD_CONFIG_DIR resolves against the vault, the cwd it used to have", (t) => {
-		const { vault } = vaultIn(t);
-		const env = qmdStepOptions(step, vault, "idx", { INDEX_PATH: join("store", "i.sqlite"), QMD_CONFIG_DIR: "cfg" }).env;
-		assert.equal(env["INDEX_PATH"], join(vault, "store", "i.sqlite"));
-		assert.equal(env["QMD_CONFIG_DIR"], join(vault, "cfg"));
+		const { vault } = layout(t);
+		const env = qmdPathsAgainst(vault, { INDEX_PATH: join("store", "i.sqlite"), QMD_CONFIG_DIR: "cfg", HOME: "/h" });
+		assert.deepEqual(env, { INDEX_PATH: join(vault, "store", "i.sqlite"), QMD_CONFIG_DIR: join(vault, "cfg"), HOME: "/h" });
 		const abs = resolve(tmpdir(), "elsewhere");
-		const kept = qmdStepOptions(step, vault, "idx", { INDEX_PATH: abs, QMD_CONFIG_DIR: abs }).env;
-		assert.deepEqual([kept["INDEX_PATH"], kept["QMD_CONFIG_DIR"]], [abs, abs], "absolute ones are kept");
-		const unset = qmdStepOptions(step, vault, "idx", { INDEX_PATH: "" }).env;
-		assert.ok(!("QMD_CONFIG_DIR" in unset), "an unset one stays unset");
-		assert.equal(unset["INDEX_PATH"], "", "an empty one is qmd's 'unset' and stays as it is");
+		assert.deepEqual(qmdPathsAgainst(vault, { INDEX_PATH: abs, QMD_CONFIG_DIR: abs }), { INDEX_PATH: abs, QMD_CONFIG_DIR: abs }, "absolute ones are kept");
+		assert.deepEqual(qmdPathsAgainst(vault, { INDEX_PATH: "" }), { INDEX_PATH: "" }, "an empty one is qmd's unset and stays so; an absent one stays absent");
 	});
 
-	test("the worker's arguments are absolute, so its cwd doesn't matter to them", () => {
-		assert.deepEqual(workerArgsFor("rel-vault", null), [`--vault=${resolve("rel-vault")}`]);
+	test("a relative sentinel from the environment is made absolute, since the worker runs elsewhere", () => {
 		assert.equal(sentinelPathFor("/v", { QMD_REFRESH_SENTINEL: join("rel", "s") }), resolve("rel", "s"));
+	});
+
+	// The helpers above are only as good as the spawns that use them.
+	test("the worker's spawn and each qmd step's take their cwd from them", () => {
+		const [worker] = spawnCalls(readFileSync(join(DIR, "lib", "refresh.ts"), "utf8"));
+		assert.match(worker ?? "", /\bcwd:\s*tmpdir\(\)/);
+		const source = readFileSync(join(DIR, "qmd-refresh-run.ts"), "utf8");
+		const [step] = spawnCalls(source);
+		assert.match(step ?? "", /[{,\s]cwd,\s/);
+		assert.match(step ?? "", /[{,\s]env,?\s/);
+		assert.match(source, /const cwd = qmdCwdFor\(vault, index\);/);
+		assert.match(source, /const env = qmdPathsAgainst\(vault, process\.env\);/);
 	});
 });

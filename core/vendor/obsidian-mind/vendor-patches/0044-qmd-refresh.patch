@@ -1,4 +1,4 @@
-Description: mindframe: the refresh as the qmd extension's effects: imports from the extension and the core, the worker told its vault and index (--vault, --index), the switch from lib/switches.ts read from a given environment rather than re-exported from qmd.ts (#94), a missing worker reported (#95); the worker named qmd-refresh-run.ts (#125); the worker and its qmd steps run from the OS temp folder, not the vault (#106)
+Description: mindframe: the refresh as the qmd extension's effects: imports from the extension and the core, the worker told its vault and index (--vault, --index), the switch from lib/switches.ts read from a given environment rather than re-exported from qmd.ts (#94), a missing worker reported (#95); the worker named qmd-refresh-run.ts (#125); the worker spawned from the OS temp folder, not the vault (#106)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
 Last-Update: 2026-10-14
 
@@ -32,7 +32,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
   * The pure helpers at the top of this file (path filter, debounce math,
   * vault-root resolver, invocation composer) run identically on Windows,
   * macOS, and Linux and are exercised in the CI matrix without side
-@@ -15,11 +23,13 @@
+@@ -15,11 +23,12 @@
   */
  
  import { spawn } from "node:child_process";
@@ -43,7 +43,6 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
 -import { qmdArgsWithIndex } from "./session-start.ts";
 +import { existsSync, rmSync, statSync, writeFileSync } from "node:fs";
 +import { tmpdir } from "node:os";
-+import { dirname, isAbsolute, join, resolve } from "node:path";
 +import { debug } from "../../../core/index.ts";
 +import { REFRESH_SWITCH, refreshDisabled } from "./switches.ts";
 +import { qmdArgsWithIndex } from "./index-name.ts";
@@ -51,19 +50,19 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
  
  /**
   * Path segments that must never trigger a QMD refresh — writes into these
-@@ -156,20 +166,34 @@
+@@ -156,20 +165,34 @@
  }
  
  /**
 - * Parse the worker's trailing-flush arguments. Absent or malformed → an
 - * immediate run, exactly as before trailing flushes existed. The delay is
 - * capped so a bad value cannot park a detached process for long.
-+ * The arguments the worker runs on: the vault (`--vault`, its cwd for qmd),
++ * The arguments the worker runs on: the vault (`--vault`),
 + * the index (`--index`; absent means qmd's global one), both resolved by the
 + * effect that spawns it, exactly as session start resolves them.
   */
 +export function workerArgsFor(vaultRoot: string, qmdIndex: string | null): string[] {
-+	return [`--vault=${resolve(vaultRoot)}`, ...(qmdIndex === null ? [] : [`--index=${qmdIndex}`])];
++	return [`--vault=${vaultRoot}`, ...(qmdIndex === null ? [] : [`--index=${qmdIndex}`])];
 +}
 +
 +/**
@@ -90,7 +89,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
  	const afterRaw = get("after");
  	const after = afterRaw === null || afterRaw === "" ? Number.NaN : Number(afterRaw);
  	return {
-@@ -178,25 +202,12 @@
+@@ -178,25 +201,12 @@
  			sentinelPath,
  			afterMs: Number.isFinite(after) ? after : null,
  		},
@@ -118,62 +117,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
   * A single qmd subcommand spawn — cmd, args, shell flag (from
   * `buildQmdCommand`) plus the per-step timeout budget. Pairing the
   * timeout with its invocation keeps the worker's execution loop from
-@@ -244,6 +255,54 @@
- 	return [update, embed, update];
- }
- 
-+/**
-+ * The project-local qmd config at or above `dir`, as qmd looks for it
-+ * when no `--index` is given (@tobilu/qmd 2.5.3's `findLocalConfigPath`):
-+ * `.qmd/index.yaml`, then `.qmd/index.yml`, walking up. Null when none.
-+ */
-+export function localQmdConfigAt(dir: string): string | null {
-+	for (let at = resolve(dir); ; at = dirname(at)) {
-+		for (const name of ["index.yaml", "index.yml"]) {
-+			const file = join(at, ".qmd", name);
-+			if (existsSync(file)) return file;
-+		}
-+		if (dirname(at) === at) return null;
-+	}
-+}
-+
-+/**
-+ * The detached worker's spawn options. Its cwd is the OS temp folder, so a
-+ * worker that can last minutes (a trailing flush's sleep, then three qmd
-+ * steps) never holds the vault folder open on Windows, where that blocks a
-+ * rename or delete (#106). Its arguments are absolute, so it needs no cwd.
-+ */
-+export function workerSpawnOptions(): { detached: true; stdio: "ignore"; windowsHide: true; cwd: string } {
-+	return { detached: true, stdio: "ignore", windowsHide: true, cwd: tmpdir() };
-+}
-+
-+/**
-+ * A qmd step's spawn options in the worker: from the OS temp folder, as
-+ * session start's `qmd update` runs (#106). With an index name, qmd reads
-+ * nothing against its cwd but a relative INDEX_PATH or QMD_CONFIG_DIR, so
-+ * those resolve against the vault, the cwd they used to have. Without one,
-+ * qmd looks for a project-local config from its cwd, which no flag can
-+ * pass, so a vault with one keeps the vault as cwd.
-+ */
-+export function qmdStepOptions(
-+	inv: QmdInvocation,
-+	vault: string,
-+	qmdIndex: string | null,
-+	env: Readonly<Record<string, string | undefined>>,
-+): { stdio: "ignore"; timeout: number; shell: boolean; windowsHide: true; cwd: string; env: Record<string, string | undefined> } {
-+	const pinned: Record<string, string | undefined> = { ...env };
-+	for (const key of ["INDEX_PATH", "QMD_CONFIG_DIR"]) {
-+		const value = env[key];
-+		if (value && !isAbsolute(value)) pinned[key] = resolve(vault, value);
-+	}
-+	const cwd = qmdIndex === null && localQmdConfigAt(vault) !== null ? vault : tmpdir();
-+	return { stdio: "ignore", timeout: inv.timeoutMs, shell: inv.shell, windowsHide: true, cwd, env: pinned };
-+}
-+
- // --- Impure orchestration ---------------------------------------------------
- 
- /**
-@@ -276,10 +335,6 @@
+@@ -276,10 +286,6 @@
  	}
  }
  
@@ -184,22 +128,18 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
  /**
   * Spawn the detached worker. `stdio: 'ignore'` + `.unref()` + `detached`
   * survive parent exit without leaving file descriptors open, and
-@@ -300,12 +355,8 @@
- 			workerPath,
- 			...workerArgs,
- 		],
--		{
--			detached: true,
--			stdio: "ignore",
--			windowsHide: true,
+@@ -304,7 +310,9 @@
+ 			detached: true,
+ 			stdio: "ignore",
+ 			windowsHide: true,
 -			cwd: process.cwd(),
--		},
-+		// windowsHide repeated where the scan of spawn calls sees it (#96).
-+		{ ...workerSpawnOptions(), windowsHide: true },
++			// The temp folder, so a worker that can last minutes never holds the
++			// vault open on Windows (#106). Its arguments are absolute.
++			cwd: tmpdir(),
+ 		},
  	);
  	child.on("error", (err) => {
- 		debug(`${logPrefix}: worker spawn error: ${err.message}`);
-@@ -330,6 +381,16 @@
+@@ -330,6 +338,16 @@
  	readonly workerPath: string;
  	readonly debounceMs: number;
  	readonly logPrefix: string;
@@ -216,7 +156,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
  	/** Test seams; production uses the real resolver and spawn. */
  	readonly qmdAvailable?: () => boolean;
  	readonly spawnWorker?: (workerPath: string, args: readonly string[]) => void;
-@@ -357,13 +418,17 @@
+@@ -357,13 +375,17 @@
  	// as usual, so the trigger's observable behaviour is unchanged (#337).
  	const spawnWorker =
  		opts.spawnWorker ??
@@ -236,7 +176,7 @@ diff --git a/core/scripts/extensions/qmd/lib/refresh.ts b/core/scripts/extension
  		return;
  	}
  
-@@ -387,5 +452,6 @@
+@@ -387,5 +409,6 @@
  		`--trailing=${opts.sentinelPath}`,
  		`--delay-ms=${remaining}`,
  		`--after=${mtime ?? ""}`,

@@ -45,7 +45,7 @@
       "patches": [
         "0044-qmd-refresh.patch"
       ],
-      "sha256": "660692d2fb8e2f2c015e5ad165e676a9ddfba5ab7b8961d8bf27e5f98cf0b644",
+      "sha256": "5a1884a705904610f68aab204b38f22ed1d63ea243a80dcf80e229004c900b18",
       "upstream": "lib/qmd-refresh.ts",
       "upstreamSha256": "7b48b64e26100151e0083e6f164c2643dfd4a664a2567b9b1385a96d904da00e"
     },
@@ -85,7 +85,7 @@
       "patches": [
         "0043-qmd-refresh-run.patch"
       ],
-      "sha256": "e8008bf0107a9e4c9c4daacca8d80b9b55eee75e447eca2c04493f66ae6dde7f",
+      "sha256": "a63605cfd4c89d22c60f2dd1b4c1b6ed8608b50b2dc477d442fd52707aebf33f",
       "upstream": "qmd-refresh-run.ts",
       "upstreamSha256": "1b62c0894cbad537ddbcf0f194bed612f7b7aeadefe9a0eb895472f46bc69ed8"
     },
