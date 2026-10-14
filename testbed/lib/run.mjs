@@ -45,7 +45,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
       const session = { ...spec.session, env, allowedTools: s.allowedTools ?? spec.session.allowedTools, disallowedTools: s.disallowedTools ?? spec.session.disallowedTools, tools: s.tools ?? spec.session.tools }
       const dirs = userQmdDirs({ ...process.env, ...env })
       const before = snapshot(dirs)
-      const procsBefore = procs ?? processes()
+      const procsBefore = processes()
       const r = await runSession({ cmd, arm, bed, mod: spec.mod, session, turns: s.turns, logDir: path.join(out, 'logs'), name })
       let left = leftovers(procsBefore, (procs = processes()), runFolders(out))
       // Claude Code may still be finishing a hook it didn't wait for: one more look.
