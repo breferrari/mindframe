@@ -33,7 +33,7 @@
 import { spawnSync } from "node:child_process";
 import { debug } from "../../core/index.ts";
 import { resolveQmdEntry } from "./lib/qmd.ts";
-import { qmdCwdFor, qmdPathsAgainst } from "./lib/index-name.ts";
+import { qmdCwdFor, qmdPathsAgainst } from "./lib/qmd-cwd.ts";
 import { claimTrailingFlush, composeWorkerInvocations, parseWorkerArgs } from "./lib/refresh.ts";
 
 const { trailing, vault, index } = parseWorkerArgs(process.argv.slice(2));

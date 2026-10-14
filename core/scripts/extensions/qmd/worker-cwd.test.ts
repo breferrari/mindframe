@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sentinelPathFor } from "./index.ts";
-import { localQmdConfigAt, qmdCwdFor, qmdPathsAgainst } from "./lib/index-name.ts";
+import { localQmdConfigAt, qmdCwdFor, qmdPathsAgainst } from "./lib/qmd-cwd.ts";
 import { rmTemp, spawnCalls } from "./test-fakes.ts";
 
 const DIR = fileURLToPath(new URL(".", import.meta.url));
@@ -64,16 +64,33 @@ describe("the refresh worker runs from the temp folder (#106)", () => {
 	});
 
 	test("only .qmd/index.yaml or .qmd/index.yml counts, as in qmd", (t) => {
-		const { vault } = layout(t, [["v", ".qmd", "other.yml"]]);
-		assert.equal(localQmdConfigAt(join(vault, "deeper")), null);
+		const { root, vault } = layout(t, [["v", ".qmd", "other.yml"]]);
+		// Whatever lies above the test's root (a .qmd/ in a dev's profile) is found from the root too.
+		assert.equal(localQmdConfigAt(join(vault, "deeper")), localQmdConfigAt(root));
 	});
 
-	test("a relative INDEX_PATH or QMD_CONFIG_DIR resolves against the vault, the cwd it used to have", (t) => {
+	test("a temp folder that doesn't exist keeps the vault", (t) => {
+		const { root, vault } = layout(t);
+		assert.equal(qmdCwdFor(vault, "idx", join(root, "gone")), vault);
+	});
+
+	test("a relative path variable qmd reads resolves against the vault, the cwd it used to have", (t) => {
 		const { vault } = layout(t);
-		const env = qmdPathsAgainst(vault, { INDEX_PATH: join("store", "i.sqlite"), QMD_CONFIG_DIR: "cfg", HOME: "/h" });
-		assert.deepEqual(env, { INDEX_PATH: join(vault, "store", "i.sqlite"), QMD_CONFIG_DIR: join(vault, "cfg"), HOME: "/h" });
+		const env = qmdPathsAgainst(vault, { INDEX_PATH: join("store", "i.sqlite"), QMD_CONFIG_DIR: "cfg", XDG_CONFIG_HOME: "xc", XDG_CACHE_HOME: "xk", HOME: "h" });
+		assert.deepEqual(env, {
+			INDEX_PATH: join(vault, "store", "i.sqlite"),
+			QMD_CONFIG_DIR: join(vault, "cfg"),
+			XDG_CONFIG_HOME: join(vault, "xc"),
+			XDG_CACHE_HOME: join(vault, "xk"),
+			HOME: "h",
+		});
 		const abs = resolve(tmpdir(), "elsewhere");
 		assert.deepEqual(qmdPathsAgainst(vault, { INDEX_PATH: abs, QMD_CONFIG_DIR: abs }), { INDEX_PATH: abs, QMD_CONFIG_DIR: abs }, "absolute ones are kept");
+		if (process.platform === "win32") {
+			const rooted = qmdPathsAgainst(vault, { INDEX_PATH: "\\idx\\i.sqlite" })["INDEX_PATH"];
+			assert.equal(rooted, resolve(vault, "\\idx\\i.sqlite"),"a root-relative one takes the vault's drive, not the temp folder's");
+			assert.equal(rooted?.slice(0, 2).toLowerCase(), vault.slice(0, 2).toLowerCase());
+		}
 		assert.deepEqual(qmdPathsAgainst(vault, { INDEX_PATH: "" }), { INDEX_PATH: "" }, "an empty one is qmd's unset and stays so; an absent one stays absent");
 	});
 
@@ -83,12 +100,16 @@ describe("the refresh worker runs from the temp folder (#106)", () => {
 
 	// The helpers above are only as good as the spawns that use them.
 	test("the worker's spawn and each qmd step's take their cwd from them", () => {
-		const [worker] = spawnCalls(readFileSync(join(DIR, "lib", "refresh.ts"), "utf8"));
-		assert.match(worker ?? "", /\bcwd:\s*tmpdir\(\)/);
+		const workers = spawnCalls(readFileSync(join(DIR, "lib", "refresh.ts"), "utf8"));
+		assert.ok(workers.length > 0);
+		for (const call of workers) assert.match(call, /\bcwd:\s*tmpdir\(\)/);
 		const source = readFileSync(join(DIR, "qmd-refresh-run.ts"), "utf8");
-		const [step] = spawnCalls(source);
-		assert.match(step ?? "", /[{,\s]cwd,\s/);
-		assert.match(step ?? "", /[{,\s]env,?\s/);
+		const steps = spawnCalls(source);
+		assert.ok(steps.length > 0);
+		for (const call of steps) {
+			assert.match(call, /[{,\s]cwd,\s/);
+			assert.match(call, /[{,\s]env,?\s/);
+		}
 		assert.match(source, /const cwd = qmdCwdFor\(vault, index\);/);
 		assert.match(source, /const env = qmdPathsAgainst\(vault, process\.env\);/);
 	});

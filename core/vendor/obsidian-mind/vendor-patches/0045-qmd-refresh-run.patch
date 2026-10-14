@@ -57,7 +57,7 @@ diff --git a/core/scripts/extensions/qmd/qmd-refresh-run.ts b/core/scripts/exten
 -	parseWorkerArgs,
 -	resolveVaultRoot,
 -} from "./lib/qmd-refresh.ts";
-+import { qmdCwdFor, qmdPathsAgainst } from "./lib/index-name.ts";
++import { qmdCwdFor, qmdPathsAgainst } from "./lib/qmd-cwd.ts";
 +import { claimTrailingFlush, composeWorkerInvocations, parseWorkerArgs } from "./lib/refresh.ts";
  
 -const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));

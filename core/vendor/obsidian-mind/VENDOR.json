@@ -83,9 +83,9 @@
     },
     "core/scripts/extensions/qmd/qmd-refresh-run.ts": {
       "patches": [
-        "0043-qmd-refresh-run.patch"
+        "0045-qmd-refresh-run.patch"
       ],
-      "sha256": "a63605cfd4c89d22c60f2dd1b4c1b6ed8608b50b2dc477d442fd52707aebf33f",
+      "sha256": "6ab489d6dec54c10ce919cccb06f3b6c2904b6d24e1fa76b89d878b6cb7d45c6",
       "upstream": "qmd-refresh-run.ts",
       "upstreamSha256": "1b62c0894cbad537ddbcf0f194bed612f7b7aeadefe9a0eb895472f46bc69ed8"
     },

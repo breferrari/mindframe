@@ -4,9 +4,7 @@
  * (#70), which re-exports them until #135.
  */
 
-import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import type { ManifestObject } from "../../../core/index.ts";
 
 /**
@@ -158,47 +156,4 @@ export function resolveIndexStorePath(
 	if (env["INDEX_PATH"]) return env["INDEX_PATH"];
 	const base = env["XDG_CACHE_HOME"] || join(env["HOME"] || env["USERPROFILE"] || home, ".cache");
 	return join(base, "qmd", `${indexName}.sqlite`);
-}
-
-/**
- * The project-local qmd config at or above `dir`, as qmd looks for it when no
- * `--index` is given (@tobilu/qmd 2.5.3's `findLocalConfigPath`, from its
- * cwd): `.qmd/index.yaml`, then `.qmd/index.yml`, walking up. Null when none.
- */
-export function localQmdConfigAt(dir: string): string | null {
-	for (let at = resolve(dir); ; at = dirname(at)) {
-		for (const name of ["index.yaml", "index.yml"]) {
-			const file = join(at, ".qmd", name);
-			if (existsSync(file)) return file;
-		}
-		if (dirname(at) === at) return null;
-	}
-}
-
-/**
- * The cwd for a qmd call about `vault`: the OS temp folder, so a long qmd
- * process never holds the vault open on Windows (#106). With an index name,
- * qmd reads nothing against its cwd but the variables `qmdPathsAgainst`
- * pins. Without one, it uses the first project-local config above its cwd,
- * which no flag can pass: the vault stays the cwd whenever the temp folder
- * would find a different one (the vault's own, or one in the user profile
- * the temp folder sits in on Windows).
- */
-export function qmdCwdFor(vault: string, qmdIndex: string | null, temp: string = tmpdir()): string {
-	return qmdIndex !== null || localQmdConfigAt(temp) === localQmdConfigAt(vault) ? temp : vault;
-}
-
-/**
- * `env` with a relative INDEX_PATH or QMD_CONFIG_DIR resolved against the
- * vault. qmd uses both as given, against its cwd (2.5.3's `getDefaultDbPath`
- * and `getConfigDir`), so a qmd call from outside the vault gets them as
- * the vault would have read them. Empty ones are qmd's unset and stay so.
- */
-export function qmdPathsAgainst(vault: string, env: Readonly<Record<string, string | undefined>>): Record<string, string | undefined> {
-	const pinned: Record<string, string | undefined> = { ...env };
-	for (const key of ["INDEX_PATH", "QMD_CONFIG_DIR"]) {
-		const value = env[key];
-		if (value && !isAbsolute(value)) pinned[key] = resolve(vault, value);
-	}
-	return pinned;
 }
