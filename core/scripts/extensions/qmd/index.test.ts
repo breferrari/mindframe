@@ -8,7 +8,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EffectTrigger, HookContext } from "../../core/index.ts";
 import { QMD_DECLARATION } from "../../core/context.ts";
@@ -187,7 +187,7 @@ describe("the qmd extension's effects (#95)", () => {
 		const fallback = join("/v", ".claude", "scripts", ".qmd-refresh-sentinel");
 		assert.equal(sentinelPathFor("/v", { QMD_REFRESH_SENTINEL: "" }), fallback);
 		assert.equal(sentinelPathFor("/v", {}), fallback);
-		assert.equal(sentinelPathFor("/v", { QMD_REFRESH_SENTINEL: "/t/s" }), "/t/s");
+		assert.equal(sentinelPathFor("/v", { QMD_REFRESH_SENTINEL: "/t/s" }), resolve("/t/s"), "a set one is used, made absolute (#106)");
 	});
 
 	test("a missing worker is reported only where a worker would spawn: not without QMD, not with the refresh off, not inside a covered window (#95)", async () => {
