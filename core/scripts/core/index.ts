@@ -77,6 +77,8 @@ export {
 	INSTRUCTION_FILE,
 	RETIRED_INSTRUCTION_FILES,
 	filesystemIgnoresCase,
+	probeIgnoresCase,
+	vaultIgnoresCase,
 	geminiContextFiles,
 	geminiReadsAgentsMd,
 	isInstructionFile,

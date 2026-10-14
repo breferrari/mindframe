@@ -10,7 +10,8 @@
  */
 
 import { readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { VAULT_MARKER } from "./project-dir.ts";
 
 export const INSTRUCTION_FILE = "AGENTS.md";
 export const CLAUDE_MD = "CLAUDE.md";
@@ -47,19 +48,58 @@ export const RETIRED_INSTRUCTION_FILES: readonly string[] = Object.freeze([CLAUD
 export const INSTRUCTION_FILES: readonly string[] = Object.freeze([INSTRUCTION_FILE, ...RETIRED_INSTRUCTION_FILES]);
 
 /**
- * Whether the platform's filesystem ignores case, so `claude.md` opens
- * `CLAUDE.md`: Windows, and macOS, whose default APFS is case-insensitive.
- * Known gaps, read by the platform's default (#91): a case-sensitive APFS
- * volume, and WSL on an NTFS mount (`/mnt/c`), which reports linux but ignores
- * case. #112 probes the vault root's filesystem instead.
+ * Whether the platform's filesystem ignores case by default, so `claude.md`
+ * opens `CLAUDE.md`: Windows, and macOS, whose default APFS is
+ * case-insensitive (#91). A guess where a folder is at hand: WSL on an NTFS
+ * mount reports linux but ignores case, and a case-sensitive APFS volume
+ * reports darwin, so `vaultIgnoresCase` probes the vault root's filesystem
+ * and falls back to this (#112).
  */
 export function filesystemIgnoresCase(platform: NodeJS.Platform = process.platform): boolean {
 	return platform === "win32" || platform === "darwin";
 }
 
+/**
+ * Whether the filesystem holding `dir` ignores case, by a stat of the vault
+ * marker under a case-swapped spelling (#112): the same file (same device and
+ * inode) means it ignores case; missing, or a different file, means case
+ * matters. A filesystem that gives no inodes (0) ignores case when the
+ * swapped spelling opens at all. Null when it can't tell: no marker, or a
+ * stat that fails.
+ */
+export function probeIgnoresCase(dir: string, stat: typeof statSync = statSync): boolean | null {
+	try {
+		const marker = stat(join(dir, VAULT_MARKER), { bigint: true, throwIfNoEntry: false });
+		if (marker === undefined) return null;
+		const swapped = stat(join(dir, VAULT_MARKER.toUpperCase()), { bigint: true, throwIfNoEntry: false });
+		if (swapped === undefined) return false;
+		if (marker.ino === 0n) return true;
+		return swapped.dev === marker.dev && swapped.ino === marker.ino;
+	} catch {
+		return null;
+	}
+}
+
+/** Each vault root's probed rule, so the probe runs at most once per vault per process. */
+const probed = new Map<string, boolean | null>();
+
+/**
+ * Whether the vault root's filesystem ignores case: the probe's answer
+ * (`probeIgnoresCase`, once per root per process), else the platform's
+ * default (`filesystemIgnoresCase`).
+ */
+export function vaultIgnoresCase(vaultRoot: string, platform: NodeJS.Platform = process.platform, stat: typeof statSync = statSync): boolean {
+	const key = resolve(vaultRoot);
+	if (!probed.has(key)) probed.set(key, probeIgnoresCase(key, stat));
+	return probed.get(key) ?? filesystemIgnoresCase(platform);
+}
+
+/** A name or path folded by a case rule: lowercased where the filesystem ignores case. */
+const fold = (p: string, ignoresCase: boolean): string => (ignoresCase ? p.toLowerCase() : p);
+
 /** A name or path as `platform`'s filesystem compares it: lowercased where it ignores case (#91). */
 export function foldOnDisk(p: string, platform: NodeJS.Platform = process.platform): string {
-	return filesystemIgnoresCase(platform) ? p.toLowerCase() : p;
+	return fold(p, filesystemIgnoresCase(platform));
 }
 
 /** Whether two names or paths open the same file on `platform` (#91). */
@@ -67,9 +107,9 @@ export function sameOnDisk(a: string, b: string, platform: NodeJS.Platform = pro
 	return foldOnDisk(a, platform) === foldOnDisk(b, platform);
 }
 
-/** Whether `name` is one of `names` as the agent would open it on `platform`. */
-function opensAs(name: string, names: readonly string[], platform: NodeJS.Platform): boolean {
-	return names.some((f) => sameOnDisk(name, f, platform));
+/** Whether `name` is one of `names` as the agent would open it, by a case rule. */
+function opensAs(name: string, names: readonly string[], ignoresCase: boolean): boolean {
+	return names.some((f) => fold(name, ignoresCase) === fold(f, ignoresCase));
 }
 
 /**
@@ -81,12 +121,12 @@ function opensAs(name: string, names: readonly string[], platform: NodeJS.Platfo
  * question (#104).
  */
 export function isRetiredInstructionFile(name: string, platform: NodeJS.Platform = process.platform): boolean {
-	return opensAs(name, RETIRED_INSTRUCTION_FILES, platform);
+	return opensAs(name, RETIRED_INSTRUCTION_FILES, filesystemIgnoresCase(platform));
 }
 
 /** Whether a root file name is `AGENTS.md` or a retired instruction file, by the same rule (#91). */
 export function isInstructionFile(name: string, platform: NodeJS.Platform = process.platform): boolean {
-	return opensAs(name, INSTRUCTION_FILES, platform);
+	return opensAs(name, INSTRUCTION_FILES, filesystemIgnoresCase(platform));
 }
 
 /**
@@ -154,23 +194,33 @@ function stripJsonComments(text: string): string {
 
 /**
  * Whether the vault's Gemini settings point Gemini at `AGENTS.md` and not at
- * `GEMINI.md`, the names matched as Gemini opens them (#91): only then is a
- * `GEMINI.md` retired. Without settings, or with a user's own that name no
- * context file, `GEMINI.md` is still Gemini's manual (#104).
+ * `GEMINI.md`, the names matched as Gemini opens them, by the vault root's
+ * case rule (#91, #112): only then is a `GEMINI.md` retired. Without
+ * settings, or with a user's own that name no context file, `GEMINI.md` is
+ * still Gemini's manual (#104).
  */
-export function geminiReadsAgentsMd(vaultRoot: string, platform: NodeJS.Platform = process.platform): boolean {
+export function geminiReadsAgentsMd(
+	vaultRoot: string,
+	platform: NodeJS.Platform = process.platform,
+	ignoresCase: boolean = vaultIgnoresCase(vaultRoot, platform),
+): boolean {
 	const names = geminiContextFiles(vaultRoot);
-	return opensAs(INSTRUCTION_FILE, names, platform) && !opensAs(GEMINI_MD, names, platform);
+	return opensAs(INSTRUCTION_FILE, names, ignoresCase) && !opensAs(GEMINI_MD, names, ignoresCase);
 }
 
 /**
  * Whether a root file name is retired in this vault: `CLAUDE.md` always, and
- * `GEMINI.md` only where Gemini reads `AGENTS.md` (#104), each matched by
- * #91's rule. The settings are read once, when this is called; the returned
- * check reads nothing. `isRetiredInstructionFile` stays vault-free: the
- * frozen list of the names that can be retired.
+ * `GEMINI.md` only where Gemini reads `AGENTS.md` (#104), each matched by the
+ * vault root's case rule (#91: probed, #112, with `platform` the fallback,
+ * or `ignoresCase` when given). The settings are read once, when this is
+ * called; the returned check reads nothing. `isRetiredInstructionFile` stays
+ * vault-free: the frozen list of the names that can be retired.
  */
-export function retiredInVault(vaultRoot: string, platform: NodeJS.Platform = process.platform): (name: string) => boolean {
-	const geminiRetired = geminiReadsAgentsMd(vaultRoot, platform);
-	return (name) => isRetiredInstructionFile(name, platform) && (geminiRetired || !sameOnDisk(name, GEMINI_MD, platform));
+export function retiredInVault(
+	vaultRoot: string,
+	platform: NodeJS.Platform = process.platform,
+	ignoresCase: boolean = vaultIgnoresCase(vaultRoot, platform),
+): (name: string) => boolean {
+	const geminiRetired = geminiReadsAgentsMd(vaultRoot, platform, ignoresCase);
+	return (name) => opensAs(name, RETIRED_INSTRUCTION_FILES, ignoresCase) && (geminiRetired || !opensAs(name, [GEMINI_MD], ignoresCase));
 }

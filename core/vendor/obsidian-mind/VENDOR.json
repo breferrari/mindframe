@@ -112,9 +112,9 @@
     },
     "core/scripts/lib/instruction-files.ts": {
       "patches": [
-        "0026-instruction-files.patch"
+        "0046-instruction-files.patch"
       ],
-      "sha256": "652856dd4c2b5a623b466cdd4514a60432deece24fd73a6dc81b4e5f5ede9538",
+      "sha256": "aa2d8b8a908b96152a159e404dcd3e09fdcf03963c955d7db2e9a7e4613c9608",
       "upstream": "lib/instruction-files.ts",
       "upstreamSha256": "3367dcf34cdf8e14ff7a75cc515a6f23c76d3120fb43868dd507adc860e184c5"
     },
