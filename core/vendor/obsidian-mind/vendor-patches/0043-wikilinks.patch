@@ -1,6 +1,6 @@
-Description: mindframe: line regions and link offsets exported (#81); fences closed as CommonMark closes them (#87); obsidian-mind #333's comments (#90); the one frontmatter rule, code read in the body only (#82)
+Description: mindframe: line regions and link offsets exported (#81); fences closed as CommonMark closes them (#87); obsidian-mind #333's comments (#90); the one frontmatter rule, code read in the body only (#82); a line-0 BOM read past by every region test (#107)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
-Last-Update: 2026-10-13
+Last-Update: 2026-10-14
 
 diff --git a/core/scripts/lib/wikilinks.ts b/core/scripts/lib/wikilinks.ts
 --- a/core/scripts/lib/wikilinks.ts
@@ -15,7 +15,7 @@ diff --git a/core/scripts/lib/wikilinks.ts b/core/scripts/lib/wikilinks.ts
  const ASSET_EXTENSIONS = new Set([
  	"png",
  	"jpg",
-@@ -44,38 +47,125 @@
+@@ -44,38 +47,128 @@
  ]);
  
  /**
@@ -97,7 +97,10 @@ diff --git a/core/scripts/lib/wikilinks.ts b/core/scripts/lib/wikilinks.ts
 + *   or the end of the line.
 + */
 +export function lineRegions(lines: readonly string[]): LineRegion[] {
-+	const bare = lines.map((l) => l.replace(/\r$/, ""));
++	// A BOM on line 0 is the file's, not the note's text: every region test
++	// reads past it, so a BOM then `# Title` is a heading (#107). On a later
++	// line it is content, and stays.
++	const bare = lines.map((l, i) => (i === 0 ? l.replace(/^\uFEFF/, "") : l).replace(/\r$/, ""));
 +	// The core's one frontmatter rule (lib/frontmatter-block.ts, #82).
 +	const close = frontmatterLines(bare)?.close ?? -1;
 +	let open: OpenFence = null;
@@ -160,7 +163,7 @@ diff --git a/core/scripts/lib/wikilinks.ts b/core/scripts/lib/wikilinks.ts
   * Extract resolution targets from every `[[...]]` in the content
   * (code regions pre-stripped). Returns raw target strings — alias tails,
   * fragments, and embed prefixes removed; empties/placeholders/assets
-@@ -83,26 +173,30 @@
+@@ -83,26 +176,30 @@
   */
  export function extractWikilinkTargets(content: string): string[] {
  	const targets: string[] = [];
@@ -207,7 +210,7 @@ diff --git a/core/scripts/lib/wikilinks.ts b/core/scripts/lib/wikilinks.ts
  /**
   * Split a YAML inline list's contents on its SEPARATORS.
   *
-@@ -158,18 +252,13 @@
+@@ -158,18 +255,13 @@
   * whole check, not one link.
   */
  export function extractAliases(content: string): string[] {
