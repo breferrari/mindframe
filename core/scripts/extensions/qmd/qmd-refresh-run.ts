@@ -20,7 +20,9 @@
  * the qmd extension's refresh effect resolves exactly as session start does
  * (lifted from obsidian-mind 0a58edf's `qmd-refresh-run.ts`, #95, which
  * derived them from its own path two folders below the vault; this one sits
- * four deep). No `--vault`: nothing to refresh, so it exits.
+ * four deep). No `--vault`: nothing to refresh, so it exits. Its qmd steps
+ * run from the OS temp folder, not the vault, so a worker that lasts
+ * minutes never holds the vault open on Windows (#106; `qmdStepOptions`).
  *
  * Multi-platform: delegates the spawn shape to `lib/qmd.ts`, which
  * routes through `process.execPath qmd.js` on every OS, bypassing the
@@ -30,7 +32,7 @@
 import { spawnSync } from "node:child_process";
 import { debug } from "../../core/index.ts";
 import { resolveQmdEntry } from "./lib/qmd.ts";
-import { claimTrailingFlush, composeWorkerInvocations, parseWorkerArgs } from "./lib/refresh.ts";
+import { claimTrailingFlush, composeWorkerInvocations, parseWorkerArgs, qmdStepOptions } from "./lib/refresh.ts";
 
 const { trailing, vault, index } = parseWorkerArgs(process.argv.slice(2));
 if (vault === null) {
@@ -52,12 +54,11 @@ if (trailing !== null) {
 const invocations = composeWorkerInvocations(index, resolveQmdEntry());
 
 for (const inv of invocations) {
+	// From the temp folder, so the worker never holds the vault open (#106).
 	const result = spawnSync(inv.cmd, inv.args as string[], {
-		stdio: "ignore",
-		timeout: inv.timeoutMs,
-		shell: inv.shell,
+		...qmdStepOptions(inv, vault, index, process.env),
+		// Repeated where the scan of spawn calls sees it (#96).
 		windowsHide: true,
-		cwd: vault,
 	});
 	if (result.error) {
 		debug(`qmd-refresh-run: ${inv.args.join(" ")} — ${result.error.message}`);

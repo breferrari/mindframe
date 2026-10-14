@@ -9,8 +9,9 @@
  * Lifted from obsidian-mind 0a58edf's `.claude/scripts/lib/qmd-refresh.ts`
  * (#95); mindframe's vendor record of obsidian-mind holds the commit it is
  * recorded against. Changed: the imports, the worker is told its vault and index
- * (`--vault`, `--index`) instead of deriving them from its own path, and
- * the switch reads an injected environment. A vault's own triggers that
+ * (`--vault`, `--index`) instead of deriving them from its own path, the
+ * switch reads an injected environment, and the worker and its qmd steps
+ * run from the OS temp folder, not the vault (#106). A vault's own triggers that
  * still call obsidian-mind's copy share this one's sentinel, so both
  * debounce as one.
  *
@@ -23,6 +24,8 @@
 
 import { spawn } from "node:child_process";
 import { existsSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { debug } from "../../../core/index.ts";
 import { REFRESH_SWITCH, refreshDisabled } from "./switches.ts";
 import { qmdArgsWithIndex } from "./index-name.ts";
@@ -168,7 +171,7 @@ export function claimTrailingFlush(
  * effect that spawns it, exactly as session start resolves them.
  */
 export function workerArgsFor(vaultRoot: string, qmdIndex: string | null): string[] {
-	return [`--vault=${vaultRoot}`, ...(qmdIndex === null ? [] : [`--index=${qmdIndex}`])];
+	return [`--vault=${resolve(vaultRoot)}`, ...(qmdIndex === null ? [] : [`--index=${qmdIndex}`])];
 }
 
 /**
@@ -252,6 +255,54 @@ export function composeWorkerInvocations(
 	return [update, embed, update];
 }
 
+/**
+ * The project-local qmd config at or above `dir`, as qmd looks for it
+ * when no `--index` is given (@tobilu/qmd 2.5.3's `findLocalConfigPath`):
+ * `.qmd/index.yaml`, then `.qmd/index.yml`, walking up. Null when none.
+ */
+export function localQmdConfigAt(dir: string): string | null {
+	for (let at = resolve(dir); ; at = dirname(at)) {
+		for (const name of ["index.yaml", "index.yml"]) {
+			const file = join(at, ".qmd", name);
+			if (existsSync(file)) return file;
+		}
+		if (dirname(at) === at) return null;
+	}
+}
+
+/**
+ * The detached worker's spawn options. Its cwd is the OS temp folder, so a
+ * worker that can last minutes (a trailing flush's sleep, then three qmd
+ * steps) never holds the vault folder open on Windows, where that blocks a
+ * rename or delete (#106). Its arguments are absolute, so it needs no cwd.
+ */
+export function workerSpawnOptions(): { detached: true; stdio: "ignore"; windowsHide: true; cwd: string } {
+	return { detached: true, stdio: "ignore", windowsHide: true, cwd: tmpdir() };
+}
+
+/**
+ * A qmd step's spawn options in the worker: from the OS temp folder, as
+ * session start's `qmd update` runs (#106). With an index name, qmd reads
+ * nothing against its cwd but a relative INDEX_PATH or QMD_CONFIG_DIR, so
+ * those resolve against the vault, the cwd they used to have. Without one,
+ * qmd looks for a project-local config from its cwd, which no flag can
+ * pass, so a vault with one keeps the vault as cwd.
+ */
+export function qmdStepOptions(
+	inv: QmdInvocation,
+	vault: string,
+	qmdIndex: string | null,
+	env: Readonly<Record<string, string | undefined>>,
+): { stdio: "ignore"; timeout: number; shell: boolean; windowsHide: true; cwd: string; env: Record<string, string | undefined> } {
+	const pinned: Record<string, string | undefined> = { ...env };
+	for (const key of ["INDEX_PATH", "QMD_CONFIG_DIR"]) {
+		const value = env[key];
+		if (value && !isAbsolute(value)) pinned[key] = resolve(vault, value);
+	}
+	const cwd = qmdIndex === null && localQmdConfigAt(vault) !== null ? vault : tmpdir();
+	return { stdio: "ignore", timeout: inv.timeoutMs, shell: inv.shell, windowsHide: true, cwd, env: pinned };
+}
+
 // --- Impure orchestration ---------------------------------------------------
 
 /**
@@ -304,12 +355,8 @@ function spawnDetachedWorker(
 			workerPath,
 			...workerArgs,
 		],
-		{
-			detached: true,
-			stdio: "ignore",
-			windowsHide: true,
-			cwd: process.cwd(),
-		},
+		// windowsHide repeated where the scan of spawn calls sees it (#96).
+		{ ...workerSpawnOptions(), windowsHide: true },
 	);
 	child.on("error", (err) => {
 		debug(`${logPrefix}: worker spawn error: ${err.message}`);

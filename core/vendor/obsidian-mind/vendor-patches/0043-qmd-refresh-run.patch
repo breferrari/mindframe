@@ -1,6 +1,6 @@
-Description: mindframe: the worker takes its vault and index from --vault and --index, as the qmd extension's effect resolves them (#95); at extensions/qmd/qmd-refresh-run.ts, under obsidian-mind's name, so its leftover-worker guards see it (#125)
+Description: mindframe: the worker takes its vault and index from --vault and --index, as the qmd extension's effect resolves them (#95); at extensions/qmd/qmd-refresh-run.ts, under obsidian-mind's name, so its leftover-worker guards see it (#125); its qmd steps run from the OS temp folder, not the vault (#106)
 Forwarded: https://github.com/breferrari/mindframe/issues/19
-Last-Update: 2026-10-13
+Last-Update: 2026-10-14
 
 diff --git a/core/scripts/extensions/qmd/qmd-refresh-run.ts b/core/scripts/extensions/qmd/qmd-refresh-run.ts
 --- a/core/scripts/extensions/qmd/qmd-refresh-run.ts
@@ -18,7 +18,7 @@ diff --git a/core/scripts/extensions/qmd/qmd-refresh-run.ts b/core/scripts/exten
   *
   * Runs `qmd update` (BM25/FTS) followed by `qmd embed` (vector index)
   * so mid-session writes become searchable through every retrieval arm,
-@@ -17,13 +16,11 @@
+@@ -17,13 +16,13 @@
   * and a flaky refresh must not pollute the next session's context or
   * terminal.
   *
@@ -33,11 +33,13 @@ diff --git a/core/scripts/extensions/qmd/qmd-refresh-run.ts b/core/scripts/exten
 + * the qmd extension's refresh effect resolves exactly as session start does
 + * (lifted from obsidian-mind 0a58edf's `qmd-refresh-run.ts`, #95, which
 + * derived them from its own path two folders below the vault; this one sits
-+ * four deep). No `--vault`: nothing to refresh, so it exits.
++ * four deep). No `--vault`: nothing to refresh, so it exits. Its qmd steps
++ * run from the OS temp folder, not the vault, so a worker that lasts
++ * minutes never holds the vault open on Windows (#106; `qmdStepOptions`).
   *
   * Multi-platform: delegates the spawn shape to `lib/qmd.ts`, which
   * routes through `process.execPath qmd.js` on every OS, bypassing the
-@@ -31,39 +28,19 @@
+@@ -31,39 +30,19 @@
   */
  
  import { spawnSync } from "node:child_process";
@@ -54,7 +56,7 @@ diff --git a/core/scripts/extensions/qmd/qmd-refresh-run.ts b/core/scripts/exten
 -	parseWorkerArgs,
 -	resolveVaultRoot,
 -} from "./lib/qmd-refresh.ts";
-+import { claimTrailingFlush, composeWorkerInvocations, parseWorkerArgs } from "./lib/refresh.ts";
++import { claimTrailingFlush, composeWorkerInvocations, parseWorkerArgs, qmdStepOptions } from "./lib/refresh.ts";
  
 -const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 -const VAULT_ROOT = resolveVaultRoot(SCRIPT_DIR);
@@ -83,7 +85,7 @@ diff --git a/core/scripts/extensions/qmd/qmd-refresh-run.ts b/core/scripts/exten
  if (trailing !== null) {
  	await new Promise((r) => setTimeout(r, trailing.delayMs));
  	if (!claimTrailingFlush(trailing.sentinelPath, trailing.afterMs)) {
-@@ -72,8 +49,7 @@
+@@ -72,16 +51,14 @@
  	}
  }
  
@@ -92,13 +94,15 @@ diff --git a/core/scripts/extensions/qmd/qmd-refresh-run.ts b/core/scripts/exten
 +const invocations = composeWorkerInvocations(index, resolveQmdEntry());
  
  for (const inv of invocations) {
++	// From the temp folder, so the worker never holds the vault open (#106).
  	const result = spawnSync(inv.cmd, inv.args as string[], {
-@@ -81,7 +57,7 @@
- 		timeout: inv.timeoutMs,
- 		shell: inv.shell,
+-		stdio: "ignore",
+-		timeout: inv.timeoutMs,
+-		shell: inv.shell,
++		...qmdStepOptions(inv, vault, index, process.env),
++		// Repeated where the scan of spawn calls sees it (#96).
  		windowsHide: true,
 -		cwd: VAULT_ROOT,
-+		cwd: vault,
  	});
  	if (result.error) {
  		debug(`qmd-refresh-run: ${inv.args.join(" ")} — ${result.error.message}`);
