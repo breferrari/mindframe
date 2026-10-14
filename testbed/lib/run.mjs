@@ -7,7 +7,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { buildBed, vaultCommit } from './bed.mjs'
-import { bedEnv } from './dry.mjs'
+import { bedEnv, withLeftovers } from './dry.mjs'
+import { leftovers, listProcesses } from './procs.mjs'
 import { diff, snapshot, userQmdDirs } from './residue.mjs'
 import { buildRun } from './results.mjs'
 import { runSession } from './session.mjs'
@@ -19,7 +20,7 @@ export function defaultOut(specName, now = new Date()) {
 
 const readOr = (file) => (existsSync(file) ? readFileSync(file, 'utf8') : '')
 
-export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () => {} }) {
+export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () => {}, processes = listProcesses }) {
   if (existsSync(out)) throw new Error(`output folder exists, pick a new one: ${out}`)
   mkdirSync(out, { recursive: true })
   const record = {
@@ -42,6 +43,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
       const session = { ...spec.session, env, allowedTools: s.allowedTools ?? spec.session.allowedTools, disallowedTools: s.disallowedTools ?? spec.session.disallowedTools, tools: s.tools ?? spec.session.tools }
       const dirs = userQmdDirs({ ...process.env, ...env })
       const before = snapshot(dirs)
+      const procsBefore = processes()
       const r = await runSession({ cmd, arm, bed, mod: spec.mod, session, turns: s.turns, logDir: path.join(out, 'logs'), name })
       const run = buildRun({
         scenario: s.id,
@@ -51,7 +53,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
         debugText: readOr(r.files.debug),
         exitCode: r.code,
         feed: r.feed,
-        residue: diff(before, snapshot(dirs), name),
+        residue: withLeftovers(diff(before, snapshot(dirs), name), leftovers(procsBefore, processes(), [bed, out])),
       })
       record.runs.push(run)
       onRun(run)
