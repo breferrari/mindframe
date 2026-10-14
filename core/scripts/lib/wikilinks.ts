@@ -107,8 +107,8 @@ export type LineRegion = "frontmatter" | "fence" | "heading" | "body";
  */
 export function lineRegions(lines: readonly string[]): LineRegion[] {
 	// A BOM on line 0 is the file's, not the note's text: every region test
-	// reads past it, so a BOM then `# Title` is a heading (#107). On a later
-	// line it is content, and stays.
+	// reads past it, so a BOM then `# Title` is a heading (#107). Later lines
+	// are read as written.
 	const bare = lines.map((l, i) => (i === 0 ? l.replace(/^\uFEFF/, "") : l).replace(/\r$/, ""));
 	// The core's one frontmatter rule (lib/frontmatter-block.ts, #82).
 	const close = frontmatterLines(bare)?.close ?? -1;
