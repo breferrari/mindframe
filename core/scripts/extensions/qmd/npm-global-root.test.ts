@@ -1,5 +1,5 @@
 /**
- * npmGlobalRoot, ported from obsidian-mind ac5a613 (#382; mindframe #123): where npm keeps global
+ * npmGlobalRoot, ported from obsidian-mind ac5a613 (its PR #382, for its issue #349; mindframe #123): where npm keeps global
  * packages, worked out without spawning npm in five cheap exact cases, and null (ask npm) otherwise.
  * The cases are obsidian-mind's tests/qmd.test.ts, against the qmd extension's lib/qmd.ts only, since
  * mindframe carries no qmd-mcp.mjs.
@@ -127,6 +127,7 @@ describe("npmGlobalRoot", () => {
 		);
 		assert.equal(posix({}, { [posixBuiltin]: "prefix=/opt/homebrew" }), null);
 		assert.equal(posix({}, { [posixBuiltin]: "userconfig=/etc/other-npmrc" }), null, "it moves the user npmrc");
+	assert.equal(posix({}, { [posixBuiltin]: "${NPM_PREFIX_KEY}=/opt/x" }), null, "a key npm would build from ${...}");
 	});
 
 	test("4: other keys in the builtin npmrc don't count", () => {
@@ -153,6 +154,11 @@ describe("npmGlobalRoot", () => {
 			),
 			null,
 		);
+		assert.equal(
+			win({ APPDATA: appdata }, { [winBuiltin]: "prefix=${APPDATA}\\npm", [join(appdata, "npm", "etc", "npmrc")]: "globalconfig=D:\\other" }),
+			null,
+			"a globalconfig there too",
+		);
 	});
 
 	// The property that matters: a root worked out here that holds qmd is
@@ -164,6 +170,8 @@ describe("npmGlobalRoot", () => {
 		}
 		const answer = npmAnswer();
 		if (answer === null) return t.skip("npm is not available here");
-		assert.equal(resolve(ours).toLowerCase(), resolve(answer).toLowerCase());
+		// Windows and macOS's default filesystem ignore case; Linux doesn't, so a case-only difference there is a different folder.
+	const fold = (p: string) => (process.platform === "win32" || process.platform === "darwin" ? resolve(p).toLowerCase() : resolve(p));
+	assert.equal(fold(ours), fold(answer));
 	});
 });
