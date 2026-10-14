@@ -78,10 +78,15 @@ export function leftovers(before, after, folders, platform = process.platform) {
  * The forms of the run's output folder a command line can name: as given,
  * and resolved, since a worker that takes its path from its own cwd or
  * module names the resolved one (macOS's /var is /private/var, a Windows
- * temp folder can be an 8.3 short name).
+ * temp folder can be an 8.3 short name). A folder that won't resolve (some
+ * Windows volumes refuse) is matched as given.
  */
 export function runFolders(out) {
-  return [...new Set([out, realpathSync(out), realpathSync.native(out)])]
+  try {
+    return [...new Set([out, realpathSync.native(out)])]
+  } catch {
+    return [out]
+  }
 }
 
 /** The residue check's result, with `procs` added to its leaks. */

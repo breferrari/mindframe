@@ -73,5 +73,5 @@ test("the run's folders are its output as given and as resolved, so a worker nam
   assert.ok(folders.includes(realpathSync.native(link)), JSON.stringify(folders))
   const after = { procs: [{ pid: 9, cmd: `node ${path.join(realpathSync.native(link), 'w.js')}` }] }
   assert.deepEqual(leftovers({ procs: [] }, after, folders).map((l) => l.pid), [9])
-  assert.deepEqual(runFolders(real), [...new Set([real, realpathSync(real), realpathSync.native(real)])], 'one entry per distinct form')
+  assert.deepEqual(runFolders(path.join(real, 'missing')), [path.join(real, 'missing')], 'a folder that will not resolve is matched as given')
 })

@@ -61,6 +61,7 @@ export function dryRun({ spec, vault, out, only, deliver = false, runner = execF
   const record = { spec: spec.name, specDoc: spec, dry: true, vault: { commit: vaultCommit(vault) }, started: new Date().toISOString(), runs: [] }
   // One session's after listing is the next one's before.
   let procs = null
+  const folders = runFolders(out)
   for (const s of spec.scenarios) {
     if (only && !only.includes(s.id)) continue
     if (!s.arms.includes('settings')) continue
@@ -144,7 +145,7 @@ export function dryRun({ spec, vault, out, only, deliver = false, runner = execF
       debugHooks: [],
       feed: [],
       ...(delivered ? { deliver: { exitCode: delivered.exitCode, output: delivered.output } } : {}),
-      residue: withLeftovers(diff(before, snapshot(dirs), name), leftovers(procsBefore, (procs = processes()), runFolders(out))),
+      residue: withLeftovers(diff(before, snapshot(dirs), name), leftovers(procsBefore, (procs = processes()), folders)),
     })
   }
   record.finished = new Date().toISOString()

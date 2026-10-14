@@ -33,6 +33,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
   }
   // One session's after listing is the next one's before.
   let procs = null
+  const folders = runFolders(out)
   for (const s of spec.scenarios) {
     if (only && !only.includes(s.id)) continue
     for (const arm of s.arms) {
@@ -47,11 +48,11 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
       const before = snapshot(dirs)
       const procsBefore = procs ?? processes()
       const r = await runSession({ cmd, arm, bed, mod: spec.mod, session, turns: s.turns, logDir: path.join(out, 'logs'), name })
-      let left = leftovers(procsBefore, (procs = processes()), runFolders(out))
+      let left = leftovers(procsBefore, (procs = processes()), folders)
       // Claude Code may still be finishing a hook it didn't wait for: one more look.
       if (left.some((l) => l.change === 'left running')) {
         await settle()
-        left = leftovers(procsBefore, (procs = processes()), runFolders(out))
+        left = leftovers(procsBefore, (procs = processes()), folders)
       }
       const run = buildRun({
         scenario: s.id,
