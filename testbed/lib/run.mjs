@@ -61,7 +61,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
         debugText: readOr(r.files.debug),
         exitCode: r.code,
         feed: r.feed,
-        residue: withLeftovers(diff(before, snapshot(dirs), name), left),
+        residue: diff(before, snapshot(dirs), name),
       })
       record.runs.push(run)
       onRun(run)
