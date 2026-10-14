@@ -33,11 +33,15 @@ export function localQmdConfigAt(dir: string): string | null {
  * which no flag can pass: the vault stays the cwd whenever the temp folder
  * would find a different one (the vault's own, or one in the user profile
  * the temp folder sits in on Windows). Both are walked as qmd walks its
- * cwd, by their real paths. A temp folder that doesn't exist keeps the vault.
+ * `process.cwd()`: by the real path on POSIX, where the cwd is always
+ * resolved, and as given on Windows, where it keeps a junction or `subst`
+ * drive. A temp folder that doesn't exist keeps the vault.
  */
-export function qmdCwdFor(vault: string, qmdIndex: string | null, temp: string = tmpdir()): string {
+export function qmdCwdFor(vault: string, qmdIndex: string | null, temp: string = tmpdir(), platform: NodeJS.Platform = process.platform): string {
 	if (!existsSync(temp)) return vault;
-	return qmdIndex !== null || localQmdConfigAt(realOr(temp)) === localQmdConfigAt(realOr(vault)) ? temp : vault;
+	if (qmdIndex !== null) return temp;
+	const asCwd = (dir: string): string => (platform === "win32" ? dir : realOr(dir));
+	return localQmdConfigAt(asCwd(temp)) === localQmdConfigAt(asCwd(vault)) ? temp : vault;
 }
 
 const realOr = (dir: string): string => {

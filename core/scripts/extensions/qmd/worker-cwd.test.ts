@@ -63,7 +63,7 @@ describe("the refresh worker runs from the temp folder (#106)", () => {
 		assert.equal(qmdCwdFor(vault, null, temp), vault);
 	});
 
-	test("a vault reached through a link is walked by its real path, as qmd walks its cwd", (t) => {
+	test("a vault reached through a link is walked as qmd walks its cwd: the real path on POSIX, as given on Windows", (t) => {
 		// The real vault sits under a/, which holds a .qmd/; the link b/v names no such parent.
 		const { root, temp } = layout(t, [["a", ".qmd", "index.yml"]]);
 		mkdirSync(join(root, "a", "real"));
@@ -71,7 +71,8 @@ describe("the refresh worker runs from the temp folder (#106)", () => {
 		const vault = join(root, "b", "v");
 		// A junction needs no privilege on Windows; elsewhere the type is ignored.
 		symlinkSync(join(root, "a", "real"), vault, "junction");
-		assert.equal(qmdCwdFor(vault, null, temp), vault);
+		assert.equal(qmdCwdFor(vault, null, temp, "linux"), vault, "POSIX's cwd is the real path, which finds a/.qmd");
+		assert.equal(qmdCwdFor(vault, null, temp, "win32"), temp, "Windows' cwd keeps the link, which finds none, as the temp folder doesn't");
 	});
 
 	test("only .qmd/index.yaml or .qmd/index.yml counts, as in qmd", (t) => {
