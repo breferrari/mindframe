@@ -18,7 +18,7 @@ const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin',
 function vaultWithScripts(t) {
   const v = makeVault(t)
   const scripts = {
-    'session-start.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); if (process.env.SLEEPER && i.source === 'startup') require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)', 'sleeper', process.env.CLAUDE_PROJECT_DIR], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); process.stdout.write(JSON.stringify({ source: i.source, om_mod: i.om_mod, INDEX_PATH: process.env.INDEX_PATH, QMD_CONFIG_DIR: process.env.QMD_CONFIG_DIR, DEMO: process.env.DEMO }) + '\\n_context injected: 0.1kB / 9.1kB budget_\\n')`,
+    'session-start.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); if (process.env.SLEEPER && i.source === 'startup') require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)', 'sleeper', process.env.CLAUDE_PROJECT_DIR], { cwd: require('os').tmpdir(), detached: true, stdio: 'ignore', windowsHide: true }).unref(); process.stdout.write(JSON.stringify({ source: i.source, om_mod: i.om_mod, INDEX_PATH: process.env.INDEX_PATH, QMD_CONFIG_DIR: process.env.QMD_CONFIG_DIR, DEMO: process.env.DEMO }) + '\\n_context injected: 0.1kB / 9.1kB budget_\\n')`,
     'classify-message.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); process.stdout.write('prompt: ' + i.prompt)`,
     'validate-write.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); process.stdout.write('wrote ' + require('path').basename(i.tool_input.file_path))`,
     'pre-compact.ts': `process.stdout.write('precompact')`,
@@ -120,21 +120,24 @@ test("a listing that fails fails the run: the check didn't run", (t) => {
 // The real listing, on each OS CI runs: a detached sleeper session-start
 // starts outlives the run. It names the bed in its arguments, as a worker
 // that takes the vault's path does, and exits on its own after a minute.
+// Its cwd is outside the bed, so Windows can remove the bed while it lives;
+// it is killed before the test ends all the same.
 test('a detached sleeper the vault starts is found by the real listing, and named', (t) => {
   const out = path.join(tmp(t), 'out')
   const record = dryRun({ spec: spec({ env: { SLEEPER: '1' } }), vault: vaultWithScripts(t), out })
   const leaks = record.runs[0].residue.leaks
-  t.after(() => {
+  try {
+    assert.equal(leaks.length, 1, JSON.stringify(leaks))
+    assert.equal(leaks[0].change, 'left running')
+    assert.match(leaks[0].file, /^\d+ .*sleeper/)
+    assert.equal(grade(record, record.specDoc).outcome, 'fail')
+  } finally {
     for (const l of leaks) {
       try {
         process.kill(l.pid)
       } catch {}
     }
-  })
-  assert.equal(leaks.length, 1, JSON.stringify(leaks))
-  assert.equal(leaks[0].change, 'left running')
-  assert.match(leaks[0].file, /^\d+ .*sleeper/)
-  assert.equal(grade(record, record.specDoc).outcome, 'fail')
+  }
 })
 
 test('bedEnv: the scenario beats the spec, which beats the redirect, which beats the user', () => {

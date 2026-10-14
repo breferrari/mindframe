@@ -10,6 +10,7 @@
 // never cut before the match.
 
 import { spawnSync } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 
 /** The listing command for `platform`, every process with its command line. */
 export function listingCommand(platform = process.platform) {
@@ -71,6 +72,16 @@ export function leftovers(before, after, folders, platform = process.platform) {
   return after.procs
     .filter((p) => !had.has(p.pid) && named(p.cmd))
     .map((p) => ({ kind: 'process', pid: p.pid, file: `${p.pid} ${p.cmd}`, change: 'left running' }))
+}
+
+/**
+ * The forms of the run's output folder a command line can name: as given,
+ * and resolved, since a worker that takes its path from its own cwd or
+ * module names the resolved one (macOS's /var is /private/var, a Windows
+ * temp folder can be an 8.3 short name).
+ */
+export function runFolders(out) {
+  return [...new Set([out, realpathSync(out), realpathSync.native(out)])]
 }
 
 /** The residue check's result, with `procs` added to its leaks. */

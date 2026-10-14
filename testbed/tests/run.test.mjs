@@ -36,10 +36,22 @@ test('a live run records a process it started and left running as a leak, and li
   const vault = makeVault(t)
   const out = path.join(tmp(t), 'out')
   const worker = { pid: 77, cmd: `node ${path.join(out, 'beds', 'basic-settings', 'w.js')}` }
-  const listings = [{ procs: [] }, { procs: [worker] }, { procs: [worker] }]
-  const record = await runSpec({ spec: validateSpec(minimalSpec()), vault, out, cmd: FAKE_CLAUDE, processes: () => listings.shift() })
-  assert.deepEqual(record.runs.map((r) => r.residue.leaks.map((l) => l.pid)), [[77], []], "the mod arm starts from the settings arm's after listing")
-  assert.equal(listings.length, 0, 'three listings for two sessions')
+  // before; after; after the settle; the mod arm's after.
+  const listings = [{ procs: [] }, { procs: [worker] }, { procs: [worker] }, { procs: [worker] }]
+  const record = await runSpec({ spec: validateSpec(minimalSpec()), vault, out, cmd: FAKE_CLAUDE, processes: () => listings.shift(), settle: async () => {} })
+  assert.deepEqual(record.runs.map((r) => r.residue.leaks.map((l) => l.pid)), [[77], []], "the mod arm starts from the settings arm's last listing")
+  assert.equal(listings.length, 0, 'four listings for two sessions')
+})
+
+test('a live run looks again once before it reports: a hook Claude Code was still finishing is no leftover', async (t) => {
+  const vault = makeVault(t)
+  const out = path.join(tmp(t), 'out')
+  const hook = { pid: 78, cmd: `sh -c node ${path.join(out, 'beds', 'basic-settings', '.claude', 'scripts', 'end.ts')}` }
+  const listings = [{ procs: [] }, { procs: [hook] }, { procs: [] }, { procs: [] }]
+  let settled = 0
+  const record = await runSpec({ spec: validateSpec(minimalSpec()), vault, out, cmd: FAKE_CLAUDE, processes: () => listings.shift(), settle: async () => void settled++ })
+  assert.deepEqual(record.runs.map((r) => r.residue.leaks), [[], []])
+  assert.equal(settled, 1, 'only when the first look found one')
 })
 
 test('a mod that never loads makes the mod-arm run invalid', async (t) => {

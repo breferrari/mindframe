@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
+import { mkdirSync, realpathSync, symlinkSync } from 'node:fs'
+import path from 'node:path'
 import { test } from 'node:test'
-import { leftovers, listProcesses, listingCommand, parseProcessList } from '../lib/procs.mjs'
+import { leftovers, listProcesses, listingCommand, parseProcessList, runFolders } from '../lib/procs.mjs'
+import { tmp } from './_helpers.mjs'
 
 test('the listing is PowerShell on Windows, filtered to processes with a command line, and ps -ww elsewhere', () => {
   const win = listingCommand('win32')
@@ -57,4 +60,18 @@ test("a listing that failed is a leak: the check didn't run, so the run can't pa
   const ok = { procs: [] }
   assert.deepEqual(leftovers({ failed: 'ps exit 1' }, ok, ['/b']), [{ kind: 'process', file: 'ps exit 1', change: 'not checked' }])
   assert.deepEqual(leftovers(ok, { failed: 'ps: ENOENT' }, ['/b']), [{ kind: 'process', file: 'ps: ENOENT', change: 'not checked' }])
+})
+
+test("the run's folders are its output as given and as resolved, so a worker naming either is seen", (t) => {
+  const real = path.join(tmp(t), 'real')
+  mkdirSync(real)
+  const link = path.join(path.dirname(real), 'link')
+  // A junction needs no privilege on Windows; elsewhere the type is ignored.
+  symlinkSync(real, link, 'junction')
+  const folders = runFolders(link)
+  assert.equal(folders[0], link)
+  assert.ok(folders.includes(realpathSync.native(link)), JSON.stringify(folders))
+  const after = { procs: [{ pid: 9, cmd: `node ${path.join(realpathSync.native(link), 'w.js')}` }] }
+  assert.deepEqual(leftovers({ procs: [] }, after, folders).map((l) => l.pid), [9])
+  assert.deepEqual(runFolders(real), [...new Set([real, realpathSync(real), realpathSync.native(real)])], 'one entry per distinct form')
 })

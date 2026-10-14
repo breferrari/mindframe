@@ -19,7 +19,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { buildBed, vaultCommit } from './bed.mjs'
-import { leftovers, listProcesses, withLeftovers } from './procs.mjs'
+import { leftovers, listProcesses, runFolders, withLeftovers } from './procs.mjs'
 import { diff, qmdEnv, snapshot, userQmdDirs } from './residue.mjs'
 import { hookRow } from './results.mjs'
 
@@ -144,7 +144,7 @@ export function dryRun({ spec, vault, out, only, deliver = false, runner = execF
       debugHooks: [],
       feed: [],
       ...(delivered ? { deliver: { exitCode: delivered.exitCode, output: delivered.output } } : {}),
-      residue: withLeftovers(diff(before, snapshot(dirs), name), leftovers(procsBefore, (procs = processes()), [out])),
+      residue: withLeftovers(diff(before, snapshot(dirs), name), leftovers(procsBefore, (procs = processes()), runFolders(out))),
     })
   }
   record.finished = new Date().toISOString()
