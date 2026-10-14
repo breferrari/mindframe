@@ -11,7 +11,7 @@
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,6 +60,17 @@ describe("the refresh worker runs from the temp folder (#106)", () => {
 	test("without --index, a local config only the temp folder would find keeps the vault, so qmd doesn't take it", (t) => {
 		// On Windows the temp folder sits in the user profile, where a .qmd/ can be.
 		const { vault, temp } = layout(t, [["t", ".qmd", "index.yml"]]);
+		assert.equal(qmdCwdFor(vault, null, temp), vault);
+	});
+
+	test("a vault reached through a link is walked by its real path, as qmd walks its cwd", (t) => {
+		// The real vault sits under a/, which holds a .qmd/; the link b/v names no such parent.
+		const { root, temp } = layout(t, [["a", ".qmd", "index.yml"]]);
+		mkdirSync(join(root, "a", "real"));
+		mkdirSync(join(root, "b"));
+		const vault = join(root, "b", "v");
+		// A junction needs no privilege on Windows; elsewhere the type is ignored.
+		symlinkSync(join(root, "a", "real"), vault, "junction");
 		assert.equal(qmdCwdFor(vault, null, temp), vault);
 	});
 
