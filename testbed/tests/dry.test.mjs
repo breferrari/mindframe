@@ -13,11 +13,12 @@ import { makeVault, minimalSpec, tmp, write } from './_helpers.mjs'
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'bed.mjs')
 
 // Entry points that report what they were given. stop-checklist writes into
-// the user's qmd cache when LEAK is set, the way a hard-coded path would.
+// the user's qmd cache when LEAK is set, the way a hard-coded path would;
+// session-start leaves a detached sleeper behind when SLEEPER is set.
 function vaultWithScripts(t) {
   const v = makeVault(t)
   const scripts = {
-    'session-start.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); process.stdout.write(JSON.stringify({ source: i.source, om_mod: i.om_mod, INDEX_PATH: process.env.INDEX_PATH, QMD_CONFIG_DIR: process.env.QMD_CONFIG_DIR, DEMO: process.env.DEMO }) + '\\n_context injected: 0.1kB / 9.1kB budget_\\n')`,
+    'session-start.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); if (process.env.SLEEPER && i.source === 'startup') require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)', 'sleeper', process.env.CLAUDE_PROJECT_DIR], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); process.stdout.write(JSON.stringify({ source: i.source, om_mod: i.om_mod, INDEX_PATH: process.env.INDEX_PATH, QMD_CONFIG_DIR: process.env.QMD_CONFIG_DIR, DEMO: process.env.DEMO }) + '\\n_context injected: 0.1kB / 9.1kB budget_\\n')`,
     'classify-message.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); process.stdout.write('prompt: ' + i.prompt)`,
     'validate-write.ts': `const i = JSON.parse(require('fs').readFileSync(0, 'utf8')); process.stdout.write('wrote ' + require('path').basename(i.tool_input.file_path))`,
     'pre-compact.ts': `process.stdout.write('precompact')`,
@@ -93,6 +94,46 @@ test('a dry hook that writes into the user qmd folders is a leak, and fails the 
   assert.equal(leaks.length, 1)
   assert.equal(path.basename(leaks[0].file), 'd-dry.sqlite')
   assert.ok(existsSync(leaks[0].file), 'nothing is deleted')
+  assert.equal(grade(record, record.specDoc).outcome, 'fail')
+})
+
+test('a process the run started and left running is a leak, and fails the grade (#99)', (t) => {
+  const out = path.join(tmp(t), 'out')
+  const bed = path.join(out, 'beds', 'd-dry')
+  const listings = [{ procs: [] }, { procs: [{ pid: 4242, cmd: `node ${path.join(bed, 'worker.js')}` }, { pid: 4243, cmd: 'node /elsewhere.js' }] }]
+  const record = dryRun({ spec: spec(), vault: vaultWithScripts(t), out, processes: () => listings.shift() })
+  assert.deepEqual(record.runs[0].residue.leaks, [{ kind: 'process', file: `4242 node ${path.join(bed, 'worker.js')}`, change: 'left running' }])
+  const g = grade(record, record.specDoc)
+  assert.equal(g.outcome, 'fail')
+  const md = renderMarkdown(record, g)
+  assert.match(md, /Processes the run left running[\s\S]*d\/settings: left running 4242 node /)
+  assert.doesNotMatch(md, /Left in the user's qmd folders/, 'no file leaked')
+})
+
+test("a listing that fails fails the run: the check didn't run", (t) => {
+  const out = path.join(tmp(t), 'out')
+  const record = dryRun({ spec: spec(), vault: vaultWithScripts(t), out, processes: () => ({ failed: 'ps exit 1' }) })
+  assert.deepEqual(record.runs[0].residue.leaks, [{ kind: 'process', file: 'ps exit 1', change: 'not checked' }])
+  assert.equal(grade(record, record.specDoc).outcome, 'fail')
+})
+
+// The real listing, on each OS CI runs: a detached sleeper session-start
+// starts outlives the run. It names the bed in its arguments, as a worker
+// that takes the vault's path does, and exits on its own after a minute.
+test('a detached sleeper the vault starts is found by the real listing, and named', (t) => {
+  const out = path.join(tmp(t), 'out')
+  const record = dryRun({ spec: spec({ env: { SLEEPER: '1' } }), vault: vaultWithScripts(t), out })
+  const leaks = record.runs[0].residue.leaks
+  t.after(() => {
+    for (const l of leaks) {
+      try {
+        process.kill(Number.parseInt(l.file, 10))
+      } catch {}
+    }
+  })
+  assert.equal(leaks.length, 1, JSON.stringify(leaks))
+  assert.equal(leaks[0].change, 'left running')
+  assert.match(leaks[0].file, /^\d+ .*sleeper/)
   assert.equal(grade(record, record.specDoc).outcome, 'fail')
 })
 
