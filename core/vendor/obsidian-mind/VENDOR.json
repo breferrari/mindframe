@@ -37,7 +37,7 @@
       "patches": [
         "0042-qmd-extension.patch"
       ],
-      "sha256": "8f01c8f8faddbca855a3bbe5327545325020647613eb94ff67260877a9b95bb5",
+      "sha256": "4671facb04899c507564391a9c6c4bb81fd86bb154ecc276f393429e4199df00",
       "upstream": "lib/qmd.ts",
       "upstreamSha256": "03cdc7cf64f0779157818f4048c0803d95b493bf879e7a34bb34fb91c4618067"
     },
