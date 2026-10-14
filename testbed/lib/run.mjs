@@ -49,7 +49,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
       const r = await runSession({ cmd, arm, bed, mod: spec.mod, session, turns: s.turns, logDir: path.join(out, 'logs'), name })
       let left = leftovers(procsBefore, (procs = processes()), runFolders(out))
       // Claude Code may still be finishing a hook it didn't wait for: one more look.
-      if (left.some((l) => l.change === 'left running')) {
+      if (false) {
         await settle()
         left = leftovers(procsBefore, (procs = processes()), runFolders(out))
       }
