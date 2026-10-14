@@ -69,3 +69,25 @@ export function extensionSources(dir: string): string[] {
 		return e.name.endsWith(".ts") && !e.name.endsWith(".test.ts") && e.name !== "test-fakes.ts" ? [path] : [];
 	});
 }
+
+/** The text of each direct spawn call in `source`: from the name to its closing parenthesis. */
+export function spawnCalls(text: string): string[] {
+	// Comments mention spawn calls too (`spawnSync("qmd", ...)`); only code counts.
+	// Strings are matched first and blanked, so a `/*` inside one ("**/*.md") opens no comment and a
+	// parenthesis inside one doesn't stretch a call.
+	const source = text.replace(/("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m, string) => (string === undefined ? " " : '""'));
+	const calls: string[] = [];
+	for (const m of source.matchAll(/(?<![.\w])(?:node)?(?:spawn|spawnSync|Spawn|SpawnSync)\(/g)) {
+		let depth = 0;
+		let end = m.index!;
+		for (let i = m.index! + m[0].length - 1; i < source.length; i++) {
+			if (source[i] === "(") depth++;
+			else if (source[i] === ")" && --depth === 0) {
+				end = i + 1;
+				break;
+			}
+		}
+		calls.push(source.slice(m.index!, end));
+	}
+	return calls;
+}

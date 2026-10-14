@@ -21,7 +21,7 @@
  * extensions' time.
  */
 
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Effect, Extension, HookContext, Section } from "../../core/index.ts";
 import { resolveQmdIndexOf } from "./lib/index-name.ts";
@@ -44,7 +44,9 @@ export const WORKER_PATH = fileURLToPath(new URL("./qmd-refresh-run.ts", import.
  * still triggers obsidian-mind's copy shares it, so the two debounce as one.
  */
 export function sentinelPathFor(vaultRoot: string, env: QmdDeps["env"]): string {
-	return env["QMD_REFRESH_SENTINEL"] || join(vaultRoot, ".claude", "scripts", ".qmd-refresh-sentinel");
+	const set = env["QMD_REFRESH_SENTINEL"];
+	// Absolute, since the worker that reads it runs from the temp folder (#106).
+	return set ? resolve(set) : join(vaultRoot, ".claude", "scripts", ".qmd-refresh-sentinel");
 }
 
 /** Test seams for the refresh effect: where the worker is, and how it is spawned. */

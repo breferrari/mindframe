@@ -9,8 +9,9 @@
  * Lifted from obsidian-mind 0a58edf's `.claude/scripts/lib/qmd-refresh.ts`
  * (#95); mindframe's vendor record of obsidian-mind holds the commit it is
  * recorded against. Changed: the imports, the worker is told its vault and index
- * (`--vault`, `--index`) instead of deriving them from its own path, and
- * the switch reads an injected environment. A vault's own triggers that
+ * (`--vault`, `--index`) instead of deriving them from its own path, the
+ * switch reads an injected environment, and the worker and its qmd steps
+ * run from the OS temp folder, not the vault (#106). A vault's own triggers that
  * still call obsidian-mind's copy share this one's sentinel, so both
  * debounce as one.
  *
@@ -23,6 +24,7 @@
 
 import { spawn } from "node:child_process";
 import { existsSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { debug } from "../../../core/index.ts";
 import { REFRESH_SWITCH, refreshDisabled } from "./switches.ts";
 import { qmdArgsWithIndex } from "./index-name.ts";
@@ -163,7 +165,7 @@ export function claimTrailingFlush(
 }
 
 /**
- * The arguments the worker runs on: the vault (`--vault`, its cwd for qmd),
+ * The arguments the worker runs on: the vault (`--vault`),
  * the index (`--index`; absent means qmd's global one), both resolved by the
  * effect that spawns it, exactly as session start resolves them.
  */
@@ -308,7 +310,9 @@ function spawnDetachedWorker(
 			detached: true,
 			stdio: "ignore",
 			windowsHide: true,
-			cwd: process.cwd(),
+			// The temp folder, so a worker that can last minutes never holds the
+			// vault open on Windows (#106). Its arguments are absolute.
+			cwd: tmpdir(),
 		},
 	);
 	child.on("error", (err) => {
