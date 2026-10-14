@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { buildBed, vaultCommit } from './bed.mjs'
 import { bedEnv } from './dry.mjs'
+import { leftovers, listProcesses, runFolders, withLeftovers } from './procs.mjs'
 import { diff, snapshot, userQmdDirs } from './residue.mjs'
 import { buildRun } from './results.mjs'
 import { runSession } from './session.mjs'
@@ -19,7 +20,7 @@ export function defaultOut(specName, now = new Date()) {
 
 const readOr = (file) => (existsSync(file) ? readFileSync(file, 'utf8') : '')
 
-export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () => {} }) {
+export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () => {}, processes = listProcesses, settle = () => new Promise((done) => setTimeout(done, 2000)) }) {
   if (existsSync(out)) throw new Error(`output folder exists, pick a new one: ${out}`)
   mkdirSync(out, { recursive: true })
   const record = {
@@ -30,6 +31,9 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
     started: new Date().toISOString(),
     runs: [],
   }
+  // One session's after listing is the next one's before.
+  let procs = null
+  const folders = runFolders(out)
   for (const s of spec.scenarios) {
     if (only && !only.includes(s.id)) continue
     for (const arm of s.arms) {
@@ -42,7 +46,14 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
       const session = { ...spec.session, env, allowedTools: s.allowedTools ?? spec.session.allowedTools, disallowedTools: s.disallowedTools ?? spec.session.disallowedTools, tools: s.tools ?? spec.session.tools }
       const dirs = userQmdDirs({ ...process.env, ...env })
       const before = snapshot(dirs)
+      const procsBefore = procs ?? processes()
       const r = await runSession({ cmd, arm, bed, mod: spec.mod, session, turns: s.turns, logDir: path.join(out, 'logs'), name })
+      let left = leftovers(procsBefore, (procs = processes()), folders)
+      // Claude Code may still be finishing a hook it didn't wait for: one more look.
+      if (left.some((l) => l.change === 'left running')) {
+        await settle()
+        left = leftovers(procsBefore, (procs = processes()), folders)
+      }
       const run = buildRun({
         scenario: s.id,
         arm,
@@ -51,7 +62,7 @@ export async function runSpec({ spec, vault, out, arms, only, cmd, onRun = () =>
         debugText: readOr(r.files.debug),
         exitCode: r.code,
         feed: r.feed,
-        residue: diff(before, snapshot(dirs), name),
+        residue: withLeftovers(diff(before, snapshot(dirs), name), left),
       })
       record.runs.push(run)
       onRun(run)

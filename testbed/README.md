@@ -225,7 +225,7 @@ A bed vault with QMD writes an index store and a collection config named after t
 
 The embedding models (`<cache>/qmd/models`) stay shared, because they are large. A spec's `session.env` or a scenario's `env` can still override either variable.
 
-Each session also runs with `VAULT_QMD_REFRESH=off`, a vault's switch rather than qmd's: a vault that reads it (mindframe's qmd extension, in `extensions/qmd/lib/switches.ts` since #70 and #95, and obsidian-mind from its #338) launches no detached qmd refresh, at session start or after a write, so no such worker outlives the run. A spec can set it back. A vault that ignores it can still leave a worker behind; failing the run for that is #99.
+Each session also runs with `VAULT_QMD_REFRESH=off`, a vault's switch rather than qmd's: a vault that reads it (mindframe's qmd extension, in `extensions/qmd/lib/switches.ts` since #70 and #95, and obsidian-mind from its #338) launches no detached qmd refresh, at session start or after a write, so no such worker outlives the run. A spec can set it back. A vault that ignores it can still leave a worker behind, and so can any other detached spawn; the process check below fails the run for it.
 
 Code that ignores those variables, such as a hard-coded config path, would still write to the user's folders. So the runner lists both folders before and after each session:
 - an entry the session created is a **leak**, and so is a changed entry named after the bed;
@@ -233,6 +233,13 @@ Code that ignores those variables, such as a hard-coded config path, would still
 - a change to any other entry is only noted (`residue.touched`), because the user's own sessions write to their stores while a bed runs.
 
 The runner never deletes anything, leaks included.
+
+A detached process can also outlive the run, and one that writes after the "after" snapshot would slip past the folder check. So the runner lists the processes before and after each session too (PowerShell's `Get-CimInstance Win32_Process` on Windows, `ps -ax -ww` elsewhere):
+- a process that is new and still running, and that the bed started, is a **leak** of kind `process`, listed under its own heading in `results.md`, and fails the grade;
+- the bed started it when its command line names the run's output folder, which holds the bed (on Windows, in any case and either slash). A worker run by a path relative to the vault names no folder, so it isn't seen; under `VAULT_QMD_REFRESH=off`, obsidian-mind from its #338 starts none;
+- a listing that fails is a leak too (`not checked`), so a run can't pass on a check that didn't run.
+
+The runner never kills one: a leftover is for a person to look at.
 
 A dry run gets exactly the same treatment. Every hook it spawns gets its environment from the same builder as a live session (`bedEnv`), and the same before and after snapshot. Hand-run hooks get neither, which is why `dry` exists.
 

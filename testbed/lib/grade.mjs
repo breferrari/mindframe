@@ -116,9 +116,17 @@ export function renderMarkdown(record, graded) {
   out.push(`Claude Code ${versions.join(', ') || 'unknown'} · vault ${record.vault.commit ? record.vault.commit.head.slice(0, 7) + (record.vault.commit.dirty ? ' (uncommitted changes)' : '') : 'not a git repo'} · ${record.runs.length} sessions${cost > 0 ? ` · $${cost.toFixed(2)}` : ''}`, '')
   out.push(`**${graded.outcome.toUpperCase()}**: ${graded.passed} passed, ${graded.failed} failed, ${graded.pending} awaiting the blind grader${graded.invalid.length ? `; invalid runs: ${graded.invalid.join(', ')}` : ''}`, '')
   if (graded.leaks?.length) {
-    out.push("**Left in the user's qmd folders** (a leak fails the grade; nothing was deleted):", '')
-    for (const l of graded.leaks) out.push(`- ${l.run}: ${l.change} ${l.file}`)
-    out.push('')
+    const procs = graded.leaks.filter((l) => l.kind === 'process')
+    const files = graded.leaks.filter((l) => l.kind !== 'process')
+    for (const [list, head] of [
+      [files, "**Left in the user's qmd folders** (a leak fails the grade; nothing was deleted):"],
+      [procs, '**Processes the run left running** (a leftover fails the grade; nothing was killed):'],
+    ]) {
+      if (!list.length) continue
+      out.push(head, '')
+      for (const l of list) out.push(`- ${l.run}: ${l.change} ${l.file}`)
+      out.push('')
+    }
   }
   if (graded.outcome === 'incomplete') out.push('Not a pass: the blind grader has not ruled on every judged answer. Run `bed.mjs judge prepare`, then `judge apply`.', '')
 

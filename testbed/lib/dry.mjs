@@ -19,6 +19,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { buildBed, vaultCommit } from './bed.mjs'
+import { leftovers, listProcesses, runFolders, withLeftovers } from './procs.mjs'
 import { diff, qmdEnv, snapshot, userQmdDirs } from './residue.mjs'
 import { hookRow } from './results.mjs'
 
@@ -54,10 +55,13 @@ const EDIT = /Edit tool on '([^']+)': change the line '([^']+)' to '([^']+)'/
 // mod would hand the model as its instruction file. Measures read it as the
 // `deliver` source. It is outside the settings hooks, so no hook expectation
 // sees it.
-export function dryRun({ spec, vault, out, only, deliver = false, runner = execFileSync }) {
+export function dryRun({ spec, vault, out, only, deliver = false, runner = execFileSync, processes = listProcesses }) {
   if (existsSync(out)) throw new Error(`output folder exists, pick a new one: ${out}`)
   mkdirSync(out, { recursive: true })
   const record = { spec: spec.name, specDoc: spec, dry: true, vault: { commit: vaultCommit(vault) }, started: new Date().toISOString(), runs: [] }
+  // One session's after listing is the next one's before.
+  let procs = null
+  const folders = runFolders(out)
   for (const s of spec.scenarios) {
     if (only && !only.includes(s.id)) continue
     if (!s.arms.includes('settings')) continue
@@ -67,6 +71,7 @@ export function dryRun({ spec, vault, out, only, deliver = false, runner = execF
     const env = { ...bedEnv({ stateDir: path.join(out, 'state', name), spec, scenario: s }), CLAUDE_PROJECT_DIR: bed }
     const dirs = userQmdDirs(env)
     const before = snapshot(dirs)
+    const procsBefore = procs ?? processes()
 
     const hook = (event, input, hookName = event) => {
       const script = path.join(bed, '.claude', 'scripts', DRY_SCRIPTS[event])
@@ -140,7 +145,7 @@ export function dryRun({ spec, vault, out, only, deliver = false, runner = execF
       debugHooks: [],
       feed: [],
       ...(delivered ? { deliver: { exitCode: delivered.exitCode, output: delivered.output } } : {}),
-      residue: diff(before, snapshot(dirs), name),
+      residue: withLeftovers(diff(before, snapshot(dirs), name), leftovers(procsBefore, (procs = processes()), folders)),
     })
   }
   record.finished = new Date().toISOString()
